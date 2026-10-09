@@ -19,7 +19,7 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
         type="button"
         onClick={() => onOpen(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${it.holderName} · ${it.cardName}` })}
         className={cn(
-          'block w-full px-4 py-3 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+          'block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           GRID,
           muted && 'opacity-70',
         )}
@@ -54,22 +54,26 @@ export function BenefitList({ items }: { items: InstanceListItem[] }) {
   const { open, drawer } = useBenefitDrawer();
   const groups = groupItems(items);
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {groups.map((g) => (
         <section key={g.key} aria-labelledby={`g-${g.key}`}>
-          <h2 id={`g-${g.key}`} className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            {g.title}
-            <span className="text-xs font-normal text-muted-foreground">{g.items.length}</span>
-          </h2>
-          <div className="overflow-hidden rounded-lg border bg-card">
-            <div className={cn('hidden border-b bg-muted px-4 py-2 text-xs font-medium text-muted-foreground', GRID)} aria-hidden>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <h2 id={`g-${g.key}`} className="font-semibold tracking-tight text-xl">
+              {g.title}
+            </h2>
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+              {g.items.length}
+            </span>
+          </div>
+          <div className="panel overflow-hidden">
+            <div className={cn('hidden border-b border-border/80 bg-muted/40 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground', GRID)} aria-hidden>
               <span>Category</span>
               <span>Benefit</span>
               <span>Holder / card</span>
               <span className="text-right">Value</span>
               <span className="text-right">Status</span>
             </div>
-            <ul className="divide-y">
+            <ul className="divide-y divide-border/80">
               {g.items.map((it) => (
                 <Row key={it.id} it={it} onOpen={open} />
               ))}

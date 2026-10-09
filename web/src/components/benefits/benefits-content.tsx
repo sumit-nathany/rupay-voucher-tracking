@@ -4,6 +4,7 @@ import { ErrorPanel } from '@/components/dashboard/error-panel';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import type { ORDER_STATUSES } from '@/domain/instances';
 import type { ViewedPeriod } from '@/lib/periods';
+import { EmptyState } from '@/components/layout/empty-state';
 import { BenefitList } from './benefit-list';
 
 export type BenefitFilters = {
@@ -32,14 +33,14 @@ export async function BenefitsContent({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="font-medium">{filtered ? 'No benefits match these filters' : 'No benefits in this period'}</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {filtered
+      <EmptyState
+        title={filtered ? 'No matches' : 'Nothing in this period'}
+        description={
+          filtered
             ? 'Try clearing a filter or choosing another period.'
-            : 'Add a card on the Cards page; its benefits appear here automatically.'}
-        </p>
-      </div>
+            : 'Add a card on the Cards page — benefits appear here automatically.'
+        }
+      />
     );
   }
   return <BenefitList items={items} />;

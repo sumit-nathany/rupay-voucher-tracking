@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { listCatalogForAdminAction } from '@/actions/catalog-admin';
 import { CatalogAdmin } from '@/components/admin/catalog-admin';
+import { ContentStage } from '@/components/layout/content-stage';
+import { PageHeader } from '@/components/layout/page-header';
 import { AuthzError } from '@/lib/context';
 
 export const dynamic = 'force-dynamic';
@@ -15,14 +17,13 @@ export default async function CatalogAdminPage() {
     throw e;
   }
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Card catalog</h1>
-        <p className="text-sm text-muted-foreground">
-          The variants and cards people pick from when adding a card. Changes apply immediately, with no redeploy.
-        </p>
-      </div>
+    <ContentStage className="max-w-4xl">
+      <PageHeader
+        eyebrow="System admin"
+        title="Card catalog"
+        description="Variants and bank cards in the add-card picker. Edits go live immediately."
+      />
       <CatalogAdmin variants={data.variants} types={data.types} benefitCountByTypeId={data.benefitCountByTypeId} />
-    </div>
+    </ContentStage>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
+import { AlarmClock } from 'lucide-react';
 import { benefitLabel } from '@/components/benefits/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { useBenefitDrawer } from '@/components/benefits/use-drawer';
 import { formatDate, formatINR } from './format';
@@ -12,37 +12,46 @@ function daysLeft(expiry: string, today: string): number {
 export function ExpiringSoon({ items, days, today }: { items: InstanceListItem[]; days: number; today: string }) {
   const { open, drawer } = useBenefitDrawer();
   return (
-    <Card>
-      <CardHeader className="pb-3 sm:pb-3">
-        <CardTitle className="text-base">Expiring in the next {days} days</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <section className="panel">
+      <div className="panel-header flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold tracking-tight text-lg">Expiring soon</h2>
+          <p className="text-xs text-muted-foreground">Coupons to use in the next {days} days</p>
+        </div>
+        <AlarmClock className="h-5 w-5 text-warning" aria-hidden />
+      </div>
+      <div className="panel-body">
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No received coupons are about to expire.</p>
+          <p className="text-sm text-muted-foreground">No received coupons are about to expire. You&apos;re clear.</p>
         ) : (
-          <ul className="divide-y">
+          <ul className="grid gap-3 sm:grid-cols-2">
             {items.map((it) => {
               const left = it.expiryDate ? daysLeft(it.expiryDate, today) : null;
+              const urgent = left != null && left <= 7;
               return (
                 <li key={it.id}>
                   <button
                     type="button"
-                    onClick={() => open(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${it.holderName} · ${it.cardName}` })}
-                    className="flex min-h-12 w-full items-center justify-between gap-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    onClick={() =>
+                      open(it.id, {
+                        title: `${it.benefitType}: ${benefitLabel(it)}`,
+                        subtitle: `${it.holderName} · ${it.cardName}`,
+                      })
+                    }
+                    className="benefit-card flex w-full flex-col gap-2 p-4 text-left transition-transform active:scale-[0.99]"
                   >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">
-                        {it.benefitType}: {benefitLabel(it)}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {it.holderName} · {it.cardName} · {formatINR(it.value)}
-                      </span>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{it.benefitType}</span>
+                    <span className="line-clamp-2 font-medium leading-snug">{benefitLabel(it)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {it.holderName} · {formatINR(it.value)}
                     </span>
-                    <span className="shrink-0 text-right text-xs">
-                      <span className={`block font-medium ${left != null && left <= 7 ? 'text-destructive' : 'text-warning'}`}>
-                        {left === 0 ? 'Today' : left === 1 ? '1 day' : `${left} days`}
-                      </span>
-                      {it.expiryDate && <span className="text-muted-foreground">{formatDate(it.expiryDate)}</span>}
+                    <span
+                      className={`mt-1 inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                        urgent ? 'bg-destructive/15 text-destructive' : 'bg-warning/15 text-warning'
+                      }`}
+                    >
+                      {left === 0 ? 'Expires today' : left === 1 ? '1 day left' : `${left} days left`}
+                      {it.expiryDate && ` · ${formatDate(it.expiryDate)}`}
                     </span>
                   </button>
                 </li>
@@ -50,8 +59,8 @@ export function ExpiringSoon({ items, days, today }: { items: InstanceListItem[]
             })}
           </ul>
         )}
-      </CardContent>
+      </div>
       {drawer}
-    </Card>
+    </section>
   );
 }

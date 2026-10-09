@@ -4,6 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { DeleteHolderButton } from '@/components/holders/delete-holder-button';
 import { HolderFormSheet } from '@/components/holders/holder-form';
+import { ContentStage } from '@/components/layout/content-stage';
+import { EmptyState } from '@/components/layout/empty-state';
+import { PageHeader } from '@/components/layout/page-header';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,39 +16,42 @@ export default async function HoldersPage() {
   for (const c of cards) counts.set(c.holderId, (counts.get(c.holderId) ?? 0) + 1);
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Holders</h1>
-          <p className="text-sm text-muted-foreground">The people whose cards you track.</p>
-        </div>
-        <HolderFormSheet />
-      </div>
+    <ContentStage className="max-w-3xl">
+      <PageHeader
+        eyebrow="People"
+        title="Holders"
+        description="Labels for who holds each card — family, friends, or yourself."
+        actions={<HolderFormSheet />}
+      />
 
       {holders.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 text-center text-sm text-muted-foreground">
-            No holders yet. Add yourself or a family member to start adding cards.
-          </CardContent>
-        </Card>
+        <EmptyState title="No holders yet" description="Add yourself or a family member, then attach cards." />
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid gap-4 sm:grid-cols-2">
           {holders.map((h) => {
             const n = counts.get(h.id) ?? 0;
+            const initial = h.name.trim().charAt(0).toUpperCase() || '?';
             return (
               <li key={h.id}>
-                <Card>
-                  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate font-medium">{h.name}</span>
-                        {h.active === false && <Badge variant="secondary">Inactive</Badge>}
+                <Card className="surface-card-interactive h-full">
+                  <CardContent className="flex h-full flex-col gap-4 p-5">
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-hidden
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold/20 font-semibold tracking-tight text-2xl text-foreground"
+                      >
+                        {initial}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate font-semibold">{h.name}</span>
+                          {h.active === false && <Badge variant="secondary">Inactive</Badge>}
+                        </div>
+                        <p className="truncate text-sm text-muted-foreground">{h.email ?? 'No email'}</p>
+                        <p className="mt-1 text-xs font-medium text-primary">{n} card{n === 1 ? '' : 's'}</p>
                       </div>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {h.email ?? 'No email'} · {n} card{n === 1 ? '' : 's'}
-                      </p>
                     </div>
-                    <div className="flex shrink-0 gap-2">
+                    <div className="mt-auto flex gap-2 pt-2">
                       <HolderFormSheet holder={{ id: h.id, name: h.name, email: h.email, active: h.active ?? true }} />
                       <DeleteHolderButton id={h.id} name={h.name} cardCount={n} />
                     </div>
@@ -56,6 +62,6 @@ export default async function HoldersPage() {
           })}
         </ul>
       )}
-    </div>
+    </ContentStage>
   );
 }
