@@ -47,7 +47,7 @@ export function LoginForm({ initialError }: { initialError?: string }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {error && (
-        <p role="alert" className="rounded-lg border border-rani/35 bg-rani/10 px-3 py-2 text-sm text-rani">
+        <p role="alert" className="rounded-lg border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </p>
       )}
@@ -77,7 +77,7 @@ export function LoginForm({ initialError }: { initialError?: string }) {
           disabled={pending}
         />
       </div>
-      <Button type="submit" variant="gold" className="mt-2 w-full" size="lg" disabled={pending}>
+      <Button type="submit" className="mt-2 w-full" size="lg" disabled={pending}>
         {pending ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Signing in…

@@ -25,7 +25,7 @@ export async function DashboardContent({ view, today }: { view: ViewedPeriod; to
         title="Your desk is empty"
         description="Add a holder and a card from the Cards page. Benefits for the period you selected will show up here automatically."
         action={
-          <Button asChild variant="gold">
+          <Button asChild>
             <Link href="/cards">Add your first card</Link>
           </Button>
         }

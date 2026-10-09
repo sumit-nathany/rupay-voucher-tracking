@@ -4,7 +4,7 @@ import { Pencil, Plus } from 'lucide-react';
 import { createOverride, updateOverride } from '@/actions/overrides';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetFooter } from '@/components/ui/sheet';
 import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
 
@@ -81,12 +81,15 @@ function OverrideFormBody({
       )}
       {!editing && (
         <Field id="ov-card" label="Card">
-          <Select id="ov-card" required value={cardId} onChange={(e) => setCardId(e.target.value)}>
-            {cards.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+          <Select value={cardId} onValueChange={setCardId}>
+            <SelectTrigger id="ov-card" aria-label="Card" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {cards.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </Field>
       )}
@@ -101,10 +104,15 @@ function OverrideFormBody({
       </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field id="ov-freq" label="Frequency">
-          <Select id="ov-freq" disabled={locked} value={frequency} onChange={(e) => setFrequency(e.target.value)}>
-            {FREQUENCIES.map((f) => (
-              <option key={f}>{f}</option>
-            ))}
+          <Select value={frequency} onValueChange={setFrequency} disabled={locked}>
+            <SelectTrigger id="ov-freq" aria-label="Frequency" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FREQUENCIES.map((f) => (
+                <SelectItem key={f} value={f}>{f}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </Field>
         <Field id="ov-count" label="Per period">

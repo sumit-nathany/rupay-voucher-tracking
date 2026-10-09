@@ -40,7 +40,7 @@ export function HolderProgress({ holders }: { holders: HP[] }) {
                         className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
                       >
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-gold via-[#f5c56a] to-teal transition-[width] duration-500 ease-out"
+                          className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
                           style={{ width: `${pct}%` }}
                         />
                       </div>

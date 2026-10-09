@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorText, Field, SubmitButton, useRunAction } from '@/components/holders/form-kit';
 import { cn } from '@/lib/utils';
@@ -209,17 +209,18 @@ function TypeItem({ type, variants, benefitCount }: { type: TypeRow; variants: V
         </div>
         <div className="flex shrink-0 items-center gap-2 pl-10 sm:pl-0">
           <Select
-            aria-label={`Move ${type.displayName} to another variant`}
-            className="h-9 w-44"
             value={type.variantId ?? ''}
             disabled={pending}
-            onChange={(e) => e.target.value && run(() => updateCardTypeAction({ id: type.id, variantId: e.target.value }), 'Could not move the card.')}
+            onValueChange={(v) => v && run(() => updateCardTypeAction({ id: type.id, variantId: v }), 'Could not move the card.')}
           >
-            {variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
+            <SelectTrigger aria-label={`Move ${type.displayName} to another variant`} className="h-9 w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {variants.map((v) => (
+                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+              ))}
+            </SelectContent>
           </Select>
           <Button
             type="button"
@@ -395,19 +396,22 @@ function BulkAdd({ variants, defaultVariantId }: { variants: VariantRow[]; defau
       <CardContent>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <Field id="bulk-variant" label="Variant">
-            <Select id="bulk-variant" value={variantId} onChange={(e) => setVariantId(e.target.value)}>
-              {variants.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
+            <Select value={variantId} onValueChange={setVariantId}>
+              <SelectTrigger id="bulk-variant" aria-label="Variant" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {variants.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </Field>
           <Field id="bulk-text" label="Cards, one per line" hint="Paste straight from the RuPay portal. Blank lines and repeats are ignored.">
             <Textarea id="bulk-text" rows={8} value={text} onChange={(e) => setText(e.target.value)} />
           </Field>
           <ErrorText>{error}</ErrorText>
-          {result && <p role="status" className="rounded-md bg-teal/10 px-3 py-2 text-sm text-teal">{result}</p>}
+          {result && <p role="status" className="rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">{result}</p>}
           <div>
             <SubmitButton pending={pending}>Add cards</SubmitButton>
           </div>

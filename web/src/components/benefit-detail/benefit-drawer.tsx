@@ -247,7 +247,7 @@ function OptionSection({
   }
 
   return (
-    <section aria-labelledby={`${id}-h`} className="space-y-2 rounded-md border border-gold/50 bg-gold-soft/40 p-3">
+    <section aria-labelledby={`${id}-h`} className="space-y-2 rounded-md border border-primary/30 bg-primary/5 p-3">
       <h3 id={`${id}-h`} className="text-sm font-semibold">
         Choose any one of {options.length} offers
       </h3>

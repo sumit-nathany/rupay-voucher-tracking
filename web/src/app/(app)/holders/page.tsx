@@ -33,25 +33,25 @@ export default async function HoldersPage() {
             const initial = h.name.trim().charAt(0).toUpperCase() || '?';
             return (
               <li key={h.id}>
-                <Card className="surface-card-interactive h-full">
-                  <CardContent className="flex h-full flex-col gap-4 p-5">
-                    <div className="flex items-start gap-3">
+                <Card className="h-full transition-shadow hover:shadow-md">
+                  <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
                       <span
                         aria-hidden
-                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gold/20 font-semibold tracking-tight text-2xl text-foreground"
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-base font-semibold text-primary"
                       >
                         {initial}
                       </span>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="truncate font-semibold">{h.name}</span>
+                          <span className="truncate font-semibold leading-snug">{h.name}</span>
                           {h.active === false && <Badge variant="secondary">Inactive</Badge>}
                         </div>
                         <p className="truncate text-sm text-muted-foreground">{h.email ?? 'No email'}</p>
-                        <p className="mt-1 text-xs font-medium text-primary">{n} card{n === 1 ? '' : 's'}</p>
+                        <p className="text-xs text-muted-foreground">{n} card{n === 1 ? '' : 's'}</p>
                       </div>
                     </div>
-                    <div className="mt-auto flex gap-2 pt-2">
+                    <div className="flex shrink-0 items-center gap-1 sm:pl-2">
                       <HolderFormSheet holder={{ id: h.id, name: h.name, email: h.email, active: h.active ?? true }} />
                       <DeleteHolderButton id={h.id} name={h.name} cardCount={n} />
                     </div>

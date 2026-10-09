@@ -16,7 +16,7 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
         <CardContent>
           <form action={setPassword} className="space-y-4">
             {error && (
-              <p role="alert" className="rounded-md border border-rani/40 bg-rani/10 px-3 py-2 text-sm text-rani">
+              <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error === 'mismatch'
                   ? 'The two passwords do not match. Enter the same password in both boxes.'
                   : `Could not set the password. ${reason ?? 'Try again.'}`}

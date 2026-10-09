@@ -7,12 +7,12 @@ export const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-violet/15 text-primary',
-        secondary: 'border-transparent bg-muted text-foreground',
-        outline: 'text-foreground',
-        success: 'border-transparent bg-teal/15 text-teal',
-        warning: 'border-transparent bg-gold/25 text-warning',
-        destructive: 'border-transparent bg-rani/15 text-rani',
+        default:     'border-transparent bg-primary/15 text-primary',
+        secondary:   'border-transparent bg-muted text-foreground',
+        outline:     'text-foreground',
+        success:     'border-transparent bg-primary/15 text-primary',
+        warning:     'border-transparent bg-warning/20 text-warning',
+        destructive: 'border-transparent bg-destructive/15 text-destructive',
       },
     },
     defaultVariants: { variant: 'default' },

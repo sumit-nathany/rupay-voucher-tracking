@@ -4,7 +4,7 @@ import { Pencil, Plus } from 'lucide-react';
 import { createCard, updateCard } from '@/actions/cards';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetFooter } from '@/components/ui/sheet';
 import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
 import { CardTypeCombobox, type CardTypeOption } from './card-type-combobox';
@@ -96,12 +96,15 @@ function CardFormBody({
   return (
     <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
       <Field id="card-holder" label="Holder">
-        <Select id="card-holder" required value={holderId} onChange={(e) => setHolderId(e.target.value)}>
-          {holders.map((h) => (
-            <option key={h.id} value={h.id}>
-              {h.name}
-            </option>
-          ))}
+        <Select value={holderId} onValueChange={setHolderId}>
+          <SelectTrigger id="card-holder" aria-label="Holder" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {holders.map((h) => (
+              <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </Field>
 
@@ -123,19 +126,20 @@ function CardFormBody({
         <>
           <Field id="card-variant" label="Card variant" hint="Pick the variant first, as on the RuPay portal.">
             <Select
-              id="card-variant"
-              required
               value={variantId}
-              onChange={(e) => {
-                setVariantId(e.target.value);
+              onValueChange={(v) => {
+                setVariantId(v);
                 setType(null);
               }}
             >
-              {variants.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
+              <SelectTrigger id="card-variant" aria-label="Card variant" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {variants.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </Field>
           <Field

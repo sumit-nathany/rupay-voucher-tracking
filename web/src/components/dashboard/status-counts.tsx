@@ -3,8 +3,8 @@ import type { DashboardSummary } from '@/domain/instance-queries';
 const ROWS: { key: keyof DashboardSummary['counts']; label: string; tone?: string }[] = [
   { key: 'Not Ordered', label: 'Not ordered', tone: 'bg-muted-foreground/40' },
   { key: 'Ordered but Coupon not received', label: 'Awaiting coupon', tone: 'bg-warning' },
-  { key: 'Coupon Received', label: 'Coupon in hand', tone: 'bg-violet' },
-  { key: 'Coupon Redeemed', label: 'Redeemed', tone: 'bg-teal' },
+  { key: 'Coupon Received', label: 'Coupon in hand', tone: 'bg-primary/60' },
+  { key: 'Coupon Redeemed', label: 'Redeemed', tone: 'bg-primary' },
   { key: 'Skipped', label: 'Skipped', tone: 'bg-border' },
   { key: 'Withdrawn', label: 'Withdrawn', tone: 'bg-border' },
 ];
@@ -43,7 +43,7 @@ export function StatusCounts({ s }: { s: DashboardSummary }) {
             </li>
           ))}
           {s.lapsedCount > 0 && (
-            <li className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm text-rani">
+            <li className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm text-destructive">
               <span>Lapsed (in Not ordered)</span>
               <span className="font-semibold tabular-nums">{s.lapsedCount}</span>
             </li>

@@ -14,7 +14,7 @@ export const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-ink/70 backdrop-blur-sm animate-[fade-in_200ms_ease-out]', className)}
+    className={cn('fixed inset-0 z-50 bg-black/60 backdrop-blur-sm animate-[fade-in_200ms_ease-out]', className)}
     {...props}
   />
 ));

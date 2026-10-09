@@ -29,36 +29,35 @@ export function NavLinks({ variant, showAdmin }: { variant: 'sidebar' | 'tabbar'
             href={href}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'group relative transition-[color,background,transform] duration-200 ease-out active:scale-[0.98]',
+              'group relative transition-[color,background] duration-150 ease-out active:scale-[0.98]',
               variant === 'sidebar'
-                ? 'flex items-center gap-3 rounded-xl px-3 py-3'
+                ? 'flex items-center gap-3 rounded-xl px-3 py-2.5'
                 : 'flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-[9px] font-bold uppercase tracking-wide',
               active
                 ? variant === 'sidebar'
-                  ? 'bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]'
-                  : 'text-gold'
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-primary'
                 : variant === 'sidebar'
-                  ? 'text-white/55 hover:bg-white/8 hover:text-white'
-                  : 'text-white/45 hover:text-white/85',
+                  ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {variant === 'sidebar' && active && (
-              <span aria-hidden className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-gold" />
+              <span aria-hidden className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-primary" />
             )}
             {variant === 'tabbar' && active && (
-              <span aria-hidden className="absolute inset-x-1.5 top-1 bottom-1 -z-10 rounded-2xl bg-white/10" />
+              <span aria-hidden className="absolute inset-x-1.5 top-1 bottom-1 -z-10 rounded-2xl bg-primary/10" />
             )}
             <Icon
               className={cn(
-                'shrink-0 transition-transform duration-200 group-hover:scale-105',
+                'shrink-0 transition-transform duration-150 group-hover:scale-105',
                 variant === 'sidebar' ? 'h-5 w-5' : 'h-5 w-5',
-                active && 'text-gold',
               )}
             />
             <span className={cn('truncate', variant === 'sidebar' && 'flex min-w-0 flex-col items-start')}>
               <span className={variant === 'sidebar' ? 'text-sm font-semibold' : ''}>{label}</span>
               {variant === 'sidebar' && hint && (
-                <span className="text-[11px] font-normal text-white/40">{hint}</span>
+                <span className="text-[11px] font-normal text-muted-foreground/70">{hint}</span>
               )}
             </span>
           </Link>

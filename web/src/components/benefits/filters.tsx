@@ -3,7 +3,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { Filter, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { STATUS_OPTIONS } from './statuses';
 
 export interface FilterOption {
@@ -46,7 +46,7 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
   const active = holder || card || status || urlSearch;
 
   return (
-    <div className="filter-strip space-y-3">
+    <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Filter className="h-3.5 w-3.5" aria-hidden /> Refine list
       </div>
@@ -62,25 +62,53 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
             className="pl-9"
           />
         </div>
-        <Select aria-label="Holder" value={holder} onChange={(e) => set({ holder: e.target.value, card: '' })}>
-          <option value="">All holders</option>
-          {holders.map((h) => (
-            <option key={h.id} value={h.id}>{h.label}</option>
-          ))}
+
+        <Select
+          value={holder || '__all__'}
+          onValueChange={(v) => set({ holder: v === '__all__' ? '' : v, card: '' })}
+        >
+          <SelectTrigger aria-label="Holder" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All holders</SelectItem>
+            {holders.map((h) => (
+              <SelectItem key={h.id} value={h.id}>{h.label}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
-        <Select aria-label="Card" value={card} onChange={(e) => set({ card: e.target.value })}>
-          <option value="">All cards</option>
-          {visibleCards.map((c) => (
-            <option key={c.id} value={c.id}>{c.label}</option>
-          ))}
+
+        <Select
+          value={card || '__all__'}
+          onValueChange={(v) => set({ card: v === '__all__' ? '' : v })}
+        >
+          <SelectTrigger aria-label="Card" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All cards</SelectItem>
+            {visibleCards.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
-        <Select aria-label="Status" value={status} onChange={(e) => set({ status: e.target.value })}>
-          <option value="">All statuses</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
+
+        <Select
+          value={status || '__all__'}
+          onValueChange={(v) => set({ status: v === '__all__' ? '' : v })}
+        >
+          <SelectTrigger aria-label="Status" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">All statuses</SelectItem>
+            {STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
       </div>
+
       {active && (
         <button
           type="button"

@@ -18,25 +18,26 @@ export function StatCards({ s }: { s: DashboardSummary }) {
   const attention = s.counts['Not Ordered'] + s.counts['Coupon Received'];
   return (
     <div className="grid gap-4 lg:grid-cols-12">
-      <div className="hero-metric relative overflow-hidden p-6 sm:p-8 lg:col-span-7">
+      {/* Primary metric card — emerald accent */}
+      <div className="relative overflow-hidden rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8 lg:col-span-7">
         <div
           aria-hidden
-          className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-gold/20 blur-3xl"
+          className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
         />
         <div className="relative flex h-full flex-col justify-between gap-6">
           <div>
-            <p className="eyebrow text-white/55">Outstanding value</p>
-            <p className="mt-2 font-semibold tracking-tight text-4xl tabular-nums sm:text-5xl">
+            <p className="eyebrow text-muted-foreground">Outstanding value</p>
+            <p className="mt-2 font-semibold tracking-tight text-4xl tabular-nums text-foreground sm:text-5xl">
               {formatINR(s.outstandingValue)}
             </p>
-            <p className="mt-2 max-w-sm text-sm text-white/70">Benefits not yet used or sold — your open pipeline.</p>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">Benefits not yet used or sold — your open pipeline.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90">
-              <TrendingUp className="h-3.5 w-3.5 text-gold" aria-hidden />
+            <div className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-medium text-foreground">
+              <TrendingUp className="h-3.5 w-3.5 text-primary" aria-hidden />
               {attention} need attention this period
             </div>
-            <Button asChild variant="gold" size="sm" className="rounded-full">
+            <Button asChild size="sm" className="rounded-full">
               <Link href="/benefits">
                 Review benefits <ArrowRight className="h-4 w-4" />
               </Link>

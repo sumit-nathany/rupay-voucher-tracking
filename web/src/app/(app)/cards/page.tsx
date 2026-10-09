@@ -54,29 +54,32 @@ export default async function CardsPage() {
             const initial = (holder?.name ?? '?').charAt(0).toUpperCase();
             return (
               <li key={c.id}>
-                <Card className="surface-card-interactive overflow-hidden">
-                  <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 gap-4">
+                <Card className="overflow-hidden transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center justify-between gap-4 p-5">
+                    <div className="flex min-w-0 flex-1 items-center gap-4">
                       <span
                         aria-hidden
-                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-teal/15 font-semibold tracking-tight text-xl text-primary"
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-base font-semibold text-primary"
                       >
                         {initial}
                       </span>
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold">{c.displayName}</span>
-                          {c.active === false && <Badge variant="secondary">Inactive</Badge>}
+                          <span className="font-semibold leading-snug">{c.displayName}</span>
+                          {c.active === false && <Badge variant="secondary" className="leading-none">Inactive</Badge>}
                           {t && <CurationBadge status={t.curationStatus} />}
                         </div>
-                        <p className="text-sm text-muted-foreground">{t ? t.displayName : 'Card type no longer listed'}</p>
+                        {t && t.displayName !== c.displayName && (
+                          <p className="text-sm text-muted-foreground">{t.displayName}</p>
+                        )}
+                        {!t && <p className="text-sm text-muted-foreground">Card type no longer listed</p>}
                         <p className="text-xs text-muted-foreground">
                           {holder?.name ?? 'Unknown holder'}
                           {c.lastDigits ? ` · ••${c.lastDigits}` : ''} · since {c.trackingFrom}
                         </p>
                       </div>
                     </div>
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <CardFormSheet
                         holders={holderOptions}
                         types={typeOptions}
