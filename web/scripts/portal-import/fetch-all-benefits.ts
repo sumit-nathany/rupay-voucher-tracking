@@ -9,6 +9,11 @@ import type { Database } from "../../src/lib/context";
 const API = "https://apirupayselect.truztee.com/api";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+interface PortalService {
+  id: string | number;
+  servicename?: string;
+}
+
 async function portal<T>(endpoint: string, body: object, jwt: string, sid: string): Promise<T[] | null> {
   const headers: Record<string, string> = {
     accept: "application/json",
@@ -104,7 +109,12 @@ async function main() {
         const cardbinid = card.portalCardId + attempt;
         console.log(`  Trying cardbinid: ${cardbinid}...`);
 
-        const services = await portal("Select/getCardServices", { userid, cardtypeid: card.portalCardId, cardbinid }, jwt, sid);
+        const services = await portal<PortalService>(
+          "Select/getCardServices",
+          { userid, cardtypeid: card.portalCardId, cardbinid },
+          jwt,
+          sid,
+        );
 
         if (services !== null && services.length > 0) {
           console.log(`  ✓ Found ${services.length} categories!`);
