@@ -1,0 +1,1326 @@
+{
+  "id": "f3007927-0005-4d9f-a10f-2f710a920192",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "app.bank_card_types": {
+      "name": "bank_card_types",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "bank_name": {
+          "name": "bank_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "card_type": {
+          "name": "card_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "network": {
+          "name": "network",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'RuPay'"
+        },
+        "curation_status": {
+          "name": "curation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'uncurated'"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "bank_card_types_bank_name_card_type_network_key": {
+          "name": "bank_card_types_bank_name_card_type_network_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "bank_name",
+            "card_type",
+            "network"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "bank_card_types_curation_status_check": {
+          "name": "bank_card_types_curation_status_check",
+          "value": "\"app\".\"bank_card_types\".\"curation_status\" IN ('uncurated','curated','no_benefits')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.benefit_catalog_versions": {
+      "name": "benefit_catalog_versions",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "benefit_id": {
+          "name": "benefit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "benefit_type": {
+          "name": "benefit_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "benefit_provider": {
+          "name": "benefit_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exact_benefit": {
+          "name": "exact_benefit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frequency": {
+          "name": "frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_count": {
+          "name": "instance_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "default_cash_value": {
+          "name": "default_cash_value",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_from": {
+          "name": "effective_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_to": {
+          "name": "effective_to",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_benefit_catalog_versions_lookup": {
+          "name": "idx_benefit_catalog_versions_lookup",
+          "columns": [
+            {
+              "expression": "benefit_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effective_from",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effective_to",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "benefit_catalog_versions_benefit_id_benefits_id_fk": {
+          "name": "benefit_catalog_versions_benefit_id_benefits_id_fk",
+          "tableFrom": "benefit_catalog_versions",
+          "tableTo": "benefits",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "benefit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "benefit_catalog_versions_id_benefit_id_key": {
+          "name": "benefit_catalog_versions_id_benefit_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "benefit_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "benefit_catalog_versions_frequency_check": {
+          "name": "benefit_catalog_versions_frequency_check",
+          "value": "\"app\".\"benefit_catalog_versions\".\"frequency\" IN ('Annual','6 months','Quarterly','Monthly')"
+        },
+        "benefit_catalog_versions_instance_count_check": {
+          "name": "benefit_catalog_versions_instance_count_check",
+          "value": "\"app\".\"benefit_catalog_versions\".\"instance_count\" >= 1"
+        },
+        "benefit_catalog_versions_effective_range_check": {
+          "name": "benefit_catalog_versions_effective_range_check",
+          "value": "\"app\".\"benefit_catalog_versions\".\"effective_to\" IS NULL OR \"app\".\"benefit_catalog_versions\".\"effective_to\" >= \"app\".\"benefit_catalog_versions\".\"effective_from\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.benefit_instances": {
+      "name": "benefit_instances",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bank_card_type_id": {
+          "name": "bank_card_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "benefit_id": {
+          "name": "benefit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "override_id": {
+          "name": "override_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generated_from_version": {
+          "name": "generated_from_version",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "period_start": {
+          "name": "period_start",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_end": {
+          "name": "period_end",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period_label": {
+          "name": "period_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_number": {
+          "name": "instance_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "order_status": {
+          "name": "order_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Not Ordered'"
+        },
+        "sold_for": {
+          "name": "sold_for",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cash_value": {
+          "name": "cash_value",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_date": {
+          "name": "order_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expiry_date": {
+          "name": "expiry_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "order_deadline": {
+          "name": "order_deadline",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rupay_booking_id": {
+          "name": "rupay_booking_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "code_encrypted": {
+          "name": "code_encrypted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comments": {
+          "name": "comments",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "benefit_instances_workspace_id_card_id_fkey": {
+          "name": "benefit_instances_workspace_id_card_id_fkey",
+          "tableFrom": "benefit_instances",
+          "tableTo": "cards",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "card_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "benefit_instances_override_fkey": {
+          "name": "benefit_instances_override_fkey",
+          "tableFrom": "benefit_instances",
+          "tableTo": "card_benefit_overrides",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "card_id",
+            "override_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "card_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "benefit_instances_benefit_card_type_fkey": {
+          "name": "benefit_instances_benefit_card_type_fkey",
+          "tableFrom": "benefit_instances",
+          "tableTo": "benefits",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "benefit_id",
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "id",
+            "bank_card_type_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "benefit_instances_card_type_fkey": {
+          "name": "benefit_instances_card_type_fkey",
+          "tableFrom": "benefit_instances",
+          "tableTo": "cards",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "card_id",
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id",
+            "bank_card_type_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "benefit_instances_version_fkey": {
+          "name": "benefit_instances_version_fkey",
+          "tableFrom": "benefit_instances",
+          "tableTo": "benefit_catalog_versions",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "generated_from_version",
+            "benefit_id"
+          ],
+          "columnsTo": [
+            "id",
+            "benefit_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "benefit_instances_identity_key": {
+          "name": "benefit_instances_identity_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "card_id",
+            "benefit_id",
+            "override_id",
+            "period_start",
+            "instance_number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "benefit_instances_instance_number_check": {
+          "name": "benefit_instances_instance_number_check",
+          "value": "\"app\".\"benefit_instances\".\"instance_number\" >= 1"
+        },
+        "benefit_instances_order_status_check": {
+          "name": "benefit_instances_order_status_check",
+          "value": "\"app\".\"benefit_instances\".\"order_status\" IN ('Not Ordered','Ordered but Coupon not received','Coupon Received','Coupon Redeemed','Skipped','Withdrawn')"
+        },
+        "benefit_instances_one_source_check": {
+          "name": "benefit_instances_one_source_check",
+          "value": "num_nonnulls(\"app\".\"benefit_instances\".\"benefit_id\", \"app\".\"benefit_instances\".\"override_id\") = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.benefits": {
+      "name": "benefits",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "bank_card_type_id": {
+          "name": "bank_card_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "benefits_bank_card_type_id_bank_card_types_id_fk": {
+          "name": "benefits_bank_card_type_id_bank_card_types_id_fk",
+          "tableFrom": "benefits",
+          "tableTo": "bank_card_types",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "benefits_id_bank_card_type_id_key": {
+          "name": "benefits_id_bank_card_type_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "bank_card_type_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.card_benefit_overrides": {
+      "name": "card_benefit_overrides",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "card_id": {
+          "name": "card_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bank_card_type_id": {
+          "name": "bank_card_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "benefit_id": {
+          "name": "benefit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "benefit_type": {
+          "name": "benefit_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "benefit_provider": {
+          "name": "benefit_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exact_benefit": {
+          "name": "exact_benefit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "frequency": {
+          "name": "frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "instance_count": {
+          "name": "instance_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "default_cash_value": {
+          "name": "default_cash_value",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "card_benefit_overrides_workspace_id_card_id_fkey": {
+          "name": "card_benefit_overrides_workspace_id_card_id_fkey",
+          "tableFrom": "card_benefit_overrides",
+          "tableTo": "cards",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "card_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "card_benefit_overrides_card_type_fkey": {
+          "name": "card_benefit_overrides_card_type_fkey",
+          "tableFrom": "card_benefit_overrides",
+          "tableTo": "cards",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "card_id",
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id",
+            "bank_card_type_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "card_benefit_overrides_benefit_type_fkey": {
+          "name": "card_benefit_overrides_benefit_type_fkey",
+          "tableFrom": "card_benefit_overrides",
+          "tableTo": "benefits",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "benefit_id",
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "id",
+            "bank_card_type_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "card_benefit_overrides_workspace_id_id_key": {
+          "name": "card_benefit_overrides_workspace_id_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "card_benefit_overrides_workspace_id_card_id_id_key": {
+          "name": "card_benefit_overrides_workspace_id_card_id_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "card_id",
+            "id"
+          ]
+        },
+        "card_benefit_overrides_identity_key": {
+          "name": "card_benefit_overrides_identity_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "card_id",
+            "kind",
+            "benefit_id",
+            "benefit_type",
+            "benefit_provider",
+            "exact_benefit"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "card_benefit_overrides_kind_check": {
+          "name": "card_benefit_overrides_kind_check",
+          "value": "\"app\".\"card_benefit_overrides\".\"kind\" IN ('add','suppress')"
+        },
+        "card_benefit_overrides_frequency_check": {
+          "name": "card_benefit_overrides_frequency_check",
+          "value": "\"app\".\"card_benefit_overrides\".\"frequency\" IS NULL OR \"app\".\"card_benefit_overrides\".\"frequency\" IN ('Annual','6 months','Quarterly','Monthly')"
+        },
+        "card_benefit_overrides_instance_count_check": {
+          "name": "card_benefit_overrides_instance_count_check",
+          "value": "\"app\".\"card_benefit_overrides\".\"instance_count\" IS NULL OR \"app\".\"card_benefit_overrides\".\"instance_count\" >= 1"
+        },
+        "card_benefit_overrides_kind_shape_check": {
+          "name": "card_benefit_overrides_kind_shape_check",
+          "value": "(\"app\".\"card_benefit_overrides\".\"kind\" = 'suppress' AND \"app\".\"card_benefit_overrides\".\"benefit_id\" IS NOT NULL AND \"app\".\"card_benefit_overrides\".\"benefit_type\" IS NULL)\n        OR\n        (\"app\".\"card_benefit_overrides\".\"kind\" = 'add' AND \"app\".\"card_benefit_overrides\".\"benefit_id\" IS NULL AND \"app\".\"card_benefit_overrides\".\"benefit_type\" IS NOT NULL AND \"app\".\"card_benefit_overrides\".\"exact_benefit\" IS NOT NULL AND \"app\".\"card_benefit_overrides\".\"frequency\" IS NOT NULL AND \"app\".\"card_benefit_overrides\".\"instance_count\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.card_holders": {
+      "name": "card_holders",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "card_holders_workspace_id_workspaces_id_fk": {
+          "name": "card_holders_workspace_id_workspaces_id_fk",
+          "tableFrom": "card_holders",
+          "tableTo": "workspaces",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "card_holders_workspace_id_name_key": {
+          "name": "card_holders_workspace_id_name_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "name"
+          ]
+        },
+        "card_holders_workspace_id_id_key": {
+          "name": "card_holders_workspace_id_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.cards": {
+      "name": "cards",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_id": {
+          "name": "holder_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bank_card_type_id": {
+          "name": "bank_card_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_digits": {
+          "name": "last_digits",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tracking_from": {
+          "name": "tracking_from",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "CURRENT_DATE"
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cards_workspace_id_workspaces_id_fk": {
+          "name": "cards_workspace_id_workspaces_id_fk",
+          "tableFrom": "cards",
+          "tableTo": "workspaces",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cards_bank_card_type_id_bank_card_types_id_fk": {
+          "name": "cards_bank_card_type_id_bank_card_types_id_fk",
+          "tableFrom": "cards",
+          "tableTo": "bank_card_types",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "bank_card_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "cards_workspace_id_holder_id_fkey": {
+          "name": "cards_workspace_id_holder_id_fkey",
+          "tableFrom": "cards",
+          "tableTo": "card_holders",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "holder_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "cards_workspace_id_display_name_key": {
+          "name": "cards_workspace_id_display_name_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "display_name"
+          ]
+        },
+        "cards_workspace_id_id_key": {
+          "name": "cards_workspace_id_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id"
+          ]
+        },
+        "cards_workspace_id_id_bank_card_type_id_key": {
+          "name": "cards_workspace_id_id_bank_card_type_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "workspace_id",
+            "id",
+            "bank_card_type_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.notification_preferences": {
+      "name": "notification_preferences",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "holder_id": {
+          "name": "holder_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email_enabled": {
+          "name": "email_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "days_before": {
+          "name": "days_before",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'{7, 3, 1}'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "notification_preferences_workspace_id_workspaces_id_fk": {
+          "name": "notification_preferences_workspace_id_workspaces_id_fk",
+          "tableFrom": "notification_preferences",
+          "tableTo": "workspaces",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "notification_preferences_workspace_id_holder_id_fkey": {
+          "name": "notification_preferences_workspace_id_holder_id_fkey",
+          "tableFrom": "notification_preferences",
+          "tableTo": "card_holders",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id",
+            "holder_id"
+          ],
+          "columnsTo": [
+            "workspace_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "notification_preferences_holder_id_key": {
+          "name": "notification_preferences_holder_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "holder_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.reminder_log": {
+      "name": "reminder_log",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reminder_type": {
+          "name": "reminder_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "days_before": {
+          "name": "days_before",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'email'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "reminder_log_workspace_id_workspaces_id_fk": {
+          "name": "reminder_log_workspace_id_workspaces_id_fk",
+          "tableFrom": "reminder_log",
+          "tableTo": "workspaces",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "reminder_log_instance_id_benefit_instances_id_fk": {
+          "name": "reminder_log_instance_id_benefit_instances_id_fk",
+          "tableFrom": "reminder_log",
+          "tableTo": "benefit_instances",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "instance_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "reminder_log_instance_id_reminder_type_days_before_key": {
+          "name": "reminder_log_instance_id_reminder_type_days_before_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "instance_id",
+            "reminder_type",
+            "days_before"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "reminder_log_reminder_type_check": {
+          "name": "reminder_log_reminder_type_check",
+          "value": "\"app\".\"reminder_log\".\"reminder_type\" IN ('expiry','order_lapse','stale_order')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.system_admins": {
+      "name": "system_admins",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "system_admins_user_id_key": {
+          "name": "system_admins_user_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "app.workspace_members": {
+      "name": "workspace_members",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'member'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "workspace_members_workspace_id_workspaces_id_fk": {
+          "name": "workspace_members_workspace_id_workspaces_id_fk",
+          "tableFrom": "workspace_members",
+          "tableTo": "workspaces",
+          "schemaTo": "app",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspace_members_user_id_key": {
+          "name": "workspace_members_user_id_key",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "workspace_members_role_check": {
+          "name": "workspace_members_role_check",
+          "value": "\"app\".\"workspace_members\".\"role\" IN ('admin','member')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "app.workspaces": {
+      "name": "workspaces",
+      "schema": "app",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "app": "app"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

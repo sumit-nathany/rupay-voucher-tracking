@@ -1,0 +1,621 @@
+{
+  "types": [
+    {
+      "id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "bank_name": "BOI",
+      "card_type": "Rupay Select Credit Card",
+      "network": "RuPay",
+      "curation_status": "curated",
+      "active": true,
+      "created_at": "2026-10-09T17:19:30.704Z",
+      "display_name": "BOI Rupay Select Credit Card",
+      "variant_id": null
+    },
+    {
+      "id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "bank_name": "BOI",
+      "card_type": "Rupay Select Debit Card",
+      "network": "RuPay",
+      "curation_status": "curated",
+      "active": true,
+      "created_at": "2026-10-09T17:19:30.704Z",
+      "display_name": "BOI Rupay Select Debit Card",
+      "variant_id": null
+    },
+    {
+      "id": "a6535ef8-3ecc-439a-a2b9-a30bfbfb9df2",
+      "bank_name": "BoB",
+      "card_type": "Rupay Eterna Credit Card",
+      "network": "RuPay",
+      "curation_status": "curated",
+      "active": true,
+      "created_at": "2026-10-09T17:19:30.704Z",
+      "display_name": "BoB Rupay Eterna Credit Card",
+      "variant_id": null
+    },
+    {
+      "id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "bank_name": "PNB",
+      "card_type": "RuPay Select Imperial DC",
+      "network": "RuPay",
+      "curation_status": "curated",
+      "active": true,
+      "created_at": "2026-10-09T17:19:30.704Z",
+      "display_name": "PNB RuPay Select Imperial DC",
+      "variant_id": null
+    },
+    {
+      "id": "5af604e7-4fb2-4ad4-8949-e1af847d3e6d",
+      "bank_name": "PNB",
+      "card_type": "Rupay Select Credit Card",
+      "network": "RuPay",
+      "curation_status": "curated",
+      "active": true,
+      "created_at": "2026-10-09T17:19:30.704Z",
+      "display_name": "PNB Rupay Select Credit Card",
+      "variant_id": null
+    }
+  ],
+  "benefits": [
+    {
+      "id": "d5fa9953-7fd2-4428-b66c-8e92df6f5c54",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "c5f14864-50fc-4e65-97bd-9d88ad2cc57e",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "4f83fcdd-79a7-4d08-bdd2-44e1504480c6",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "48def63f-b836-48ec-acbb-1554c05e566b",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "15791fca-3231-4394-a5f3-96ad07337252",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "32959b8f-6397-44d1-8b35-7f73c25b8847",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "bd8b3977-bcc7-4946-abec-0cb2cfb22c06",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "513f8630-ba9c-4b2e-88a1-c21ba75c1f0d",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "b7967b54-9666-49aa-9854-9ca9a41e1aea",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "e8150f58-7a40-49d9-85d4-0068fc776f20",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "bf6b1c17-986f-45d6-9960-fd355ffef03c",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "386f1d5c-935c-4b82-b38c-8ee57673ac78",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "84df4229-1079-4a7f-9ff0-058253acaba1",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "b33b8efc-9d87-4ebc-93bb-89d8ec616b87",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "7bcdb517-270a-4817-80ed-ae16936d34b1",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "cbbd7fe7-071e-4f20-8c9f-05352b9d5693",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "77912ab7-9fc3-4f25-9c32-3d5093b98a6f",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "07dd8663-d0b0-445e-9260-6680a68eaf58",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "55925b86-2ce5-471c-8311-a76fdf6ecc9d",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "39c8e7e2-122d-4ab8-8a50-b5b52eeb58d8",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "968e79ee-2ae1-4810-b86d-ea49396ca9d2",
+      "bank_card_type_id": "72cfaf67-8137-4a05-b4d8-b13288b767f2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "3ed57323-364a-460a-87c6-09fce37eb20f",
+      "bank_card_type_id": "27f04c57-2f8e-40e8-9283-592946a59631",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "49d8fbec-458c-4462-a204-19f8bce8deb4",
+      "bank_card_type_id": "5af604e7-4fb2-4ad4-8949-e1af847d3e6d",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "c8bc9913-27ce-4e61-b018-606b27026052",
+      "bank_card_type_id": "5af604e7-4fb2-4ad4-8949-e1af847d3e6d",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "be36ce44-da42-4702-820b-186d35dc05f4",
+      "bank_card_type_id": "5af604e7-4fb2-4ad4-8949-e1af847d3e6d",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "af925892-4395-4d02-bf44-0529c9a00db7",
+      "bank_card_type_id": "5af604e7-4fb2-4ad4-8949-e1af847d3e6d",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "26d303d6-7a10-4bcc-a213-c69192d35748",
+      "bank_card_type_id": "a6535ef8-3ecc-439a-a2b9-a30bfbfb9df2",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "eb661a35-afc8-454c-94af-1bdf615d5a21",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "a8752817-628e-4ce7-a281-7c1f4d567420",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "437da672-5288-45df-b1ec-a0da12945802",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "a3cbae26-1cc0-4103-969f-78276434f903",
+      "bank_card_type_id": "2c1af3c1-5396-45f6-aad4-fb46bd59d9ea",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    }
+  ],
+  "versions": [
+    {
+      "id": "7eed7e11-9fb4-4700-92e1-be5f87c920ce",
+      "benefit_id": "d5fa9953-7fd2-4428-b66c-8e92df6f5c54",
+      "benefit_type": "OTT Entertainment",
+      "benefit_provider": "Amazon Prime",
+      "exact_benefit": "12 Month Annual Subscription",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "b0b0a02d-2b44-47fc-a02c-884b7b80c6ca",
+      "benefit_id": "c5f14864-50fc-4e65-97bd-9d88ad2cc57e",
+      "benefit_type": "Health Checkup",
+      "benefit_provider": "Thyrocare",
+      "exact_benefit": "Aarogyam Basic 2 Package",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "3c809bf8-4b28-4752-9d51-1cc20cf0defa",
+      "benefit_id": "4f83fcdd-79a7-4d08-bdd2-44e1504480c6",
+      "benefit_type": "Gym Access",
+      "benefit_provider": "Cult.fit",
+      "exact_benefit": "1 Month Elite Pass Subscription",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "fc4384c2-069f-4a45-b14e-aefdb22f260d",
+      "benefit_id": "48def63f-b836-48ec-acbb-1554c05e566b",
+      "benefit_type": "Cab Services",
+      "benefit_provider": "Uber",
+      "exact_benefit": "Redeemable Coupon - INR 100",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "d373604d-27ea-4b55-b2dd-55ab5b42ae54",
+      "benefit_id": "15791fca-3231-4394-a5f3-96ad07337252",
+      "benefit_type": "Health Checkup",
+      "benefit_provider": "Thyrocare",
+      "exact_benefit": "Aarogyam Basic 2 Package",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "86458d16-824f-4220-9c9e-0345ee48cb73",
+      "benefit_id": "32959b8f-6397-44d1-8b35-7f73c25b8847",
+      "benefit_type": "OTT Entertainment",
+      "benefit_provider": null,
+      "exact_benefit": "12 Month Annual Subscription",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "4b7aa83c-b242-4ec4-8897-6110d0e13838",
+      "benefit_id": "bd8b3977-bcc7-4946-abec-0cb2cfb22c06",
+      "benefit_type": "Gym Access",
+      "benefit_provider": "Cult.fit",
+      "exact_benefit": "3 Month Cure.Fit Live Subscription",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "1463ae36-f7c5-4aca-9713-0299ba024100",
+      "benefit_id": "513f8630-ba9c-4b2e-88a1-c21ba75c1f0d",
+      "benefit_type": "Spa Services",
+      "benefit_provider": "Four Fountains",
+      "exact_benefit": "60 Minutes Swedish Body Massage",
+      "frequency": "6 months",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "efc7b3f8-ca66-4175-b8fe-aa24ceb83e75",
+      "benefit_id": "b7967b54-9666-49aa-9854-9ca9a41e1aea",
+      "benefit_type": "Online Groceries",
+      "benefit_provider": "Big Basket",
+      "exact_benefit": "Voucher worth ₹250",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "e75b05b2-dc4f-4e67-a7fe-86f0cd3bd28c",
+      "benefit_id": "e8150f58-7a40-49d9-85d4-0068fc776f20",
+      "benefit_type": "Food Delivery",
+      "benefit_provider": "Swiggy One",
+      "exact_benefit": "3 months membership",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "bb32f356-c048-477b-847b-8c767d160007",
+      "benefit_id": "bf6b1c17-986f-45d6-9960-fd355ffef03c",
+      "benefit_type": "Entertainment",
+      "benefit_provider": "BookMyShow",
+      "exact_benefit": "Voucher worth ₹250",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "825bdc67-9055-42ae-b3bd-7904f107e91d",
+      "benefit_id": "386f1d5c-935c-4b82-b38c-8ee57673ac78",
+      "benefit_type": "Online Music",
+      "benefit_provider": "Gaana",
+      "exact_benefit": "Plus Annual Subscription",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "1c8aaeb0-824f-4f11-8958-07f7ad1ead80",
+      "benefit_id": "84df4229-1079-4a7f-9ff0-058253acaba1",
+      "benefit_type": "Online Shopping",
+      "benefit_provider": "Decathlon",
+      "exact_benefit": "Voucher worth ₹500",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "ce16e064-dc60-4ba3-ad1e-ba8911740029",
+      "benefit_id": "b33b8efc-9d87-4ebc-93bb-89d8ec616b87",
+      "benefit_type": "Online Shopping",
+      "benefit_provider": "Kalyan Jewellers",
+      "exact_benefit": "Voucher worth ₹2000",
+      "frequency": "6 months",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "cadc155a-22a6-48b5-a9ff-ec4bbce884fc",
+      "benefit_id": "7bcdb517-270a-4817-80ed-ae16936d34b1",
+      "benefit_type": "Online Shopping",
+      "benefit_provider": "Myntra",
+      "exact_benefit": "Voucher worth ₹500",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "c51721a0-7c47-474c-997d-1711d033b839",
+      "benefit_id": "cbbd7fe7-071e-4f20-8c9f-05352b9d5693",
+      "benefit_type": "Online Shopping",
+      "benefit_provider": "Reliance Digital",
+      "exact_benefit": "Voucher worth ₹500",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "5c81cef1-3950-4cb6-ab54-b44aebb32a9d",
+      "benefit_id": "77912ab7-9fc3-4f25-9c32-3d5093b98a6f",
+      "benefit_type": "Online Pharmacy",
+      "benefit_provider": "Apollo Pharmacy",
+      "exact_benefit": "250 e-gift card",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "89e331d3-ada6-425d-bac6-1c62310eec1b",
+      "benefit_id": "07dd8663-d0b0-445e-9260-6680a68eaf58",
+      "benefit_type": "Spa Services",
+      "benefit_provider": "Four Fountains",
+      "exact_benefit": "60 Minutes Swedish Body Massage",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "2cf47ad3-efb4-4283-9ace-776b4bdef866",
+      "benefit_id": "55925b86-2ce5-471c-8311-a76fdf6ecc9d",
+      "benefit_type": "Online Groceries",
+      "benefit_provider": "Big Basket",
+      "exact_benefit": "Flat Rs. 200 Off on Groceries",
+      "frequency": "Quarterly",
+      "instance_count": 3,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "1c178115-c724-485d-9a3c-1248ab6af48c",
+      "benefit_id": "39c8e7e2-122d-4ab8-8a50-b5b52eeb58d8",
+      "benefit_type": "Entertainment",
+      "benefit_provider": "BookMyShow",
+      "exact_benefit": "Flat Rs. 250 Discount on Tickets",
+      "frequency": "Monthly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "7c64c13e-ff1e-447c-bc39-137a09ce6a47",
+      "benefit_id": "968e79ee-2ae1-4810-b86d-ea49396ca9d2",
+      "benefit_type": "Tax Compliance",
+      "benefit_provider": "TaxSpanner",
+      "exact_benefit": "Voucher worth ₹2950",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-04-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "9c13014e-b18d-4c83-9718-2390302f9329",
+      "benefit_id": "3ed57323-364a-460a-87c6-09fce37eb20f",
+      "benefit_type": "Golf Program",
+      "benefit_provider": null,
+      "exact_benefit": "Golf Program",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "5c3b48bc-2e11-494e-a0fc-a4d29de789e0",
+      "benefit_id": "49d8fbec-458c-4462-a204-19f8bce8deb4",
+      "benefit_type": "Spa Services",
+      "benefit_provider": "Four Fountains",
+      "exact_benefit": "60 Minutes Swedish Body Massage",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "26cf8770-25a7-4310-b63d-628d5d5359fd",
+      "benefit_id": "c8bc9913-27ce-4e61-b018-606b27026052",
+      "benefit_type": "Health Checkup",
+      "benefit_provider": "Thyrocare",
+      "exact_benefit": "Aarogyam Basic 2 Package",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "435dea05-66a3-41af-a722-39334b25d7e4",
+      "benefit_id": "be36ce44-da42-4702-820b-186d35dc05f4",
+      "benefit_type": "Gym Access",
+      "benefit_provider": "Cult.fit",
+      "exact_benefit": "1 Month Elite Pass Subscription",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "eb9d6d76-d0ce-4d80-a292-ba454c7d28a4",
+      "benefit_id": "af925892-4395-4d02-bf44-0529c9a00db7",
+      "benefit_type": "Golf Program",
+      "benefit_provider": null,
+      "exact_benefit": "Golf Program",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "d6b31aea-4d0f-43ef-8b7c-499915fc8067",
+      "benefit_id": "26d303d6-7a10-4bcc-a213-c69192d35748",
+      "benefit_type": "Golf Program",
+      "benefit_provider": null,
+      "exact_benefit": "Golf Program",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "0b0a572d-4432-4364-b966-b06d0e958ff5",
+      "benefit_id": "eb661a35-afc8-454c-94af-1bdf615d5a21",
+      "benefit_type": "Food Delivery",
+      "benefit_provider": "Swiggy One",
+      "exact_benefit": "3 Month Membership",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "2fd3dcca-7118-4e06-abe6-c2ad287f5c83",
+      "benefit_id": "a8752817-628e-4ce7-a281-7c1f4d567420",
+      "benefit_type": "OTT Entertainment",
+      "benefit_provider": "Amazon Prime",
+      "exact_benefit": "12 Month Annual Subscription",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "691e2320-83da-42c1-954f-75d046a986d6",
+      "benefit_id": "437da672-5288-45df-b1ec-a0da12945802",
+      "benefit_type": "Health Checkup",
+      "benefit_provider": "Thyrocare",
+      "exact_benefit": "Aarogyam Basic 2 Package",
+      "frequency": "Annual",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": null,
+      "created_at": "2026-10-09T17:19:30.704Z"
+    },
+    {
+      "id": "a995c9e6-9d75-413a-be80-8041346de147",
+      "benefit_id": "a3cbae26-1cc0-4103-969f-78276434f903",
+      "benefit_type": "Entertainment",
+      "benefit_provider": "BookMyShow",
+      "exact_benefit": "Flat Rs. 250 Discount on Tickets",
+      "frequency": "Quarterly",
+      "instance_count": 1,
+      "default_cash_value": null,
+      "effective_from": "2026-01-01T00:00:00.000Z",
+      "effective_to": "2026-03-31T00:00:00.000Z",
+      "created_at": "2026-10-09T17:19:30.704Z"
+    }
+  ]
+}

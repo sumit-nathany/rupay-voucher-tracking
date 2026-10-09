@@ -1,26 +1,117 @@
 @import "tailwindcss";
 
+/* Jewel-box palette: indigo ink, marigold gold, rani pink, peacock teal on lavender marble. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f2fa;
+  --foreground: #1c1740;
+  --card: #ffffff;
+  --card-foreground: #1c1740;
+  --muted: #eee8f6;
+  --muted-foreground: #6a6385;
+  --border: #ddd4ec;
+  --input: #c9bde0;
+  --primary: #3a2a8c;
+  --primary-foreground: #ffffff;
+  --accent: #ece5f8;
+  --accent-foreground: #2a1f6e;
+  --destructive: #c2255c;
+  --destructive-foreground: #ffffff;
+  --success: #0b7a75;
+  --warning: #b86e00;
+  --ring: #6d4fd6;
+  --radius: 0.75rem;
+
+  --ink: #1d1452;
+  --ink-2: #2b1f73;
+  --gold: #f4a21d;
+  --gold-soft: #fde9b8;
+  --rani: #c2255c;
+  --teal: #0b7a75;
+  --violet: #6d4fd6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #120e2b;
+    --foreground: #f3effc;
+    --card: #1b1640;
+    --card-foreground: #f3effc;
+    --muted: #241d52;
+    --muted-foreground: #a9a1c8;
+    --border: #322a66;
+    --input: #443a80;
+    --primary: #f4a21d;
+    --primary-foreground: #1d1452;
+    --accent: #2a2260;
+    --accent-foreground: #fde9b8;
+    --destructive: #f0678f;
+    --destructive-foreground: #1d1452;
+    --success: #2fc4bb;
+    --warning: #f4b84a;
+    --ring: #f4a21d;
+
+    --ink: #0d0922;
+    --ink-2: #1b1640;
+    --gold-soft: #3a2f12;
+    --rani: #f0678f;
+    --teal: #2fc4bb;
+    --violet: #a58cff;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-ring: var(--ring);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-rani: var(--rani);
+  --color-teal: var(--teal);
+  --color-violet: var(--violet);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-heading), Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * { border-color: var(--border); }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Gold hairline with a diamond, used under the brand mark and on the login hero. */
+.ornament {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
 }
+
+@keyframes sheet-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes sheet-in-bottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
