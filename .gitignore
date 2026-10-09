@@ -1,0 +1,11 @@
+# Source workbook contains live voucher codes — never commit
+*.xlsx
+*.xls
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
