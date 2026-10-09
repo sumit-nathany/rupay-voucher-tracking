@@ -142,6 +142,28 @@ describe('admin curation', () => {
 });
 
 describe('variants and card lists', () => {
+  it('lists benefits for a card type with options', async () => {
+    const [solo] = await db.insert(bankCardTypes).values({ displayName: 'Solo test card' }).returning();
+    const { benefitId, versionId } = await cat.createBenefit(admin, {
+      ...base,
+      bankCardTypeId: solo.id,
+      benefitProvider: 'Big Basket',
+      defaultCashValue: 500,
+    });
+    const listed = await cat.listCardTypeBenefits(admin, { bankCardTypeId: solo.id });
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({
+      benefitId,
+      versionId,
+      benefitProvider: 'Big Basket',
+      defaultCashValue: '500.00',
+      versionCount: 1,
+      options: [],
+    });
+    await expect(cat.listCardTypeBenefits(user, { bankCardTypeId: solo.id })).rejects.toBeInstanceOf(AuthzError);
+    await expect(cat.listCardTypeBenefits(admin, { bankCardTypeId: randomUUID() })).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it('non-admin is rejected', async () => {
     const id = randomUUID();
     await expect(cat.listCatalogForAdmin(user)).rejects.toBeInstanceOf(AuthzError);

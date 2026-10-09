@@ -1,9 +1,10 @@
-import { and, asc, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   bankCardTypes,
   benefitCatalogVersions,
   benefitInstances,
+  benefitOptions,
   benefits,
   cardVariants,
   systemAdmins,
@@ -392,7 +393,151 @@ export async function listCatalogForAdmin(ctx: Ctx) {
     })
     .from(bankCardTypes)
     .orderBy(asc(bankCardTypes.displayName));
-  return { variants, types };
+  const benefitCounts = await ctx.db
+    .select({
+      bankCardTypeId: benefits.bankCardTypeId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(benefits)
+    .groupBy(benefits.bankCardTypeId);
+  const benefitCountByTypeId = Object.fromEntries(
+    benefitCounts.map((r) => [r.bankCardTypeId, r.count]),
+  ) as Record<string, number>;
+  return { variants, types, benefitCountByTypeId };
+}
+
+export interface CardTypeBenefitOption {
+  provider: string;
+  offerName: string;
+  cashValue: string | null;
+}
+
+/** One row per stable benefit identity — display version is the open one, or the latest if all closed. */
+export interface CardTypeBenefitRow {
+  benefitId: string;
+  versionId: string;
+  benefitType: string;
+  benefitProvider: string | null;
+  exactBenefit: string;
+  frequency: string;
+  instanceCount: number;
+  defaultCashValue: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  versionCount: number;
+  options: CardTypeBenefitOption[];
+}
+
+const cardTypeIdInput = z.object({ bankCardTypeId: uuid }).strict();
+
+type VersionSlice = {
+  id: string;
+  benefitId: string;
+  benefitType: string;
+  benefitProvider: string | null;
+  exactBenefit: string;
+  frequency: string;
+  instanceCount: number;
+  defaultCashValue: string | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+};
+
+function pickDisplayVersion(versions: VersionSlice[]): VersionSlice | null {
+  if (versions.length === 0) return null;
+  const open = versions.filter((v) => v.effectiveTo === null);
+  const pool = open.length > 0 ? open : versions;
+  return pool.reduce((best, v) => (v.effectiveFrom > best.effectiveFrom ? v : best));
+}
+
+export async function listCardTypeBenefits(
+  ctx: Ctx,
+  input: z.input<typeof cardTypeIdInput>,
+): Promise<CardTypeBenefitRow[]> {
+  await assertSystemAdmin(ctx);
+  const { bankCardTypeId } = cardTypeIdInput.parse(input);
+  const [type] = await ctx.db
+    .select({ id: bankCardTypes.id })
+    .from(bankCardTypes)
+    .where(eq(bankCardTypes.id, bankCardTypeId));
+  if (!type) throw new NotFoundError('Bank card type not found');
+
+  const versionRows = await ctx.db
+    .select({
+      id: benefitCatalogVersions.id,
+      benefitId: benefitCatalogVersions.benefitId,
+      benefitType: benefitCatalogVersions.benefitType,
+      benefitProvider: benefitCatalogVersions.benefitProvider,
+      exactBenefit: benefitCatalogVersions.exactBenefit,
+      frequency: benefitCatalogVersions.frequency,
+      instanceCount: benefitCatalogVersions.instanceCount,
+      defaultCashValue: benefitCatalogVersions.defaultCashValue,
+      effectiveFrom: benefitCatalogVersions.effectiveFrom,
+      effectiveTo: benefitCatalogVersions.effectiveTo,
+    })
+    .from(benefitCatalogVersions)
+    .innerJoin(benefits, eq(benefits.id, benefitCatalogVersions.benefitId))
+    .where(eq(benefits.bankCardTypeId, bankCardTypeId))
+    .orderBy(asc(benefitCatalogVersions.benefitType), asc(benefitCatalogVersions.exactBenefit));
+
+  const byBenefit = new Map<string, VersionSlice[]>();
+  for (const v of versionRows) {
+    const list = byBenefit.get(v.benefitId) ?? [];
+    list.push(v);
+    byBenefit.set(v.benefitId, list);
+  }
+
+  const displayVersions = [...byBenefit.entries()]
+    .map(([benefitId, versions]) => {
+      const chosen = pickDisplayVersion(versions);
+      return chosen ? { benefitId, chosen, versionCount: versions.length } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  if (displayVersions.length === 0) return [];
+
+  const versionIds = displayVersions.map((d) => d.chosen.id);
+  const optionRows = await ctx.db
+    .select({
+      versionId: benefitOptions.versionId,
+      provider: benefitOptions.provider,
+      offerName: benefitOptions.offerName,
+      cashValue: benefitOptions.cashValue,
+      sortOrder: benefitOptions.sortOrder,
+    })
+    .from(benefitOptions)
+    .where(inArray(benefitOptions.versionId, versionIds))
+    .orderBy(asc(benefitOptions.sortOrder), asc(benefitOptions.provider));
+
+  const optionsByVersion = new Map<string, CardTypeBenefitOption[]>();
+  for (const o of optionRows) {
+    const list = optionsByVersion.get(o.versionId) ?? [];
+    list.push({ provider: o.provider, offerName: o.offerName, cashValue: o.cashValue });
+    optionsByVersion.set(o.versionId, list);
+  }
+
+  return displayVersions
+    .map(({ benefitId, chosen, versionCount }) => ({
+      benefitId,
+      versionId: chosen.id,
+      benefitType: chosen.benefitType,
+      benefitProvider: chosen.benefitProvider,
+      exactBenefit: chosen.exactBenefit,
+      frequency: chosen.frequency,
+      instanceCount: chosen.instanceCount,
+      defaultCashValue: chosen.defaultCashValue,
+      effectiveFrom: chosen.effectiveFrom,
+      effectiveTo: chosen.effectiveTo,
+      versionCount,
+      options: optionsByVersion.get(chosen.id) ?? [],
+    }))
+    .sort((a, b) => {
+      const t = a.benefitType.localeCompare(b.benefitType);
+      if (t !== 0) return t;
+      const p = (a.benefitProvider ?? '').localeCompare(b.benefitProvider ?? '');
+      if (p !== 0) return p;
+      return a.exactBenefit.localeCompare(b.exactBenefit);
+    });
 }
 
 export async function createVariant(ctx: Ctx, input: z.input<typeof variantCreateInput>): Promise<{ id: string }> {

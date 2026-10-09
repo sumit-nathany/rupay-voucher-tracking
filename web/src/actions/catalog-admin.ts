@@ -27,6 +27,9 @@ export async function setCurationStatusAction(input: Parameters<typeof d.setCura
 export async function listCatalogForAdminAction() {
   return d.listCatalogForAdmin(await getCtx());
 }
+export async function listCardTypeBenefitsAction(bankCardTypeId: string) {
+  return d.listCardTypeBenefits(await getCtx(), { bankCardTypeId });
+}
 export async function createVariantAction(input: Parameters<typeof d.createVariant>[1]) {
   return d.createVariant(await getCtx(), input);
 }

@@ -22,7 +22,7 @@ export default async function CatalogAdminPage() {
           The variants and cards people pick from when adding a card. Changes apply immediately, with no redeploy.
         </p>
       </div>
-      <CatalogAdmin variants={data.variants} types={data.types} />
+      <CatalogAdmin variants={data.variants} types={data.types} benefitCountByTypeId={data.benefitCountByTypeId} />
     </div>
   );
 }
