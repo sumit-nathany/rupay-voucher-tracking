@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
+import type { PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -101,7 +102,12 @@ async function main() {
       }
 
       const cardbinid = card.portalCardId;
-      const services = await portal("Select/getCardServices", { userid, cardtypeid: card.portalCardId, cardbinid }, jwt, sid);
+      const services = await portal<PortalService>(
+        "Select/getCardServices",
+        { userid, cardtypeid: card.portalCardId, cardbinid },
+        jwt,
+        sid,
+      );
 
       if (services !== null && services.length > 0) {
         console.log(`  ✓ ${services.length} categories`);

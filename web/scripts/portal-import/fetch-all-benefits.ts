@@ -5,14 +5,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
+import type { PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-interface PortalService {
-  id: string | number;
-  servicename?: string;
-}
 
 async function portal<T>(endpoint: string, body: object, jwt: string, sid: string): Promise<T[] | null> {
   const headers: Record<string, string> = {

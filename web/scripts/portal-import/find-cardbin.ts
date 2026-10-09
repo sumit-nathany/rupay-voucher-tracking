@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
+import type { PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -101,11 +102,16 @@ async function main() {
     for (let offset = 0; offset < batchSize && batch + offset < maxBin; offset++) {
       const cardbinid = cardId + batch + offset;
 
-      const services = await portal("Select/getCardServices", { userid, cardtypeid: cardId, cardbinid }, jwt, sid);
+      const services = await portal<PortalService>(
+        "Select/getCardServices",
+        { userid, cardtypeid: cardId, cardbinid },
+        jwt,
+        sid,
+      );
 
       if (services !== null && services.length > 0) {
         console.log(`\n✓ FOUND! cardbinid: ${cardbinid}`);
-        console.log(`  Services: ${services.map((s: any) => s.servicename).join(", ")}`);
+        console.log(`  Services: ${services.map((s) => s.servicename).join(", ")}`);
         found = true;
         break;
       }
