@@ -7,6 +7,8 @@ import { Filters, type FilterOption } from '@/components/benefits/filters';
 import { PageSkeleton } from '@/components/dashboard/error-panel';
 import { PeriodSelector } from '@/components/dashboard/period-selector';
 import { parseView, viewLabel } from '@/components/dashboard/view-params';
+import { ContentStage } from '@/components/layout/content-stage';
+import { PageHeader } from '@/components/layout/page-header';
 import { ORDER_STATUSES } from '@/domain/instances';
 import { today as istToday } from '@/lib/periods';
 
@@ -51,15 +53,17 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   const options = await loadOptions();
 
   return (
-    <div className="mx-auto max-w-7xl space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold">Benefits · {viewLabel(view)}</h1>
-        <PeriodSelector view={view} today={today} />
-      </div>
+    <ContentStage className="max-w-7xl">
+      <PageHeader
+        eyebrow="Work queue"
+        title={viewLabel(view)}
+        description="Every benefit instance for the period — open a row for details, codes, and status."
+        actions={<PeriodSelector view={view} today={today} />}
+      />
       <Filters holders={options.holders} cards={options.cards} />
       <Suspense key={JSON.stringify([view, filters])} fallback={<PageSkeleton />}>
         <BenefitsContent view={view} filters={filters} filtered={filtered} />
       </Suspense>
-    </div>
+    </ContentStage>
   );
 }

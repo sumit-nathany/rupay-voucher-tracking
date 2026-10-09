@@ -1,61 +1,71 @@
 @import "tailwindcss";
 
-/* Jewel-box palette: indigo ink, marigold gold, rani pink, peacock teal on lavender marble. */
+/* Treasury — warm paper, ink navigation, saffron signal color. */
 :root {
-  --background: #f6f2fa;
-  --foreground: #1c1740;
-  --card: #ffffff;
-  --card-foreground: #1c1740;
-  --muted: #eee8f6;
-  --muted-foreground: #6a6385;
-  --border: #ddd4ec;
-  --input: #c9bde0;
-  --primary: #3a2a8c;
-  --primary-foreground: #ffffff;
-  --accent: #ece5f8;
-  --accent-foreground: #2a1f6e;
-  --destructive: #c2255c;
-  --destructive-foreground: #ffffff;
-  --success: #0b7a75;
-  --warning: #b86e00;
-  --ring: #6d4fd6;
-  --radius: 0.75rem;
+  --background: #ece8df;
+  --foreground: #0f1419;
+  --card: #faf7f2;
+  --card-foreground: #0f1419;
+  --muted: #e2ddd3;
+  --muted-foreground: #5c646e;
+  --border: #d4cdc2;
+  --input: #c9c0b4;
+  --primary: #0f2744;
+  --primary-foreground: #faf7f2;
+  --accent: #f3ece2;
+  --accent-foreground: #0f2744;
+  --destructive: #b4234a;
+  --destructive-foreground: #fff8f9;
+  --success: #0a6e5c;
+  --warning: #b45309;
+  --ring: #d97706;
+  --radius: 1rem;
 
-  --ink: #1d1452;
-  --ink-2: #2b1f73;
-  --gold: #f4a21d;
-  --gold-soft: #fde9b8;
-  --rani: #c2255c;
-  --teal: #0b7a75;
-  --violet: #6d4fd6;
+  --ink: #071018;
+  --ink-2: #12243d;
+  --gold: #e8941a;
+  --gold-soft: #fdecc8;
+  --rani: #be3a62;
+  --teal: #0a6e5c;
+  --violet: #4f46b5;
+
+  --shadow-soft: 0 2px 8px rgba(7, 16, 24, 0.06), 0 24px 48px -24px rgba(7, 16, 24, 0.2);
+  --shadow-stage: 0 4px 6px rgba(7, 16, 24, 0.04), 0 32px 64px -32px rgba(7, 16, 24, 0.22);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 160ms;
+  --duration-normal: 240ms;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #120e2b;
-    --foreground: #f3effc;
-    --card: #1b1640;
-    --card-foreground: #f3effc;
-    --muted: #241d52;
-    --muted-foreground: #a9a1c8;
-    --border: #322a66;
-    --input: #443a80;
-    --primary: #f4a21d;
-    --primary-foreground: #1d1452;
-    --accent: #2a2260;
-    --accent-foreground: #fde9b8;
-    --destructive: #f0678f;
-    --destructive-foreground: #1d1452;
-    --success: #2fc4bb;
-    --warning: #f4b84a;
-    --ring: #f4a21d;
+    --background: #0a0f14;
+    --foreground: #f2efe8;
+    --card: #121a22;
+    --card-foreground: #f2efe8;
+    --muted: #1a242e;
+    --muted-foreground: #9aa8b6;
+    --border: #2a3844;
+    --input: #3a4a58;
+    --primary: #f0b35a;
+    --primary-foreground: #0a0f14;
+    --accent: #1a2834;
+    --accent-foreground: #fdecc8;
+    --destructive: #f47298;
+    --destructive-foreground: #0a0f14;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --ring: #f0b35a;
 
-    --ink: #0d0922;
-    --ink-2: #1b1640;
-    --gold-soft: #3a2f12;
-    --rani: #f0678f;
-    --teal: #2fc4bb;
-    --violet: #a58cff;
+    --ink: #030608;
+    --ink-2: #0c1520;
+    --gold: #f0b35a;
+    --gold-soft: #3d2e14;
+    --rani: #f47298;
+    --teal: #34d399;
+    --violet: #a5b4fc;
+
+    --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.35);
+    --shadow-stage: 0 8px 32px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -85,33 +95,213 @@
   --color-teal: var(--teal);
   --color-violet: var(--violet);
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
-  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-display: var(--font-heading), Georgia, "Times New Roman", serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-md: calc(var(--radius) - 4px);
+  --radius-sm: calc(var(--radius) - 8px);
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
-  * { border-color: var(--border); }
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
   body {
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  h1, h2, h3 {
-    font-family: var(--font-display);
-    letter-spacing: -0.01em;
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 600;
+    letter-spacing: -0.025em;
   }
 }
 
-/* Gold hairline with a diamond, used under the brand mark and on the login hero. */
+.app-canvas {
+  min-height: 100dvh;
+  background:
+    radial-gradient(ellipse 120% 80% at 100% 0%, color-mix(in oklab, var(--gold) 18%, transparent), transparent 50%),
+    radial-gradient(ellipse 80% 60% at 0% 100%, color-mix(in oklab, var(--teal) 12%, transparent), transparent 45%),
+    linear-gradient(180deg, color-mix(in oklab, var(--background) 92%, white) 0%, var(--background) 100%);
+}
+
+.app-sidebar {
+  background: linear-gradient(175deg, var(--ink) 0%, var(--ink-2) 55%, #1a3a5c 100%);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+.content-stage {
+  border-radius: calc(var(--radius) + 8px);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, white);
+  background: color-mix(in oklab, var(--card) 94%, white);
+  box-shadow: var(--shadow-stage);
+  padding: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .content-stage {
+    padding: 2rem 2.25rem;
+  }
+}
+
+.panel {
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--border) 85%, transparent);
+  background: color-mix(in oklab, var(--card) 88%, white);
+  box-shadow: var(--shadow-soft);
+}
+
+.panel-header {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  padding: 1rem 1.25rem;
+}
+
+.panel-body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.surface-card {
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+  background: color-mix(in oklab, var(--card) 92%, white);
+  box-shadow: var(--shadow-soft);
+  transition:
+    box-shadow var(--duration-normal) var(--ease-out),
+    transform var(--duration-normal) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .surface-card-interactive:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-stage);
+    border-color: color-mix(in oklab, var(--gold) 40%, var(--border));
+  }
+}
+
+.benefit-card {
+  border-radius: calc(var(--radius) + 2px);
+  border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+  background: linear-gradient(145deg, color-mix(in oklab, var(--card) 96%, white), color-mix(in oklab, var(--muted) 40%, var(--card)));
+  box-shadow: var(--shadow-soft);
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-normal) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .benefit-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-stage);
+    border-color: color-mix(in oklab, var(--gold) 35%, var(--border));
+  }
+}
+
+.hero-metric {
+  border-radius: calc(var(--radius) + 6px);
+  background: linear-gradient(135deg, var(--ink-2) 0%, #1a3d5c 50%, #0a6e5c 120%);
+  color: #faf7f2;
+  box-shadow: var(--shadow-stage);
+}
+
 .ornament {
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--gold) 90%, white), transparent);
 }
 
-@keyframes sheet-in-right { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes sheet-in-bottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.page-enter {
+  animation: page-enter 0.5s var(--ease-out) both;
+}
+
+.filter-strip {
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+  background: color-mix(in oklab, var(--muted) 35%, var(--card));
+  padding: 0.75rem;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 0%,
+    color-mix(in oklab, var(--muted) 55%, white) 45%,
+    var(--muted) 90%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}

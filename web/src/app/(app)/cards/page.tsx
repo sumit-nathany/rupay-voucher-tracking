@@ -5,6 +5,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { CardFormSheet } from '@/components/cards/card-form';
 import { CurationBadge } from '@/components/cards/curation-badge';
 import { DeleteCardButton } from '@/components/cards/delete-card-button';
+import { ContentStage } from '@/components/layout/content-stage';
+import { EmptyState } from '@/components/layout/empty-state';
+import { PageHeader } from '@/components/layout/page-header';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,14 +30,13 @@ export default async function CardsPage() {
   const holderOptions = holders.map((h) => ({ id: h.id, name: h.name }));
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Cards</h1>
-          <p className="text-sm text-muted-foreground">Each card is an instance of a bank card type, owned by a holder.</p>
-        </div>
-        <CardFormSheet holders={holderOptions} types={typeOptions} variants={variants} />
-      </div>
+    <ContentStage className="max-w-3xl">
+      <PageHeader
+        eyebrow="Portfolio"
+        title="Cards"
+        description="Physical cards linked to catalog types and holders — benefits flow from here."
+        actions={<CardFormSheet holders={holderOptions} types={typeOptions} variants={variants} />}
+      />
 
       {holders.length === 0 && (
         <p className="rounded-md bg-warning/10 px-3 py-2 text-sm">
@@ -43,33 +45,36 @@ export default async function CardsPage() {
       )}
 
       {cards.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 text-center text-sm text-muted-foreground">
-            No cards yet. Add a card to start tracking its benefits.
-          </CardContent>
-        </Card>
+        <EmptyState title="No cards yet" description="Add a card to start tracking benefits for that holder." />
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-4">
           {cards.map((c) => {
             const t = typeById.get(c.bankCardTypeId);
             const holder = holderById.get(c.holderId);
+            const initial = (holder?.name ?? '?').charAt(0).toUpperCase();
             return (
               <li key={c.id}>
-                <Card>
-                  <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{c.displayName}</span>
-                        {c.active === false && <Badge variant="secondary">Inactive</Badge>}
-                        {t && <CurationBadge status={t.curationStatus} />}
+                <Card className="surface-card-interactive overflow-hidden">
+                  <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 gap-4">
+                      <span
+                        aria-hidden
+                        className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-teal/15 font-semibold tracking-tight text-xl text-primary"
+                      >
+                        {initial}
+                      </span>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold">{c.displayName}</span>
+                          {c.active === false && <Badge variant="secondary">Inactive</Badge>}
+                          {t && <CurationBadge status={t.curationStatus} />}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{t ? t.displayName : 'Card type no longer listed'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {holder?.name ?? 'Unknown holder'}
+                          {c.lastDigits ? ` · ••${c.lastDigits}` : ''} · since {c.trackingFrom}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {t ? t.displayName : 'Card type no longer listed'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {holder?.name ?? 'Unknown holder'}
-                        {c.lastDigits ? ` · ending ${c.lastDigits}` : ''} · tracking from {c.trackingFrom}
-                      </p>
                     </div>
                     <div className="flex shrink-0 gap-2">
                       <CardFormSheet
@@ -95,6 +100,6 @@ export default async function CardsPage() {
           })}
         </ul>
       )}
-    </div>
+    </ContentStage>
   );
 }

@@ -14,7 +14,7 @@ export const SheetOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SheetPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-50 bg-ink/60 backdrop-blur-[2px] animate-[fade-in_150ms_ease-out]', className)}
+    className={cn('fixed inset-0 z-50 bg-ink/70 backdrop-blur-sm animate-[fade-in_200ms_ease-out]', className)}
     {...props}
   />
 ));
@@ -30,9 +30,9 @@ export const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed z-50 flex flex-col gap-4 overflow-y-auto bg-background p-6 shadow-lg focus:outline-none',
-        'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-xl border-t animate-[sheet-in-bottom_200ms_ease-out]',
-        'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:h-full sm:w-full sm:max-w-md sm:rounded-none sm:border-t-0 sm:border-l sm:animate-[sheet-in-right_200ms_ease-out]',
+        'fixed z-50 flex flex-col gap-4 overflow-y-auto bg-card p-6 shadow-[var(--shadow-stage)] focus:outline-none',
+        'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t animate-[sheet-in-bottom_280ms_cubic-bezier(0.22,1,0.36,1)]',
+        'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:h-full sm:w-full sm:max-w-lg sm:rounded-none sm:border-t-0 sm:border-l sm:animate-[sheet-in-right_280ms_cubic-bezier(0.22,1,0.36,1)]',
         className,
       )}
       {...props}

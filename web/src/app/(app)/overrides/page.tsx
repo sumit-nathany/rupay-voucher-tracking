@@ -4,6 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { DeleteOverrideButton, OverrideToggle } from '@/components/overrides/override-actions';
 import { OverrideFormSheet } from '@/components/overrides/override-form';
+import { ContentStage } from '@/components/layout/content-stage';
+import { EmptyState } from '@/components/layout/empty-state';
+import { PageHeader } from '@/components/layout/page-header';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,24 +16,16 @@ export default async function OverridesPage() {
   const cardOptions = cards.map((c) => ({ id: c.id, name: c.displayName }));
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Catalog overrides</h1>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            An override corrects the shared catalog for one of your cards only: add a benefit the catalog is missing,
-            or hide one it wrongly lists. It stays on until you turn it off.
-          </p>
-        </div>
-        <OverrideFormSheet cards={cardOptions} />
-      </div>
+    <ContentStage className="max-w-3xl">
+      <PageHeader
+        eyebrow="Personal catalog"
+        title="Overrides"
+        description="Add or hide benefits for a specific card without changing the shared catalog for everyone."
+        actions={<OverrideFormSheet cards={cardOptions} />}
+      />
 
       {overrides.length === 0 ? (
-        <Card>
-          <CardContent className="p-6 text-center text-sm text-muted-foreground">
-            No overrides. Your cards use the shared catalog as it is.
-          </CardContent>
-        </Card>
+        <EmptyState title="No overrides" description="Your cards follow the shared catalog as-is." />
       ) : (
         <ul className="flex flex-col gap-3">
           {overrides.map((o) => {
@@ -79,6 +74,6 @@ export default async function OverridesPage() {
           })}
         </ul>
       )}
-    </div>
+    </ContentStage>
   );
 }

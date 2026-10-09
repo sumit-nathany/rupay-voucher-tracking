@@ -1,61 +1,60 @@
-import { Card, CardContent } from '@/components/ui/card';
+import Link from 'next/link';
+import { ArrowRight, TrendingUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { DashboardSummary } from '@/domain/instance-queries';
 import { formatINR } from './format';
 
-// Each stat gets its own jewel colour so the row reads at a glance.
-const BAND = {
-  violet: 'bg-violet',
-  gold: 'bg-gold',
-  teal: 'bg-teal',
-  indigo: 'bg-primary',
-  rani: 'bg-rani',
-} as const;
-
-function Stat({
-  label,
-  value,
-  hint,
-  color,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  color: keyof typeof BAND;
-  tone?: 'bad' | 'good';
-}) {
+function MiniStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <Card className="overflow-hidden">
-      <div className={`h-1.5 ${BAND[color]}`} aria-hidden />
-      <CardContent className="p-4 sm:p-4">
-        <div className="text-xs font-medium text-muted-foreground">{label}</div>
-        <div
-          className={`mt-1 font-[family-name:var(--font-display)] text-xl font-semibold tabular-nums sm:text-2xl ${
-            tone === 'bad' ? 'text-rani' : tone === 'good' ? 'text-teal' : ''
-          }`}
-        >
-          {value}
-        </div>
-        {hint && <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>}
-      </CardContent>
-    </Card>
+    <div className="panel p-4">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 font-semibold tracking-tight text-2xl tabular-nums text-foreground">{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+    </div>
   );
 }
 
 export function StatCards({ s }: { s: DashboardSummary }) {
+  const attention = s.counts['Not Ordered'] + s.counts['Coupon Received'];
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Stat color="violet" label="Outstanding" value={formatINR(s.outstandingValue)} hint="Not yet used or sold" />
-      <Stat color="gold" label="Ordered" value={formatINR(s.orderedValue)} hint="Ordered or beyond" />
-      <Stat color="teal" label="Redeemed" value={formatINR(s.redeemedValue)} tone="good" />
-      <Stat color="indigo" label="Sold" value={formatINR(s.soldValue)} hint="Sale proceeds" />
-      <Stat
-        color="rani"
-        label="Lapsed"
-        value={formatINR(s.lapsedValue)}
-        hint={`${s.lapsedCount} missed`}
-        tone={s.lapsedCount > 0 ? 'bad' : undefined}
-      />
+    <div className="grid gap-4 lg:grid-cols-12">
+      <div className="hero-metric relative overflow-hidden p-6 sm:p-8 lg:col-span-7">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-gold/20 blur-3xl"
+        />
+        <div className="relative flex h-full flex-col justify-between gap-6">
+          <div>
+            <p className="eyebrow text-white/55">Outstanding value</p>
+            <p className="mt-2 font-semibold tracking-tight text-4xl tabular-nums sm:text-5xl">
+              {formatINR(s.outstandingValue)}
+            </p>
+            <p className="mt-2 max-w-sm text-sm text-white/70">Benefits not yet used or sold — your open pipeline.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90">
+              <TrendingUp className="h-3.5 w-3.5 text-gold" aria-hidden />
+              {attention} need attention this period
+            </div>
+            <Button asChild variant="gold" size="sm" className="rounded-full">
+              <Link href="/benefits">
+                Review benefits <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:col-span-5">
+        <MiniStat label="Ordered" value={formatINR(s.orderedValue)} sub="In progress or done" />
+        <MiniStat label="Redeemed" value={formatINR(s.redeemedValue)} />
+        <MiniStat label="Sold" value={formatINR(s.soldValue)} sub="Proceeds" />
+        <MiniStat
+          label="Lapsed"
+          value={formatINR(s.lapsedValue)}
+          sub={s.lapsedCount > 0 ? `${s.lapsedCount} missed` : undefined}
+        />
+      </div>
     </div>
   );
 }

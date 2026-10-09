@@ -2,15 +2,17 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient, getCtx } from '@/lib/session';
 
-export async function signIn(formData: FormData) {
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: String(formData.get('email') ?? ''),
-    password: String(formData.get('password') ?? ''),
-  });
-  if (error) redirect('/auth/login?error=invalid_credentials');
-  await getCtx(); // provisions workspace on first login
-  redirect('/');
+/** After browser sign-in: provision workspace using cookies on this request. */
+export async function bootstrapSessionAction(): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await getCtx();
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      message: 'Signed in, but your workspace could not be set up. The database may be unreachable.',
+    };
+  }
 }
 
 export async function setPassword(formData: FormData) {

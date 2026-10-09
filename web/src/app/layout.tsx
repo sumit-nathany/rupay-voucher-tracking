@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, Figtree } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 
-const heading = Fraunces({ subsets: ['latin'], variable: '--font-heading', display: 'swap' });
-const body = Figtree({ subsets: ['latin'], variable: '--font-body', display: 'swap' });
+const sans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-jakarta',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'RuPay Voucher Tracker',
@@ -14,8 +17,8 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${heading.variable} ${body.variable}`}>
-      <body className="min-h-dvh antialiased">{children}</body>
+    <html lang="en" className={sans.variable}>
+      <body className="min-h-dvh font-sans antialiased">{children}</body>
     </html>
   );
 }

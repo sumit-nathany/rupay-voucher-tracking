@@ -81,7 +81,10 @@ export function PeriodSelector({ view, today }: { view: ViewedPeriod; today: str
     ) : null;
 
   return (
-    <div className="flex flex-wrap gap-2" aria-busy={pending}>
+    <div
+      className={`filter-strip flex flex-wrap gap-2 transition-opacity duration-200 ${pending ? 'pointer-events-none opacity-60' : ''}`}
+      aria-busy={pending}
+    >
       <Select
         aria-label="Period type"
         className="w-28"
