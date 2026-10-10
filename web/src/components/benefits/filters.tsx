@@ -105,13 +105,13 @@ export function Filters({
           </button>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-y-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center">
           <Select
             value={holder || '__all__'}
             onValueChange={(v) => set({ holder: v === '__all__' ? '' : v, card: '' })}
           >
-            <SelectTrigger aria-label="Holder" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Holder" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -126,7 +126,7 @@ export function Filters({
             value={card || '__all__'}
             onValueChange={(v) => set({ card: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Card" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Card" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -141,7 +141,7 @@ export function Filters({
             value={status || '__all__'}
             onValueChange={(v) => set({ status: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Status" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Status" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -156,7 +156,7 @@ export function Filters({
             value={benefit || '__all__'}
             onValueChange={(v) => set({ benefit: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Benefit" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Benefit" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -171,7 +171,7 @@ export function Filters({
             value={sort === 'value-asc' ? 'value-asc' : 'value-desc'}
             onValueChange={(v) => set({ sort: v === 'value-desc' ? '' : v })}
           >
-            <SelectTrigger aria-label="Sort by" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Sort by" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -186,7 +186,7 @@ export function Filters({
               set({ discounts: v === 'all' ? '1' : v === 'discount-only' ? 'only' : '' })
             }
           >
-            <SelectTrigger aria-label="Offer type" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Offer type" className="w-full min-w-0 sm:w-fit sm:max-w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -197,7 +197,19 @@ export function Filters({
           </Select>
         </div>
 
-        <div className="ml-auto flex w-full shrink-0 flex-wrap items-center gap-2 border-border pl-0 sm:w-auto sm:border-l sm:pl-4 justify-end sm:justify-start">
+        <div className="flex w-full flex-col gap-2 border-border pt-2 border-t sm:border-t-0 sm:pt-0 sm:ml-auto sm:w-auto sm:shrink-0 sm:flex-row sm:items-center sm:border-l sm:pl-4">
+          <div className="relative w-full sm:w-44 shrink-0 order-1 sm:order-2">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input
+              type="search"
+              aria-label="Search benefits"
+              placeholder="Search…"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              className="pl-9 w-full"
+            />
+          </div>
+
           <Select
             value={groupMode}
             onValueChange={(v) => {
@@ -205,7 +217,7 @@ export function Filters({
               set({ group: mode === groupDefault ? '' : mode });
             }}
           >
-            <SelectTrigger aria-label="Group by" className="w-fit max-w-full">
+            <SelectTrigger aria-label="Group by" className="w-full min-w-0 sm:w-fit sm:max-w-full order-2 sm:order-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -215,18 +227,6 @@ export function Filters({
               <SelectItem value="benefit">Group: benefit</SelectItem>
             </SelectContent>
           </Select>
-
-          <div className="relative w-44 max-w-full shrink-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              type="search"
-              aria-label="Search benefits"
-              placeholder="Search…"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              className="pl-9"
-            />
-          </div>
         </div>
       </div>
     </div>
