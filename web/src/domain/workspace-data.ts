@@ -7,7 +7,7 @@
  * schemas are .strict() so a stray one is rejected loudly). Every query,
  * reads included, filters on ctx.workspaceId.
  */
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   bankCardTypes,
@@ -184,6 +184,9 @@ export async function ensureCardsSchemaHealed(db: Database): Promise<void> {
     await db.execute(sql`
       ALTER TABLE "app"."cards" ALTER COLUMN "last_digits" SET DEFAULT '0000';
     `);
+    await db.execute(sql`
+      ALTER TABLE "app"."cards" ADD COLUMN IF NOT EXISTS "inactive_from" date;
+    `);
     cardsSchemaHealed = true;
   } catch {
     // If running in restricted or mock environments where DDL fails, ignore
@@ -226,6 +229,7 @@ const cardUpdate = z.strictObject({
   lastDigits: cardDigits.optional(),
   trackingFrom: dateStr.optional(),
   active: z.boolean().optional(),
+  inactiveFrom: dateStr.nullable().optional(),
 });
 const cardList = z.strictObject({ holderId: uuid.optional() }).optional();
 
@@ -291,7 +295,24 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   }
   if (patch.lastDigits !== undefined) set.lastDigits = patch.lastDigits;
   if (patch.trackingFrom !== undefined) set.trackingFrom = patch.trackingFrom;
-  if (patch.active !== undefined) set.active = patch.active;
+
+  let inactiveDateForPruning: string | null = null;
+  if (patch.active !== undefined) {
+    set.active = patch.active;
+    if (patch.active === false) {
+      const inactiveDate = patch.inactiveFrom ?? existing.inactiveFrom ?? ctx.today;
+      set.inactiveFrom = inactiveDate;
+      inactiveDateForPruning = inactiveDate;
+    } else {
+      set.inactiveFrom = null;
+    }
+  } else if (patch.inactiveFrom !== undefined && existing.active === false) {
+    set.inactiveFrom = patch.inactiveFrom;
+    if (patch.inactiveFrom) {
+      inactiveDateForPruning = patch.inactiveFrom;
+    }
+  }
+
   if (Object.keys(set).length === 0) return existing;
   const [row] = await ctx.db
     .update(cards)
@@ -299,6 +320,22 @@ export async function updateCard(ctx: Ctx, input: unknown) {
     .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)))
     .returning();
   if (!row) throw new NotFoundError('Card not found');
+
+  if (inactiveDateForPruning) {
+    await ctx.db
+      .delete(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, ctx.workspaceId),
+          eq(benefitInstances.cardId, id),
+          gte(benefitInstances.periodEnd, inactiveDateForPruning),
+          isNull(benefitInstances.rupayBookingId),
+          isNull(benefitInstances.codeEncrypted),
+          inArray(benefitInstances.orderStatus, ['Not Ordered', 'Withdrawn', 'Skipped']),
+        ),
+      );
+  }
+
   return row;
 }
 

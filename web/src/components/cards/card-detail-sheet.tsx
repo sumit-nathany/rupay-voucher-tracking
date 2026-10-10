@@ -49,6 +49,9 @@ export function CardDetailSheet({
   const [lastDigits, setLastDigits] = React.useState(card.lastDigits || '0000');
   const [trackingFrom, setTrackingFrom] = React.useState(card.trackingFrom);
   const [active, setActive] = React.useState(card.active);
+  const [inactiveFrom, setInactiveFrom] = React.useState(
+    card.inactiveFrom ?? (card.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)),
+  );
 
   // Sync state whenever open or card changes
   React.useEffect(() => {
@@ -58,6 +61,7 @@ export function CardDetailSheet({
       setLastDigits(card.lastDigits || '0000');
       setTrackingFrom(card.trackingFrom);
       setActive(card.active);
+      setInactiveFrom(card.inactiveFrom ?? (card.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)));
       setMode('view');
     }
   }, [open, card, bankCardType]);
@@ -85,6 +89,7 @@ export function CardDetailSheet({
           lastDigits: cleanDigits,
           trackingFrom: trackingFrom || undefined,
           active,
+          inactiveFrom: active ? null : (inactiveFrom || undefined),
         }),
       'Could not save card. Check the card details and try again.',
     );
@@ -175,7 +180,7 @@ export function CardDetailSheet({
                       </SheetTitle>
                       {card.active === false ? (
                         <Badge variant="secondary" className="text-xs">
-                          Inactive
+                          Inactive{card.inactiveFrom ? ` (since ${card.inactiveFrom})` : ''}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium text-xs">
@@ -206,8 +211,12 @@ export function CardDetailSheet({
                       <p className="font-medium text-sm text-white">{holder?.name ?? 'Unassigned'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] uppercase tracking-wider text-white/60">Tracking Since</p>
-                      <p className="font-medium text-xs text-white/90">{card.trackingFrom}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-white/60">
+                        {card.active === false ? 'Inactive Since' : 'Tracking Since'}
+                      </p>
+                      <p className="font-medium text-xs text-white/90">
+                        {card.active === false ? (card.inactiveFrom ?? card.trackingFrom) : card.trackingFrom}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -261,7 +270,11 @@ export function CardDetailSheet({
                     <div className="flex items-center justify-between gap-2 py-1">
                       <span className="text-muted-foreground">Tracking Status</span>
                       <span className="font-medium text-foreground">
-                        {card.active ? 'Active — vouchers generated' : 'Inactive — paused'}
+                        {card.active ? (
+                          'Active — vouchers generated'
+                        ) : (
+                          `Inactive${card.inactiveFrom ? ` since ${card.inactiveFrom}` : ''} — non-ordered benefits removed`
+                        )}
                       </span>
                     </div>
                   </div>
@@ -381,20 +394,44 @@ export function CardDetailSheet({
                   />
                 </Field>
 
-                <div className="flex flex-col gap-1.5 rounded-lg border border-border/70 p-3 bg-muted/20">
-                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                      checked={active}
-                      onChange={(e) => setActive(e.target.checked)}
-                      aria-describedby="card-active-hint"
-                    />
-                    Active
-                  </label>
-                  <p id="card-active-hint" className="text-xs text-muted-foreground">
-                    A card with benefit history cannot be deleted; mark it inactive instead to stop future generation.
-                  </p>
+                <div className="flex flex-col gap-3 rounded-lg border border-border/70 p-3 bg-muted/20">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                        checked={active}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setActive(next);
+                          if (!next && !inactiveFrom) {
+                            setInactiveFrom(new Date().toISOString().slice(0, 10));
+                          }
+                        }}
+                        aria-describedby="card-active-hint"
+                      />
+                      Active
+                    </label>
+                    <p id="card-active-hint" className="text-xs text-muted-foreground">
+                      A card with benefit history cannot be deleted; mark it inactive instead.
+                    </p>
+                  </div>
+
+                  {!active && (
+                    <Field
+                      id="edit-card-inactive-from"
+                      label="Inactive from"
+                      hint="Date this card became inactive. Non-ordered benefits from this date onwards will be removed. Past ordered vouchers are preserved."
+                    >
+                      <Input
+                        id="edit-card-inactive-from"
+                        type="date"
+                        required={!active}
+                        value={inactiveFrom}
+                        onChange={(e) => setInactiveFrom(e.target.value)}
+                      />
+                    </Field>
+                  )}
                 </div>
 
                 <ErrorText>{error}</ErrorText>

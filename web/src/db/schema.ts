@@ -238,6 +238,7 @@ export const cards = app.table(
       .notNull()
       .default(sql`CURRENT_DATE`),
     active: boolean("active").default(true),
+    inactiveFrom: date("inactive_from", { mode: "string" }),
     createdAt: createdAt(),
   },
   (t) => [

@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { createTestDb } from '@/test/db';
-import { bankCardTypes, benefits, cardBenefitOverrides, cards, cardHolders, workspaces } from '@/db/schema';
+import { bankCardTypes, benefits, benefitInstances, cardBenefitOverrides, cards, cardHolders, workspaces } from '@/db/schema';
 import { NotFoundError, type Ctx, type Database } from '@/lib/context';
 import * as d from './workspace-data';
 
@@ -132,6 +132,79 @@ describe('cards', () => {
   });
   it('cannot delete card with overrides', async () => {
     await expect(d.deleteCard(A, { id: cardA })).rejects.toBeInstanceOf(d.ConflictError);
+  });
+  it('marking card inactive prunes non-ordered benefits from inactive_from onwards', async () => {
+    const card = await d.createCard(A, {
+      holderId: holderA,
+      bankCardTypeId: typeX,
+      displayName: 'Card to deactivate',
+      lastDigits: '9999',
+      trackingFrom: '2026-01-01',
+    });
+
+    const [instPast, instTargetUnordered, instTargetOrdered] = await db
+      .insert(benefitInstances)
+      .values([
+        {
+          workspaceId: A.workspaceId,
+          cardId: card.id,
+          bankCardTypeId: typeX,
+          benefitId: benX,
+          periodStart: '2026-01-01',
+          periodEnd: '2026-03-31',
+          periodLabel: '2026-Q1',
+          orderDeadline: '2026-03-31',
+          orderStatus: 'Not Ordered',
+        },
+        {
+          workspaceId: A.workspaceId,
+          cardId: card.id,
+          bankCardTypeId: typeX,
+          benefitId: benX,
+          periodStart: '2026-04-01',
+          periodEnd: '2026-06-30',
+          periodLabel: '2026-Q2',
+          orderDeadline: '2026-06-30',
+          orderStatus: 'Not Ordered',
+        },
+        {
+          workspaceId: A.workspaceId,
+          cardId: card.id,
+          bankCardTypeId: typeX,
+          benefitId: benX,
+          periodStart: '2026-04-01',
+          periodEnd: '2026-06-30',
+          periodLabel: '2026-Q2',
+          instanceNumber: 2,
+          orderDeadline: '2026-06-30',
+          orderStatus: 'Coupon Received',
+          rupayBookingId: 'BOOKING-123',
+        },
+      ])
+      .returning();
+
+    const updated = await d.updateCard(A, {
+      id: card.id,
+      active: false,
+      inactiveFrom: '2026-04-01',
+    });
+    expect(updated.active).toBe(false);
+    expect(updated.inactiveFrom).toBe('2026-04-01');
+
+    const remaining = await db.select().from(benefitInstances).where(eq(benefitInstances.cardId, card.id));
+    const remainingIds = remaining.map((r) => r.id);
+
+    // Past non-ordered benefit (< inactiveFrom) is kept
+    expect(remainingIds).toContain(instPast.id);
+    // Target ordered benefit is kept
+    expect(remainingIds).toContain(instTargetOrdered.id);
+    // Target non-ordered benefit (>= inactiveFrom) was pruned!
+    expect(remainingIds).not.toContain(instTargetUnordered.id);
+
+    // Re-activating clears inactiveFrom
+    const reactivated = await d.updateCard(A, { id: card.id, active: true });
+    expect(reactivated.active).toBe(true);
+    expect(reactivated.inactiveFrom).toBeNull();
   });
 });
 

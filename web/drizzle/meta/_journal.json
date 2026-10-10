@@ -64,6 +64,13 @@
       "when": 1791640000000,
       "tag": "0008_health_checkup_pick_one",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791650000000,
+      "tag": "0009_cards_inactive_from",
+      "breakpoints": true
     }
   ]
 }

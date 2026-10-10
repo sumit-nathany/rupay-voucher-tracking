@@ -18,6 +18,7 @@ export interface CardRow {
   lastDigits: string | null;
   trackingFrom: string;
   active: boolean;
+  inactiveFrom?: string | null;
 }
 export interface VariantOption {
   id: string;
@@ -61,6 +62,9 @@ function CardFormBody({
   const [lastDigits, setLastDigits] = React.useState(card?.lastDigits || (card ? '0000' : ''));
   const [trackingFrom, setTrackingFrom] = React.useState(card?.trackingFrom ?? '');
   const [active, setActive] = React.useState(card?.active ?? true);
+  const [inactiveFrom, setInactiveFrom] = React.useState(
+    card?.inactiveFrom ?? (card?.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)),
+  );
 
   function pickType(t: CardTypeOption) {
     setType(t);
@@ -88,6 +92,7 @@ function CardFormBody({
               lastDigits: cleanDigits,
               trackingFrom: trackingFrom || undefined,
               active,
+              inactiveFrom: active ? null : (inactiveFrom || undefined),
             })
           : createCard({
               holderId,
@@ -228,20 +233,44 @@ function CardFormBody({
       </Field>
 
       {card && (
-        <div className="flex flex-col gap-1.5">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={active}
-              onChange={(e) => setActive(e.target.checked)}
-              aria-describedby="card-active-hint"
-            />
-            Active
-          </label>
-          <p id="card-active-hint" className="text-xs text-muted-foreground">
-            A card with benefit history cannot be deleted; mark it inactive instead.
-          </p>
+        <div className="flex flex-col gap-3 rounded-lg border border-border/70 p-3 bg-muted/20">
+          <div className="flex flex-col gap-1.5">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                checked={active}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setActive(next);
+                  if (!next && !inactiveFrom) {
+                    setInactiveFrom(new Date().toISOString().slice(0, 10));
+                  }
+                }}
+                aria-describedby="card-active-hint"
+              />
+              Active
+            </label>
+            <p id="card-active-hint" className="text-xs text-muted-foreground">
+              A card with benefit history cannot be deleted; mark it inactive instead.
+            </p>
+          </div>
+
+          {!active && (
+            <Field
+              id="card-inactive-from"
+              label="Inactive from"
+              hint="Date this card became inactive. Non-ordered benefits from this date onwards will be removed. Past ordered vouchers are preserved."
+            >
+              <Input
+                id="card-inactive-from"
+                type="date"
+                required={!active}
+                value={inactiveFrom}
+                onChange={(e) => setInactiveFrom(e.target.value)}
+              />
+            </Field>
+          )}
         </div>
       )}
 

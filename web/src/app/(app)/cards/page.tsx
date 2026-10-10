@@ -63,6 +63,7 @@ export default async function CardsPage() {
                     lastDigits: c.lastDigits,
                     trackingFrom: c.trackingFrom,
                     active: c.active ?? true,
+                    inactiveFrom: c.inactiveFrom,
                   }}
                   holder={holder ? { id: holder.id, name: holder.name } : undefined}
                   bankCardType={
