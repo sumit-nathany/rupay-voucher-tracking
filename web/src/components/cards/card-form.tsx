@@ -270,8 +270,13 @@ export function CardFormSheet({
   if (card) {
     return (
       <FormSheet
-        trigger={<><Pencil className="h-4 w-4" aria-hidden />Edit</>}
-        triggerProps={{ variant: 'outline', size: 'sm', 'aria-label': `Edit card ${card.displayName}` }}
+        trigger={<Pencil className="h-4 w-4" aria-hidden />}
+        triggerProps={{
+          variant: 'ghost',
+          size: 'icon',
+          className: 'h-8 w-8 text-muted-foreground hover:text-foreground',
+          'aria-label': `Edit card ${card.displayName}`,
+        }}
         title="Edit card"
       >
         {(close) => <CardFormBody card={card} holders={holders} types={types} variants={variants} close={close} />}

@@ -71,8 +71,13 @@ function HolderFormBody({ holder, close }: { holder?: HolderRow; close: () => vo
 export function HolderFormSheet({ holder }: { holder?: HolderRow }) {
   return holder ? (
     <FormSheet
-      trigger={<><Pencil className="h-4 w-4" aria-hidden />Edit</>}
-      triggerProps={{ variant: 'outline', size: 'sm', 'aria-label': `Edit holder ${holder.name}` }}
+      trigger={<Pencil className="h-4 w-4" aria-hidden />}
+      triggerProps={{
+        variant: 'ghost',
+        size: 'icon',
+        className: 'h-8 w-8 text-muted-foreground hover:text-foreground',
+        'aria-label': `Edit holder ${holder.name}`,
+      }}
       title="Edit holder"
     >
       {(close) => <HolderFormBody holder={holder} close={close} />}

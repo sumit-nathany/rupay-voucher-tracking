@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trash2 } from 'lucide-react';
 import { Button, type ButtonProps } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -129,6 +129,8 @@ export function ConfirmDelete({
   disabledReason,
   onConfirm,
   failHint,
+  trigger,
+  triggerProps,
 }: {
   label: string;
   name: string;
@@ -137,12 +139,20 @@ export function ConfirmDelete({
   disabledReason?: string;
   onConfirm: () => Promise<unknown>;
   failHint: string;
+  trigger?: React.ReactNode;
+  triggerProps?: ButtonProps;
 }) {
   const { run, pending, error } = useRunAction();
   return (
     <FormSheet
-      trigger={<>Delete</>}
-      triggerProps={{ variant: 'ghost', size: 'sm', 'aria-label': `Delete ${label} ${name}` }}
+      trigger={trigger ?? <Trash2 className="h-4 w-4" aria-hidden />}
+      triggerProps={{
+        variant: 'ghost',
+        size: 'icon',
+        className: 'h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+        'aria-label': `Delete ${label} ${name}`,
+        ...triggerProps,
+      }}
       title={`Delete ${label}?`}
       description={name}
     >
