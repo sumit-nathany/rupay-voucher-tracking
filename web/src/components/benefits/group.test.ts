@@ -12,7 +12,7 @@ const mk = (
 ) => ({ id, frequency, periodLabel, periodStart, periodEnd, value }) as unknown as InstanceListItem;
 
 describe('groupItems', () => {
-  it('annual, then half-yearly, then each shorter period in date order', () => {
+  it('monthly, then quarterly, half-yearly, annual; date order within band', () => {
     const g = groupItems([
       mk('m', 'Monthly', 'Nov 2026', '2026-11-01', '2026-11-30'),
       mk('q', 'Quarterly', 'Q4 2026', '2026-10-01', '2026-12-31'),
@@ -21,11 +21,11 @@ describe('groupItems', () => {
       mk('m2', 'Monthly', 'Oct 2026', '2026-10-01', '2026-10-31'),
     ]);
     expect(g.map((x) => [x.title, x.items.map((i) => i.id)])).toEqual([
-      ['Annual · 2026', ['a']],
-      ['Half-yearly · H2 2026', ['h']],
       ['Oct 2026', ['m2']],
       ['Nov 2026', ['m']],
       ['Q4 2026', ['q']],
+      ['Half-yearly · H2 2026', ['h']],
+      ['Annual · 2026', ['a']],
     ]);
   });
 });

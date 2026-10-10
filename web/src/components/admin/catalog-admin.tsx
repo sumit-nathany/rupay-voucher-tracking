@@ -34,15 +34,20 @@ export interface TypeRow {
 
 type CatalogBenefit = Awaited<ReturnType<typeof listCardTypeBenefitsAction>>[number];
 
+export type CatalogAdminMode = 'view' | 'edit';
+
 export function CatalogAdmin({
+  mode,
   variants,
   types,
   benefitCountByTypeId,
 }: {
+  mode: CatalogAdminMode;
   variants: VariantRow[];
   types: TypeRow[];
   benefitCountByTypeId: Record<string, number>;
 }) {
+  const editing = mode === 'edit';
   const tabs = variants;
   const [selected, setSelected] = React.useState(tabs[0]?.id ?? '');
   const current = tabs.find((v) => v.id === selected) ?? tabs[0];
@@ -73,6 +78,7 @@ export function CatalogAdmin({
       {current && (
         <VariantPanel
           key={current.id}
+          mode={mode}
           variant={current}
           variants={variants}
           types={types.filter((t) => t.variantId === current.id)}
@@ -80,25 +86,30 @@ export function CatalogAdmin({
         />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <BulkAdd variants={variants} defaultVariantId={current?.id || variants[0]?.id || ''} />
-        <NewVariant />
-      </div>
+      {editing && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <BulkAdd variants={variants} defaultVariantId={current?.id || variants[0]?.id || ''} />
+          <NewVariant />
+        </div>
+      )}
     </div>
   );
 }
 
 function VariantPanel({
+  mode,
   variant,
   variants,
   types,
   benefitCountByTypeId,
 }: {
+  mode: CatalogAdminMode;
   variant: VariantRow;
   variants: VariantRow[];
   types: TypeRow[];
   benefitCountByTypeId: Record<string, number>;
 }) {
+  const editing = mode === 'edit';
   const { run, pending, error } = useRunAction();
   const [q, setQ] = React.useState('');
   const shown = types.filter((t) => t.displayName.toLowerCase().includes(q.toLowerCase().trim()));
@@ -107,10 +118,15 @@ function VariantPanel({
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <InlineName value={variant.name} onSave={(name) => run(() => updateVariantAction({ id: variant.id, name }), 'Could not rename the variant.')} as="h2" />
+          {editing ? (
+            <InlineName value={variant.name} onSave={(name) => run(() => updateVariantAction({ id: variant.id, name }), 'Could not rename the variant.')} as="h2" />
+          ) : (
+            <CardTitle className="text-lg">{variant.name}</CardTitle>
+          )}
           {variant.active === false && <Badge variant="secondary">Hidden</Badge>}
         </div>
-        <Button
+        {editing && (
+          <Button
             type="button"
             variant="outline"
             size="sm"
@@ -119,6 +135,7 @@ function VariantPanel({
           >
             {variant.active === false ? <><Eye className="h-4 w-4" aria-hidden />Show variant</> : <><EyeOff className="h-4 w-4" aria-hidden />Hide variant</>}
           </Button>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <ErrorText>{error}</ErrorText>
@@ -130,13 +147,18 @@ function VariantPanel({
         />
         {shown.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            {types.length === 0 ? 'No cards in this variant yet. Paste a list below to add them.' : 'No cards match.'}
+            {types.length === 0
+              ? editing
+                ? 'No cards in this variant yet. Paste a list below to add them.'
+                : 'No cards in this variant yet.'
+              : 'No cards match.'}
           </p>
         ) : (
           <ul className="divide-y rounded-md border">
             {shown.map((t) => (
               <TypeItem
                 key={t.id}
+                mode={mode}
                 type={t}
                 variants={variants}
                 benefitCount={benefitCountByTypeId[t.id] ?? 0}
@@ -149,7 +171,18 @@ function VariantPanel({
   );
 }
 
-function TypeItem({ type, variants, benefitCount }: { type: TypeRow; variants: VariantRow[]; benefitCount: number }) {
+function TypeItem({
+  mode,
+  type,
+  variants,
+  benefitCount,
+}: {
+  mode: CatalogAdminMode;
+  type: TypeRow;
+  variants: VariantRow[];
+  benefitCount: number;
+}) {
+  const editing = mode === 'edit';
   const { run, pending, error } = useRunAction();
   const hidden = type.active === false;
   const [open, setOpen] = React.useState(false);
@@ -192,11 +225,15 @@ function TypeItem({ type, variants, benefitCount }: { type: TypeRow; variants: V
             {open ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
           </Button>
           <div className="min-w-0">
-            <InlineName
-              value={type.displayName}
-              dim={hidden}
-              onSave={(displayName) => run(() => updateCardTypeAction({ id: type.id, displayName }), 'Could not rename. This variant may already have a card with that name.')}
-            />
+            {editing ? (
+              <InlineName
+                value={type.displayName}
+                dim={hidden}
+                onSave={(displayName) => run(() => updateCardTypeAction({ id: type.id, displayName }), 'Could not rename. This variant may already have a card with that name.')}
+              />
+            ) : (
+              <p className={cn('text-sm font-medium', hidden && 'text-muted-foreground')}>{type.displayName}</p>
+            )}
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <CurationBadge status={type.curationStatus} />
               <span className="text-xs text-muted-foreground">
@@ -204,36 +241,38 @@ function TypeItem({ type, variants, benefitCount }: { type: TypeRow; variants: V
               </span>
             </div>
             {hidden && <Badge variant="secondary" className="mt-1">Hidden from the add-card picker</Badge>}
-            <ErrorText>{error}</ErrorText>
+            {editing && <ErrorText>{error}</ErrorText>}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2 pl-10 sm:pl-0">
-          <Select
-            value={type.variantId ?? ''}
-            disabled={pending}
-            onValueChange={(v) => v && run(() => updateCardTypeAction({ id: type.id, variantId: v }), 'Could not move the card.')}
-          >
-            <SelectTrigger aria-label={`Move ${type.displayName} to another variant`} className="h-9 w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {variants.map((v) => (
-                <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={pending}
-            aria-label={`${hidden ? 'Show' : 'Hide'} ${type.displayName}`}
-            onClick={() => run(() => updateCardTypeAction({ id: type.id, active: hidden }), 'Could not update the card.')}
-          >
-            {hidden ? <Eye className="h-4 w-4" aria-hidden /> : <EyeOff className="h-4 w-4" aria-hidden />}
-            {hidden ? 'Show' : 'Hide'}
-          </Button>
-        </div>
+        {editing && (
+          <div className="flex shrink-0 items-center gap-2 pl-10 sm:pl-0">
+            <Select
+              value={type.variantId ?? ''}
+              disabled={pending}
+              onValueChange={(v) => v && run(() => updateCardTypeAction({ id: type.id, variantId: v }), 'Could not move the card.')}
+            >
+              <SelectTrigger aria-label={`Move ${type.displayName} to another variant`} className="h-9 w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {variants.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              aria-label={`${hidden ? 'Show' : 'Hide'} ${type.displayName}`}
+              onClick={() => run(() => updateCardTypeAction({ id: type.id, active: hidden }), 'Could not update the card.')}
+            >
+              {hidden ? <Eye className="h-4 w-4" aria-hidden /> : <EyeOff className="h-4 w-4" aria-hidden />}
+              {hidden ? 'Show' : 'Hide'}
+            </Button>
+          </div>
+        )}
       </div>
       {open && (
         <div className="mt-3 ml-10 rounded-md border bg-muted/30 p-3">
