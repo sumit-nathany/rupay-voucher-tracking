@@ -3,6 +3,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ViewedPeriod } from '@/lib/periods';
+import { useBenefitsLoading } from '@/components/benefits/benefits-loading-provider';
 import { monthName, viewToParams } from './view-params';
 
 const ALL = '__all__';
@@ -43,7 +44,10 @@ export function PeriodSelector({
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const [pending, start] = useTransition();
+  const { isPending: loadingPending, startTransition: loadingStart } = useBenefitsLoading();
+  const [localPending, localStart] = useTransition();
+  const pending = loadingPending || localPending;
+  const start = loadingStart || localStart;
 
   const nowYear = Number(today.slice(0, 4));
   const years = Array.from({ length: 6 }, (_, i) => nowYear - 4 + i);

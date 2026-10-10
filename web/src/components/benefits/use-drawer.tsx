@@ -1,7 +1,8 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { BenefitDrawer } from '@/components/benefit-detail/benefit-drawer';
+import { useBenefitsLoading } from './benefits-loading-provider';
 
 interface DrawerLabel {
   title: string;
@@ -14,6 +15,9 @@ export function useBenefitDrawer() {
   const [id, setId] = useState<string | null>(null);
   const [isOpen, setOpen] = useState(false);
   const [label, setLabel] = useState<DrawerLabel | undefined>();
+  const { startTransition: loadingStart } = useBenefitsLoading();
+  const [, localStart] = useTransition();
+  const start = loadingStart || localStart;
   const drawer = (
     <BenefitDrawer
       instanceId={id}
@@ -21,7 +25,7 @@ export function useBenefitDrawer() {
       subtitle={label?.subtitle}
       open={isOpen}
       onOpenChange={setOpen}
-      onChanged={() => router.refresh()}
+      onChanged={() => start(() => router.refresh())}
     />
   );
   return {

@@ -10,6 +10,7 @@ import { PeriodSelector } from '@/components/dashboard/period-selector';
 import { isLifetimeScope, parseView, viewLabel } from '@/components/dashboard/view-params';
 import { ContentStage } from '@/components/layout/content-stage';
 import { PageHeader } from '@/components/layout/page-header';
+import { BenefitsLoadingProvider } from '@/components/benefits/benefits-loading-provider';
 import { formatCardLabel } from '@/domain/card-label';
 import { ORDER_STATUSES } from '@/domain/instances';
 import { today as istToday } from '@/lib/periods';
@@ -94,31 +95,33 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   const options = await loadOptions(filters.holderId, filters.cardId);
 
   return (
-    <ContentStage className="max-w-7xl">
-      <PageHeader
-        eyebrow="Work queue"
-        title={lifetime ? 'Lifetime' : viewLabel(view)}
-        description={
-          searchScope === 'all'
-            ? 'Searching across all periods, holders, cards, and offer types.'
-            : lifetime
-              ? 'Every matching benefit across all periods — open a row for details, codes, and status.'
-              : 'Every benefit instance for the period — open a row for details, codes, and status.'
-        }
-        actions={<PeriodSelector view={view} today={today} lifetime={lifetime} />}
-      />
-      <Filters holders={options.holders} cards={options.cards} categories={options.categories} />
-      <div className="mt-10">
-        <Suspense key={JSON.stringify([view, filters, lifetime, searchScope])} fallback={<PageSkeleton />}>
-          <BenefitsContent
-            view={view}
-            filters={filters}
-            filtered={filtered}
-            lifetime={lifetime}
-            searchScope={searchScope}
-          />
-        </Suspense>
-      </div>
-    </ContentStage>
+    <BenefitsLoadingProvider>
+      <ContentStage className="max-w-7xl">
+        <PageHeader
+          eyebrow="Work queue"
+          title={lifetime ? 'Lifetime' : viewLabel(view)}
+          description={
+            searchScope === 'all'
+              ? 'Searching across all periods, holders, cards, and offer types.'
+              : lifetime
+                ? 'Every matching benefit across all periods — open a row for details, codes, and status.'
+                : 'Every benefit instance for the period — open a row for details, codes, and status.'
+          }
+          actions={<PeriodSelector view={view} today={today} lifetime={lifetime} />}
+        />
+        <Filters holders={options.holders} cards={options.cards} categories={options.categories} />
+        <div className="mt-10">
+          <Suspense key={JSON.stringify([view, filters, lifetime, searchScope])} fallback={<PageSkeleton />}>
+            <BenefitsContent
+              view={view}
+              filters={filters}
+              filtered={filtered}
+              lifetime={lifetime}
+              searchScope={searchScope}
+            />
+          </Suspense>
+        </div>
+      </ContentStage>
+    </BenefitsLoadingProvider>
   );
 }

@@ -11,6 +11,7 @@ import {
   type BenefitGroupMode,
 } from './group';
 import { STATUS_OPTIONS } from './statuses';
+import { useBenefitsLoading } from './benefits-loading-provider';
 
 export interface FilterOption {
   id: string;
@@ -31,7 +32,9 @@ export function Filters({
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const [, start] = useTransition();
+  const { startTransition: loadingStart } = useBenefitsLoading();
+  const [, localStart] = useTransition();
+  const start = loadingStart || localStart;
   const holder = sp.get('holder') ?? '';
   const card = sp.get('card') ?? '';
   const status = sp.get('status') ?? '';
@@ -276,6 +279,12 @@ export function Filters({
                   setText(val);
                   if (!val.trim() && spRef.current.get('search_scope')) {
                     set({ search_scope: '', q: '' });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    set({ q: text.trim() });
                   }
                 }}
                 className="pl-9 w-full"
