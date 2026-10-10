@@ -17,6 +17,7 @@ export type BenefitFilters = {
   offerFilter?: 'all' | 'discount';
   /** Not Ordered only: `1` lapsed rows, `0` still in period. */
   lapsed?: '0' | '1';
+  searchScope?: 'current' | 'all';
 };
 
 export async function BenefitsContent({
@@ -24,18 +25,21 @@ export async function BenefitsContent({
   filters,
   filtered,
   lifetime = false,
+  searchScope = 'current',
 }: {
   view: ViewedPeriod;
   filters: BenefitFilters;
   filtered: boolean;
   lifetime?: boolean;
+  searchScope?: 'current' | 'all';
 }) {
   let items: InstanceListItem[];
+  const isAll = searchScope === 'all' || filters.searchScope === 'all';
   try {
     items = await loadBenefitsAction({
       view,
       ...filters,
-      scope: lifetime ? 'lifetime' : undefined,
+      scope: isAll ? 'all' : lifetime ? 'lifetime' : undefined,
     });
   } catch (e) {
     unstable_rethrow(e);
@@ -48,9 +52,11 @@ export async function BenefitsContent({
         title={filtered ? 'No matches' : lifetime ? 'Nothing yet' : 'Nothing in this period'}
         description={
           filtered
-            ? lifetime
-              ? 'Try clearing a filter or pick a single period above.'
-              : 'Try clearing a filter or choosing another period.'
+            ? isAll
+              ? 'Try adjusting your search terms or switch back to current filters.'
+              : lifetime
+                ? 'Try clearing a filter or pick a single period above.'
+                : 'Try clearing a filter or choosing another period.'
             : 'Add a card on the Cards page — benefits appear here automatically.'
         }
       />

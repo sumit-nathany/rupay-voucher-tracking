@@ -241,6 +241,46 @@ describe('listInstances', () => {
     expect(ids(byBenefit)).toEqual([idQ3Beta]);
   });
 
+  it('searches with scope="all" across all periods and ignores active filter constraints', async () => {
+    // Current period (Q3) search for "Alpha" only matches instances in Q3 (idQ3Alpha and idSkipped), not idQ2 (in Q2).
+    const q3Search = await listInstances(A, { view: Q3, search: 'Alpha' });
+    expect(ids(q3Search)).toContain(idQ3Alpha);
+    expect(ids(q3Search)).toContain(idSkipped);
+    expect(ids(q3Search)).not.toContain(idQ2);
+
+    // Searching across everything (scope='all') returns matches from all periods (including Q2).
+    const allSearch = await listInstances(A, { view: Q3, scope: 'all', search: 'Alpha' });
+    expect(ids(allSearch)).toContain(idQ2);
+    expect(ids(allSearch)).toContain(idQ3Alpha);
+    expect(ids(allSearch)).toContain(idSkipped);
+
+    // scope='all' also bypasses active holder and status filter constraints.
+    const constrainedSearch = await listInstances(A, {
+      view: Q3,
+      scope: 'all',
+      holderId: holderA1,
+      status: 'Not Ordered',
+      search: 'Alpha',
+    });
+    // Even though holderA1 and Not Ordered were specified, scope='all' ignores them:
+    expect(ids(constrainedSearch)).toContain(idQ2);
+    expect(ids(constrainedSearch)).toContain(idQ3Alpha);
+    expect(ids(constrainedSearch)).toContain(idSkipped); // holderA2 and status Skipped
+
+    // Also works with searchScope='all' parameter
+    const searchScopeAll = await listInstances(A, { view: Q3, searchScope: 'all', search: 'Alpha' });
+    expect(ids(searchScopeAll)).toContain(idQ2);
+
+    // Searching with scope='all' without a search query cleanly returns all instances across periods
+    const allNoSearch = await listInstances(A, { view: Q3, scope: 'all' });
+    expect(allNoSearch.length).toBeGreaterThan(q3Search.length);
+    expect(ids(allNoSearch)).toContain(idQ2);
+    expect(ids(allNoSearch)).toContain(idYear);
+
+    // Workspace isolation is still strictly preserved
+    expect(ids(allSearch)).not.toContain(idB);
+  });
+
   it('never leaks codeEncrypted; exposes hasCode only', async () => {
     const rows = await listInstances(A, { view: Q3 });
     expect(JSON.stringify(rows)).not.toContain('ENCRYPTED-BLOB-XYZ');
@@ -450,5 +490,24 @@ describe('discount coupons', () => {
     expect(after.missedOrderLifetimeCount).toBe(before.missedOrderLifetimeCount);
     expect(before.missedOrderLifetime).toBe(1300);
     expect(before.missedOrderLifetimeCount).toBe(4);
+  });
+
+  it('includes discount coupons when searching across everything with scope="all"', async () => {
+    const discount = await mkVersion('20% Discount on Flights', '500.00');
+    await db
+      .update(benefitCatalogVersions)
+      .set({ benefitProvider: 'FlightBooking', offerKind: 'discount' })
+      .where(eq(benefitCatalogVersions.id, discount.versionId));
+    const discId = await mk({
+      ws: A, card: cardA1, ben: discount, ...q3, status: 'Not Ordered',
+    });
+
+    // Default search excludes discount coupons
+    const defaultSearch = await listInstances(A, { view: Q3, search: 'FlightBooking' });
+    expect(ids(defaultSearch)).not.toContain(discId);
+
+    // Searching across everything includes discount coupons
+    const allSearch = await listInstances(A, { view: Q3, scope: 'all', search: 'FlightBooking' });
+    expect(ids(allSearch)).toContain(discId);
   });
 });

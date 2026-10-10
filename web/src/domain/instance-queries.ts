@@ -47,8 +47,10 @@ const filterSchema = z.strictObject({
   offerFilter: z.enum(['voucher', 'all', 'discount']).optional(),
   /** With status Not Ordered: `1` = lapsed only, `0` = not lapsed only. */
   lapsed: z.enum(['0', '1']).optional(),
-  /** All workspace periods — ignores `view` for the period filter. */
-  scope: z.literal('lifetime').optional(),
+  /** All workspace periods — ignores `view` for the period filter (`lifetime`), or all periods and filters (`all`). */
+  scope: z.enum(['lifetime', 'all']).optional(),
+  /** `current`: search in current period/filters; `all`: workspace-wide search across all periods and filters. */
+  searchScope: z.enum(['current', 'all']).optional(),
 });
 
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
@@ -365,20 +367,24 @@ export async function listInstances(
     search?: string;
     offerFilter?: 'voucher' | 'all' | 'discount';
     lapsed?: '0' | '1';
-    scope?: 'lifetime';
+    scope?: 'lifetime' | 'all';
+    searchScope?: 'current' | 'all';
   },
 ): Promise<InstanceListItem[]> {
   const f = parse(filterSchema, input);
+  const isAll = f.scope === 'all' || f.searchScope === 'all';
   const conds: SQL[] = [];
-  if (f.scope !== 'lifetime') conds.push(periodClause(f.view, ctx.today));
-  if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
-  if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
-  if (f.benefitId) {
-    conds.push(
-      or(eq(benefitInstances.benefitId, f.benefitId), eq(benefitInstances.overrideId, f.benefitId))!,
-    );
+  if (!isAll && f.scope !== 'lifetime') conds.push(periodClause(f.view, ctx.today));
+  if (!isAll) {
+    if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
+    if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
+    if (f.benefitId) {
+      conds.push(
+        or(eq(benefitInstances.benefitId, f.benefitId), eq(benefitInstances.overrideId, f.benefitId))!,
+      );
+    }
+    if (f.status) conds.push(eq(benefitInstances.orderStatus, f.status));
   }
-  if (f.status) conds.push(eq(benefitInstances.orderStatus, f.status));
   if (f.search) {
     const p = `%${likeEscape(f.search)}%`;
     conds.push(
@@ -401,11 +407,13 @@ export async function listInstances(
     );
   }
   let items = await query(ctx, conds.length ? and(...conds) : undefined);
-  const offerFilter = f.offerFilter ?? 'voucher';
-  if (offerFilter === 'voucher') items = items.filter((it) => it.offerKind !== 'discount');
-  else if (offerFilter === 'discount') items = items.filter((it) => it.offerKind === 'discount');
-  if (f.lapsed === '1') items = items.filter((it) => it.lapsed);
-  else if (f.lapsed === '0') items = items.filter((it) => !it.lapsed);
+  if (!isAll) {
+    const offerFilter = f.offerFilter ?? 'voucher';
+    if (offerFilter === 'voucher') items = items.filter((it) => it.offerKind !== 'discount');
+    else if (offerFilter === 'discount') items = items.filter((it) => it.offerKind === 'discount');
+    if (f.lapsed === '1') items = items.filter((it) => it.lapsed);
+    else if (f.lapsed === '0') items = items.filter((it) => !it.lapsed);
+  }
   return items;
 }
 

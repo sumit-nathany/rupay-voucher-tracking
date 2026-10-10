@@ -65,6 +65,8 @@ export function Filters({
 
   const visibleCards = holder ? cards.filter((c) => c.holderId === holder) : cards;
   const lapsed = sp.get('lapsed') ?? '';
+  const searchScopeRaw = sp.get('search_scope') ?? '';
+  const searchScope = searchScopeRaw === 'all' ? 'all' : 'current';
   const active =
     holder ||
     card ||
@@ -74,7 +76,8 @@ export function Filters({
     discounts ||
     urlSearch ||
     lapsed ||
-    groupRaw;
+    groupRaw ||
+    searchScope === 'all';
 
   return (
     <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
@@ -82,6 +85,11 @@ export function Filters({
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Filter className="h-3.5 w-3.5" aria-hidden /> Refine list
         </div>
+        {searchScope === 'all' && (
+          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            Across everything
+          </span>
+        )}
         {active && (
           <button
             type="button"
@@ -98,6 +106,7 @@ export function Filters({
                 q: '',
                 lapsed: '',
                 group: '',
+                search_scope: '',
               });
             }}
           >
@@ -106,7 +115,12 @@ export function Filters({
         )}
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center">
+        <div
+          className={`grid grid-cols-2 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center transition-opacity ${
+            searchScope === 'all' ? 'opacity-60' : ''
+          }`}
+          title={searchScope === 'all' ? 'Filters are ignored while searching across everything' : undefined}
+        >
           <Select
             value={holder || '__all__'}
             onValueChange={(v) => set({ holder: v === '__all__' ? '' : v, card: '' })}
@@ -203,30 +217,52 @@ export function Filters({
             <Input
               type="search"
               aria-label="Search benefits"
-              placeholder="Search…"
+              placeholder={searchScope === 'all' ? 'Search everything…' : 'Search…'}
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="pl-9 w-full"
             />
           </div>
 
-          <Select
-            value={groupMode}
-            onValueChange={(v) => {
-              const mode = v as BenefitGroupMode;
-              set({ group: mode === groupDefault ? '' : mode });
-            }}
-          >
-            <SelectTrigger aria-label="Group by" className="w-full min-w-0 sm:w-fit sm:max-w-full order-2 sm:order-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="period">Group: period</SelectItem>
-              <SelectItem value="card">Group: card</SelectItem>
-              <SelectItem value="holder">Group: holder</SelectItem>
-              <SelectItem value="benefit">Group: benefit</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-2 gap-2 sm:contents">
+            <Select
+              value={groupMode}
+              onValueChange={(v) => {
+                const mode = v as BenefitGroupMode;
+                set({ group: mode === groupDefault ? '' : mode });
+              }}
+            >
+              <SelectTrigger aria-label="Group by" className="w-full min-w-0 sm:w-fit sm:max-w-full sm:order-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="period">Group: period</SelectItem>
+                <SelectItem value="card">Group: card</SelectItem>
+                <SelectItem value="holder">Group: holder</SelectItem>
+                <SelectItem value="benefit">Group: benefit</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={searchScope}
+              onValueChange={(v) => set({ search_scope: v === 'all' ? 'all' : '' })}
+            >
+              <SelectTrigger
+                aria-label="Search scope"
+                className={`w-full min-w-0 sm:w-fit sm:max-w-full sm:order-3 ${
+                  searchScope === 'all'
+                    ? 'border-primary/50 bg-primary/5 text-primary font-medium'
+                    : ''
+                }`}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current">Current filters</SelectItem>
+                <SelectItem value="all">Across everything</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
     </div>

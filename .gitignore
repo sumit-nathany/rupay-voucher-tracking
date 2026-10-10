@@ -13,3 +13,5 @@
 # Supabase CLI
 supabase/.temp
 .temp
+.vercel
+.env*

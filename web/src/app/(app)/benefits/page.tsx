@@ -60,6 +60,8 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   const lapsedRaw = first(sp.lapsed);
   const lapsed = lapsedRaw === '1' ? '1' : lapsedRaw === '0' ? '0' : undefined;
   const benefitRaw = first(sp.benefit);
+  const searchScopeRaw = first(sp.search_scope);
+  const searchScope = searchScopeRaw === 'all' ? 'all' : 'current';
   const filters: BenefitFilters = {
     holderId: holder && UUID.test(holder) ? holder : undefined,
     cardId: card && UUID.test(card) ? card : undefined,
@@ -68,6 +70,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
     search: q || undefined,
     offerFilter: offerFilter === 'voucher' ? undefined : offerFilter,
     lapsed,
+    searchScope,
   };
   const filtered =
     Boolean(
@@ -79,7 +82,8 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
         filters.lapsed,
     ) ||
     offerFilter !== 'voucher' ||
-    lifetime;
+    lifetime ||
+    searchScope === 'all';
   const options = await loadOptions(filters.holderId, filters.cardId);
 
   return (
@@ -88,16 +92,24 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
         eyebrow="Work queue"
         title={lifetime ? 'Lifetime' : viewLabel(view)}
         description={
-          lifetime
-            ? 'Every matching benefit across all periods — open a row for details, codes, and status.'
-            : 'Every benefit instance for the period — open a row for details, codes, and status.'
+          searchScope === 'all'
+            ? 'Searching across all periods, holders, cards, and offer types.'
+            : lifetime
+              ? 'Every matching benefit across all periods — open a row for details, codes, and status.'
+              : 'Every benefit instance for the period — open a row for details, codes, and status.'
         }
         actions={<PeriodSelector view={view} today={today} lifetime={lifetime} />}
       />
       <Filters holders={options.holders} cards={options.cards} benefits={options.benefits} />
       <div className="mt-10">
-        <Suspense key={JSON.stringify([view, filters, lifetime])} fallback={<PageSkeleton />}>
-          <BenefitsContent view={view} filters={filters} filtered={filtered} lifetime={lifetime} />
+        <Suspense key={JSON.stringify([view, filters, lifetime, searchScope])} fallback={<PageSkeleton />}>
+          <BenefitsContent
+            view={view}
+            filters={filters}
+            filtered={filtered}
+            lifetime={lifetime}
+            searchScope={searchScope}
+          />
         </Suspense>
       </div>
     </ContentStage>
