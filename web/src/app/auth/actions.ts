@@ -7,7 +7,8 @@ export async function bootstrapSessionAction(): Promise<{ ok: true } | { ok: fal
   try {
     await getCtx();
     return { ok: true };
-  } catch {
+  } catch (err) {
+    console.error('[bootstrapSessionAction] Workspace setup failed:', err);
     return {
       ok: false,
       message: 'Signed in, but your workspace could not be set up. The database may be unreachable.',

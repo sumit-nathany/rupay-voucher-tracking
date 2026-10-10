@@ -2,7 +2,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-const url = process.env.DATABASE_URL;
+const url =
+  (process.env.APP_ENV === "preprod" ? process.env.PREPROD_DATABASE_URL : undefined) ||
+  process.env.DATABASE_URL;
+
 if (!url) {
   throw new Error("DATABASE_URL is not set");
 }
