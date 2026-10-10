@@ -43,6 +43,20 @@
       "when": 1791583600000,
       "tag": "0005_boi_debit_cab_pick_one",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791620000000,
+      "tag": "0006_card_nickname_and_digits",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791630000000,
+      "tag": "0007_boi_debit_cab_heal",
+      "breakpoints": true
     }
   ]
 }

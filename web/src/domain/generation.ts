@@ -15,6 +15,7 @@ import {
   type FrequencyPeriod,
   type ViewedPeriod,
 } from '@/lib/periods';
+import { BOI_SELECT_DEBIT_BANK_CARD_TYPE_ID, healBoiDebitCabInstances } from './boi-debit-cab-pick-one';
 
 export interface EnsureResult {
   inserted: number;
@@ -81,6 +82,10 @@ export async function ensureInstances(ctx: Ctx, view: ViewedPeriod): Promise<Ens
         .innerJoin(bankCardTypes, eq(bankCardTypes.id, cards.bankCardTypeId))
         .where(eq(cards.workspaceId, ctx.workspaceId))
     ).filter((c) => c.cardActive !== false && c.typeActive !== false);
+
+    if (cardRows.some((c) => c.bankCardTypeId === BOI_SELECT_DEBIT_BANK_CARD_TYPE_ID)) {
+      await healBoiDebitCabInstances(tx, ctx.workspaceId);
+    }
 
     const values: NewInstance[] = [];
 
