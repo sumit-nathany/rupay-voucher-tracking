@@ -37,7 +37,6 @@ import {
   statusKind,
   validateCode,
   validateDetails,
-  WORKFLOW_STATUSES,
   type DetailsErrors,
   type DetailsForm,
 } from './helpers';
