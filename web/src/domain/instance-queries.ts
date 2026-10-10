@@ -11,6 +11,7 @@ import {
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
 import { calendarQuarterForDate, expandViewedPeriod, type ViewedPeriod } from '@/lib/periods';
+import { benefitOptionLabel } from './benefit-label';
 import { type OfferKind, resolveOfferKind } from './benefit-offer-kind';
 import { ORDER_STATUSES, type OrderStatus } from './instances';
 import { ValidationError } from './workspace-data';
@@ -408,17 +409,7 @@ export interface BenefitFilterOption {
   label: string;
 }
 
-/** Label for benefit filter options and list section headers (`type · provider`). */
-export function benefitOptionLabel(
-  benefitType: string | null,
-  benefitProvider: string | null,
-  exactBenefit: string | null,
-): string {
-  const name = (exactBenefit ?? '').trim();
-  const type = (benefitType ?? '').trim();
-  const prov = (benefitProvider ?? '').trim() || name;
-  return type ? `${type} · ${prov}` : prov || name || 'Benefit';
-}
+export { benefitOptionLabel } from './benefit-label';
 
 /**
  * Distinct catalog benefits and card-level adds that appear on workspace instances.

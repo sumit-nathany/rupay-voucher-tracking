@@ -1,4 +1,5 @@
-import { benefitOptionLabel, type InstanceListItem } from '@/domain/instance-queries';
+import { benefitOptionLabel } from '@/domain/benefit-label';
+import type { InstanceListItem } from '@/domain/instance-queries';
 import { monthName } from '@/components/dashboard/view-params';
 
 export type BenefitGroupMode = 'period' | 'card' | 'holder' | 'benefit';

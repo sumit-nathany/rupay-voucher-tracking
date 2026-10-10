@@ -83,7 +83,7 @@ export function mergeBoiSelectDebitOlaUberCab<T extends CabOfferLike>(benefits: 
         portalOfferId: null,
       },
     ].sort((a, b) => a.provider.localeCompare(b.provider)),
-  } as T;
+  } as unknown as T;
 
   return [...rest, merged];
 }
