@@ -1,4 +1,5 @@
 'use server';
+import { revalidatePath } from 'next/cache';
 import { getCtx } from '@/lib/session';
 import * as d from '@/domain/workspace-data';
 
@@ -15,11 +16,17 @@ export async function getCard(input: unknown) {
   return d.getCard(await getCtx(), input);
 }
 export async function createCard(input: unknown) {
-  return d.createCard(await getCtx(), input);
+  const res = await d.createCard(await getCtx(), input);
+  revalidatePath('/', 'layout');
+  return res;
 }
 export async function updateCard(input: unknown) {
-  return d.updateCard(await getCtx(), input);
+  const res = await d.updateCard(await getCtx(), input);
+  revalidatePath('/', 'layout');
+  return res;
 }
 export async function deleteCard(input: unknown) {
-  return d.deleteCard(await getCtx(), input);
+  const res = await d.deleteCard(await getCtx(), input);
+  revalidatePath('/', 'layout');
+  return res;
 }

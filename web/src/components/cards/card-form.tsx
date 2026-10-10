@@ -58,7 +58,7 @@ function CardFormBody({
     if (t && card.displayName === t.displayName) return '';
     return card.displayName;
   });
-  const [lastDigits, setLastDigits] = React.useState(card?.lastDigits ?? '');
+  const [lastDigits, setLastDigits] = React.useState(card?.lastDigits || (card ? '0000' : ''));
   const [trackingFrom, setTrackingFrom] = React.useState(card?.trackingFrom ?? '');
   const [active, setActive] = React.useState(card?.active ?? true);
 
@@ -96,7 +96,7 @@ function CardFormBody({
               lastDigits: cleanDigits,
               trackingFrom: trackingFrom || undefined,
             }),
-      'Could not save. Check that the last 4 digits are not already used for this card type.',
+      'Could not save card. Check the card details and try again.',
     );
     if (ok) close();
   }
@@ -176,14 +176,26 @@ function CardFormBody({
         label="Nickname (optional)"
         hint="Leave blank to use the bank card name. When set, shown in lists instead."
       >
-        <Input
-          id="card-name"
-          maxLength={100}
-          placeholder={type?.displayName ?? 'Optional nickname'}
-          value={displayName}
-          aria-describedby="card-name-hint"
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
+        <div className="relative">
+          <Input
+            id="card-name"
+            maxLength={100}
+            placeholder={type?.displayName ?? 'Optional nickname'}
+            value={displayName}
+            aria-describedby="card-name-hint"
+            onChange={(e) => setDisplayName(e.target.value)}
+            className={displayName ? 'pr-14' : ''}
+          />
+          {displayName && (
+            <button
+              type="button"
+              onClick={() => setDisplayName('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </Field>
 
       <Field id="card-digits" label="Last 4 digits" hint="Enter the last 4 digits of the card number.">

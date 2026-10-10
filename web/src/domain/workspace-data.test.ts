@@ -97,6 +97,12 @@ describe('cards', () => {
     expect(nicknamed.displayName).toBe('My Eterna');
     const cleared = await d.updateCard(A, { id: nicknamed.id, displayName: null });
     expect(cleared.displayName).toBe('BoB Eterna');
+
+    // A second card of the same type also has its nickname removed to empty string without conflict
+    const nicknamed2 = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'My Other Eterna', lastDigits: '7777' });
+    expect(nicknamed2.displayName).toBe('My Other Eterna');
+    const cleared2 = await d.updateCard(A, { id: nicknamed2.id, displayName: '' });
+    expect(cleared2.displayName).toBe('BoB Eterna');
   });
   it('bank_card_type_id is immutable with a clean error', async () => {
     await expect(d.updateCard(A, { id: cardA, bankCardTypeId: typeY })).rejects.toBeInstanceOf(d.ImmutableFieldError);
