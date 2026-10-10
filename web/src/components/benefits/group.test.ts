@@ -197,13 +197,13 @@ describe('sortBenefitItems', () => {
     expect(sortBenefitItems([discount, voucher], 'value-asc').map((i) => i.id)).toEqual(['v', 'd']);
   });
 
-  it('sorts by category alphabetically, then benefit name, then value descending', () => {
-    const it1 = { ...mk('1', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 100), benefitType: 'Travel', benefitName: 'Flight' };
+  it('breaks ties using benefitType and benefitName', () => {
+    const it1 = { ...mk('1', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 200), benefitType: 'Travel', benefitName: 'Flight' };
     const it2 = { ...mk('2', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 200), benefitType: 'Dining', benefitName: 'Restaurant B' };
-    const it3 = { ...mk('3', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 500), benefitType: 'Dining', benefitName: 'Restaurant A' };
+    const it3 = { ...mk('3', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 200), benefitType: 'Dining', benefitName: 'Restaurant A' };
     const discount = { ...mk('4', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 1000), benefitType: 'Apparel', benefitName: 'Shop', offerKind: 'discount' as const };
 
-    const sorted = sortBenefitItems([it1, it2, it3, discount], 'category');
+    const sorted = sortBenefitItems([it1, it2, it3, discount], 'value-desc');
     expect(sorted.map((i) => i.id)).toEqual(['3', '2', '1', '4']);
   });
 });

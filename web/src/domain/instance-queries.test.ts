@@ -72,7 +72,7 @@ beforeAll(async () => {
   alpha = await mkVersion('Alpha Spa', '500.00');
   beta = await mkVersion('Beta Movie', '200.00');
   const annual = await mkVersion('Gaana Annual', null, 'Annual');
-  const half = await mkVersion('Half Golf', '1000.00', '6 months');
+  const half = await mkVersion('Half Gym', '1000.00', '6 months');
 
   const mkHolder = async (w: string, name: string) =>
     (await db.insert(cardHolders).values({ workspaceId: w, name }).returning())[0].id;
@@ -401,7 +401,7 @@ describe('getDashboardSummary', () => {
   it('counts every status over the viewed set, zero-filled', async () => {
     const s = await getDashboardSummary(A, Q3);
     expect(s.counts).toEqual({
-      'Not Ordered': 5, // Alpha Q3, Beta Q3, Aardvark, Half Golf H2, Gaana year
+      'Not Ordered': 5, // Alpha Q3, Beta Q3, Aardvark, Half Gym H2, Gaana year
       'Ordered but Coupon not received': 1,
       'Coupon Received': 4,
       'Coupon Redeemed': 1,

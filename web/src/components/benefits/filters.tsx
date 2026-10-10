@@ -86,7 +86,7 @@ export function Filters({
     card ||
     category ||
     status ||
-    (sort && sort !== 'category') ||
+    (sort && sort !== 'value-desc') ||
     discounts ||
     urlSearch ||
     lapsed ||
@@ -206,14 +206,13 @@ export function Filters({
 
           {/* Sort */}
           <Select
-            value={sort === 'value-desc' || sort === 'value-asc' ? sort : 'category'}
-            onValueChange={(v) => set({ sort: v === 'category' ? '' : v })}
+            value={sort === 'value-asc' ? 'value-asc' : 'value-desc'}
+            onValueChange={(v) => set({ sort: v === 'value-desc' ? '' : v })}
           >
-            <SelectTrigger aria-label="Sort by" className={`${base} ${sort && sort !== 'category' ? activeFilter : ''}`}>
+            <SelectTrigger aria-label="Sort by" className={`${base} ${sort && sort !== 'value-desc' ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="category">Order: category</SelectItem>
               <SelectItem value="value-desc">Value: high &#x2192; low</SelectItem>
               <SelectItem value="value-asc">Value: low &#x2192; high</SelectItem>
             </SelectContent>
@@ -239,31 +238,33 @@ export function Filters({
 
         <div className="flex w-full flex-col gap-2 border-border border-t pt-2 sm:border-t-0 sm:pt-0 sm:ml-auto sm:w-auto sm:shrink-0 sm:border-l sm:pl-4">
           {/* Row 1: Group by */}
-          <Select
-            value={groupMode}
-            onValueChange={(v) => {
-              const mode = v as BenefitGroupMode;
-              set({ group: mode === groupDefault ? '' : mode });
-            }}
-          >
-            <SelectTrigger
-              aria-label="Group by"
-              className={`w-fit ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
+          <div className="flex justify-end">
+            <Select
+              value={groupMode}
+              onValueChange={(v) => {
+                const mode = v as BenefitGroupMode;
+                set({ group: mode === groupDefault ? '' : mode });
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="period">Group: period</SelectItem>
-              <SelectItem value="category">Group: category</SelectItem>
-              <SelectItem value="card">Group: card</SelectItem>
-              <SelectItem value="holder">Group: holder</SelectItem>
-              <SelectItem value="benefit">Group: benefit</SelectItem>
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                aria-label="Group by"
+                className={`w-fit self-end ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="period">Group: period</SelectItem>
+                <SelectItem value="category">Group: category</SelectItem>
+                <SelectItem value="card">Group: card</SelectItem>
+                <SelectItem value="holder">Group: holder</SelectItem>
+                <SelectItem value="benefit">Group: benefit</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Row 2: Search input + scope */}
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+          <div className="flex items-center justify-end gap-2">
+            <div className="relative w-36 sm:w-44 focus-within:w-60 transition-all duration-200">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <Input
                 type="search"

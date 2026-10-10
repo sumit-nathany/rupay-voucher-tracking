@@ -206,24 +206,14 @@ export function groupBenefitItems(items: InstanceListItem[], mode: BenefitGroupM
   }
 }
 
-/** Missing URL `sort` defaults to category. Discount coupons stay after gift vouchers. */
-export type BenefitSort = 'category' | 'value-desc' | 'value-asc';
+/** Missing URL `sort` defaults to value-desc. Discount coupons stay after gift vouchers. */
+export type BenefitSort = 'value-desc' | 'value-asc';
 
 function offerKindRank(kind: InstanceListItem['offerKind']) {
   return kind === 'discount' ? 1 : 0;
 }
 
 export function sortBenefitItems(items: InstanceListItem[], sort: BenefitSort): InstanceListItem[] {
-  if (sort === 'category') {
-    return [...items].sort(
-      (a, b) =>
-        offerKindRank(a.offerKind) - offerKindRank(b.offerKind) ||
-        (a.benefitType || '').localeCompare(b.benefitType || '', undefined, { sensitivity: 'base' }) ||
-        (a.benefitName || '').localeCompare(b.benefitName || '', undefined, { sensitivity: 'base' }) ||
-        b.value - a.value ||
-        a.id.localeCompare(b.id),
-    );
-  }
   const dir = sort === 'value-asc' ? 1 : -1;
   return [...items].sort(
     (a, b) =>

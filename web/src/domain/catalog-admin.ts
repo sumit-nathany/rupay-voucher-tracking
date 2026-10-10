@@ -10,7 +10,7 @@ import {
   systemAdmins,
 } from '@/db/schema';
 import { AuthzError, NotFoundError, type Ctx } from '@/lib/context';
-import { OFFER_KINDS, type OfferKind } from '@/domain/benefit-offer-kind';
+import { inferOfferKind, OFFER_KINDS, type OfferKind } from '@/domain/benefit-offer-kind';
 import { parseCardList } from '@/lib/card-list';
 
 // Admin-only curation of the shared catalog (PLAN.md Phase 3 / Database notes).
@@ -185,7 +185,7 @@ export async function createBenefit(
         frequency: p.frequency,
         instanceCount: p.instanceCount,
         defaultCashValue: toMoney(p.defaultCashValue),
-        offerKind: p.offerKind ?? 'voucher',
+        offerKind: p.offerKind ?? inferOfferKind(p.benefitType, p.benefitProvider ?? null, p.exactBenefit),
         effectiveFrom: p.effectiveFrom,
         effectiveTo: p.effectiveTo ?? null,
       })

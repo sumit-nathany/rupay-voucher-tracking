@@ -19,6 +19,7 @@ import {
   cards,
 } from '@/db/schema';
 import { NotFoundError, type Ctx, type Database } from '@/lib/context';
+import { inferOfferKind } from '@/domain/benefit-offer-kind';
 
 export class ValidationError extends Error {}
 export class ConflictError extends Error {}
@@ -444,6 +445,7 @@ export async function createOverride(ctx: Ctx, input: unknown) {
         frequency: v.frequency,
         instanceCount: v.instanceCount,
         defaultCashValue: v.defaultCashValue ?? null,
+        offerKind: inferOfferKind(v.benefitType, v.benefitProvider ?? null, v.exactBenefit),
       })
       .returning();
     return row;
