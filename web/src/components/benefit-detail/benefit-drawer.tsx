@@ -23,7 +23,6 @@ import {
   revealCodeAction,
   setCodeAction,
   setStatusAction,
-  skipInstanceAction,
   unskipInstanceAction,
   updateDetailsAction,
 } from '@/actions/instances';
@@ -41,7 +40,6 @@ import {
   WORKFLOW_STATUSES,
   canEdit,
   canRecordSale,
-  canSkip,
   errorMessage,
   formatDate,
   formatMoney,
@@ -275,21 +273,9 @@ function HeroCard({
 
       {/* Status Row */}
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <Label htmlFor={selectId} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Status
-          </Label>
-          {canSkip(inst.orderStatus) && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void run(() => skipInstanceAction(inst.id))}
-              className="text-xs font-medium text-muted-foreground hover:text-destructive hover:underline"
-            >
-              Skip this benefit
-            </button>
-          )}
-        </div>
+        <Label htmlFor={selectId} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Status
+        </Label>
 
         <Select value={inst.orderStatus} onValueChange={(v) => void onStatusChange(v)} disabled={busy}>
           <SelectTrigger id={selectId} aria-label="Order status" className="h-9 w-full bg-background font-medium text-sm">
