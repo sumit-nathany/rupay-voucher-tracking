@@ -7,13 +7,11 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
-import {
-  BOI_SELECT_DEBIT_CAB_BENEFIT_ID,
-  BOI_SELECT_DEBIT_CAB_OLA_OPTION_ID,
-  BOI_SELECT_DEBIT_CAB_UBER_BENEFIT_ID,
-  BOI_SELECT_DEBIT_CAB_UBER_OPTION_ID,
-  BOI_SELECT_DEBIT_CAB_VERSION_ID,
-} from '../src/domain/boi-debit-cab-pick-one';
+export const BOI_SELECT_DEBIT_CAB_BENEFIT_ID = '54a0d991-3147-40b4-8bc7-15cac91e9089';
+export const BOI_SELECT_DEBIT_CAB_VERSION_ID = '8e7921d8-f039-4f00-b069-976973aa1fe3';
+export const BOI_SELECT_DEBIT_CAB_OLA_OPTION_ID = '7c4e6a10-b011-4cab-8001-010000000001';
+export const BOI_SELECT_DEBIT_CAB_UBER_OPTION_ID = '7c4e6a10-b011-4cab-8001-010000000002';
+export const BOI_SELECT_DEBIT_CAB_UBER_BENEFIT_ID = '899823cc-b1d4-43b3-aaf0-828611fe5fb6';
 
 async function main() {
   const url = process.env.DATABASE_URL;

@@ -16,7 +16,7 @@ import postgres from "postgres";
 import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
 import { linkPortalIds, replaceCardBenefits } from "./load";
-import { isBoiSelectDebitCatalogCard, mergeBoiSelectDebitOlaUberCab } from "../../src/domain/boi-debit-cab-pick-one";
+import { isBoiSelectDebitCatalogCard, mergeBoiSelectDebitOlaUberCab } from "./boi-cab";
 import { transformCard, type PortalDeal, type PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";

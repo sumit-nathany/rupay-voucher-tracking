@@ -3,7 +3,7 @@ import {
   isBoiSelectDebitCatalogCard,
   mergeBoiSelectDebitOlaUberCab,
   type CabOfferLike,
-} from './boi-debit-cab-pick-one';
+} from './boi-cab';
 
 const cab = (provider: string, exact: string): CabOfferLike => ({
   benefitType: 'Cab Services',
@@ -52,7 +52,7 @@ describe('mergeBoiSelectDebitOlaUberCab', () => {
     const uber = { ...cab('Uber', 'Uber voucher'), benefitType: 'Travel' };
     const out = mergeBoiSelectDebitOlaUberCab([ola, uber]);
     expect(out).toHaveLength(1);
-    expect(out[0].benefitType).toBe('Travel');
+    expect(out[0].benefitType).toBe('Cab Services');
     expect(out[0].options).toHaveLength(2);
   });
 });
