@@ -34,7 +34,7 @@ export default async function HoldersPage() {
             return (
               <li key={h.id}>
                 <Card className="h-full transition-shadow hover:shadow-md">
-                  <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <CardContent className="flex flex-row items-center justify-between gap-4 p-5">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <span
                         aria-hidden
