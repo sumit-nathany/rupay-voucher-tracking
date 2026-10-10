@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, KeyRound, Pause, Play, Trash2, CreditCard } from 'lucide-react';
+import { Plus, KeyRound, Pause, Play, Trash2, CreditCard, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -136,6 +136,21 @@ function AccountCard({
           <p className="text-[11px] font-medium text-destructive">
             Reason: {account.statusDetailCode.replace(/_/g, ' ')}
           </p>
+        )}
+
+        {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() && (
+          <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+            <Clock className="h-3 w-3 shrink-0" />
+            <span>
+              24h limit active until{' '}
+              {new Date(account.cooldownUntil).toLocaleString('en-IN', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
         )}
 
         <div className="text-[11px] text-muted-foreground space-y-0.5 pt-1 border-t border-border/40">

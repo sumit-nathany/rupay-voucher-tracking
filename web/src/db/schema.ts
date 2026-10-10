@@ -468,6 +468,7 @@ export const portalAccounts = app.table(
     lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
     statusDetailCode: text("status_detail_code"),
+    cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
     createdAt: createdAt().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

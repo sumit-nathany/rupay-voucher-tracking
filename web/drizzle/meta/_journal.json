@@ -99,6 +99,13 @@
       "when": 1791690000000,
       "tag": "0013_portal_card_mappings_payment_details",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791700000000,
+      "tag": "0014_portal_accounts_cooldown_until",
+      "breakpoints": true
     }
   ]
 }

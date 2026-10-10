@@ -1,0 +1,338 @@
+import path from 'path';
+import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq } from 'drizzle-orm';
+import { chromium, type BrowserContext, type Page } from 'playwright';
+import * as schema from '../../web/src/db/schema';
+import type { Database } from '../../web/src/lib/context';
+import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
+import { decryptPaymentDetails } from '../../web/src/lib/card-payment-details';
+import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
+import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/lib/portal-cooldown';
+
+export async function runBrowserTest() {
+  const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
+  if (!dbUrl) {
+    throw new Error('DATABASE_URL or WORKER_DATABASE_URL is required');
+  }
+
+  const client = postgres(dbUrl, { max: 1 });
+  const db = drizzle(client, { schema }) as unknown as Database;
+
+  console.log('--- Step 1: Loading Candidate & Credentials ---');
+  const [account] = await db
+    .select()
+    .from(schema.portalAccounts)
+    .where(eq(schema.portalAccounts.status, 'connected'));
+
+  if (!account) {
+    throw new Error('No connected portal account found in database.');
+  }
+
+  const creds = decryptPortalCredentials(account.credentialsEncrypted, account.id);
+  console.log(`Found account "${account.label}". Decrypted credentials ready.`);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const candidate = await findCandidatesForAccount(db, account.id, today);
+
+  if (!candidate) {
+    console.log('No candidate nominated.');
+    if (account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
+      console.log(`Account is in active 24h cooldown until: ${new Date(account.cooldownUntil).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+    }
+    await client.end();
+    return;
+  }
+
+  const [cardRow] = await db
+    .select({
+      last4: schema.cards.lastDigits,
+      cardName: schema.bankCardTypes.displayName,
+    })
+    .from(schema.cards)
+    .innerJoin(schema.bankCardTypes, eq(schema.cards.bankCardTypeId, schema.bankCardTypes.id))
+    .where(eq(schema.cards.id, candidate.cardId));
+
+  const [instanceRow] = await db
+    .select({
+      id: schema.benefitInstances.id,
+      generatedFromVersion: schema.benefitInstances.generatedFromVersion,
+    })
+    .from(schema.benefitInstances)
+    .where(eq(schema.benefitInstances.id, candidate.instanceId));
+
+  let benefitDetails = {
+    benefitType: 'Unknown',
+    benefitProvider: 'Unknown',
+    exactBenefit: 'Unknown',
+    cashValue: '0',
+  };
+
+  if (instanceRow?.generatedFromVersion) {
+    const [b] = await db
+      .select()
+      .from(schema.benefitCatalogVersions)
+      .where(eq(schema.benefitCatalogVersions.id, instanceRow.generatedFromVersion));
+    if (b) {
+      benefitDetails = {
+        benefitType: b.benefitType,
+        benefitProvider: b.benefitProvider ?? '',
+        exactBenefit: b.exactBenefit,
+        cashValue: b.defaultCashValue ?? '0',
+      };
+    }
+  }
+
+  console.log(`Card: ${cardRow?.cardName} (••${cardRow?.last4})`);
+  console.log(`Benefit: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue})`);
+
+  const [mapping] = await db
+    .select()
+    .from(schema.portalCardMappings)
+    .where(eq(schema.portalCardMappings.cardId, candidate.cardId));
+
+  const paymentDetails = mapping ? decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id) : null;
+  console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
+
+  console.log('\n--- Step 2: Launching Browser with Persistent Profile ---');
+  const userDataDir = path.resolve(process.cwd(), '.browser-data');
+  const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
+    headless: false,
+    slowMo: 60,
+    viewport: { width: 1366, height: 860 },
+  });
+
+  // Track any new tabs / popups that might open (e.g. payment gateway tab)
+  let paymentPage: Page | null = null;
+  context.on('page', (newPage) => {
+    console.log(`[Popup/New Tab detected]: ${newPage.url()}`);
+    paymentPage = newPage;
+  });
+
+  const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
+
+  // Listen for portal transaction responses
+  let cooldownDetectedUntil: Date | null = null;
+  page.on('response', async (res) => {
+    if (res.url().includes('addUserTransaction')) {
+      try {
+        const text = await res.text();
+        const json = JSON.parse(text);
+        const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
+        if (inner.code === 1 && inner.message && isPortalCooldownMessage(inner.message)) {
+          console.log('\n⚠️ Portal 24-Hour Limit Detected:', inner.message);
+          const parsedDate = parsePortalCooldownDate(inner.message);
+          cooldownDetectedUntil = parsedDate ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+          console.log(`Locked until (IST): ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+
+          // Record cooldown in database
+          await recordPortalAccountCooldown(db, account.id, cooldownDetectedUntil, 'daily_limit_reached');
+          console.log('✓ Recorded cooldown in database! No future run will be attempted before this time.');
+        }
+      } catch (e) {
+        console.error('Error parsing addUserTransaction response:', e);
+      }
+    }
+  });
+
+  console.log('Navigating to https://rupayselect.truztee.com ...');
+  await page.goto('https://rupayselect.truztee.com/#/offers', { waitUntil: 'networkidle' });
+
+  // Check if session is already active
+  const cookies = await context.cookies();
+  let jwtCookie = cookies.find((c) => c.name === 'jwt');
+
+  if (!jwtCookie) {
+    console.log('Not signed in yet. Starting login sequence...');
+    const loginButton = page.locator('button:has-text("Login")').first();
+    if (await loginButton.isVisible()) {
+      await loginButton.click();
+      await page.waitForTimeout(500);
+    }
+
+    const emailInput = page.locator('input[type="email"]:visible').first();
+    const passwordInput = page.locator('input[type="password"]:visible').first();
+    await emailInput.fill(creds.loginId);
+    await passwordInput.fill(creds.password);
+
+    console.log('Waiting for reCAPTCHA solution / login...');
+    for (let sec = 0; sec < 120; sec++) {
+      await page.waitForTimeout(1000);
+      const updatedCookies = await context.cookies();
+      jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
+      if (jwtCookie) break;
+
+      const captchaSolved = await page.evaluate(() => {
+        const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
+        return Boolean(textarea && textarea.value.length > 0);
+      });
+
+      if (captchaSolved) {
+        try {
+          const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
+          if (await submitButton.isVisible()) {
+            await submitButton.click({ timeout: 3000 });
+          }
+        } catch {}
+        break;
+      }
+    }
+  } else {
+    console.log('✓ Active session already exists in browser profile!');
+  }
+
+  await page.waitForTimeout(1500);
+
+  console.log('\n--- Step 3: Selecting PNB Card ---');
+  const activeCardText = await page.locator('button.nav-dropdown-trigger').first().textContent().catch(() => '');
+  if (!activeCardText?.includes('PNB')) {
+    console.log('Selecting PNB card in dropdown...');
+    await page.locator('button.nav-dropdown-trigger').first().click();
+    await page.waitForTimeout(400);
+    await page.locator('a.dropdown-item:has-text("PNB Salary Imperial")').first().click();
+    await page.waitForTimeout(1500);
+  } else {
+    console.log('✓ PNB Salary Imperial card already selected.');
+  }
+
+  console.log('\n--- Step 4: Navigating to Gym Access ---');
+  await page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")').click();
+  await page.waitForTimeout(400);
+  await page.locator('a.dropdown-item:has-text("Gym Access")').click();
+  await page.waitForTimeout(2000);
+
+  console.log('\n--- Step 5: Clicking Redeem on Category Page ---');
+  const redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
+  await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
+  await redeemBtn.click();
+  await page.waitForTimeout(1500);
+
+  console.log('\n--- Step 6: Clicking Redeem Now on Benefit Page ---');
+  const redeemNowBtn = page.locator('button:has-text("Redeem Now")').first();
+  await redeemNowBtn.waitFor({ state: 'visible', timeout: 8000 });
+  await redeemNowBtn.click();
+  await page.waitForTimeout(1000);
+
+  console.log('\n--- Step 7: Payment Confirmation Modal ---');
+  const continueToPaymentBtn = page.locator('.payment-modal .payment-continue-btn, button:has-text("Continue to Payment"):visible').first();
+  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 5000 });
+  console.log('Clicking "Continue to Payment"...');
+  await continueToPaymentBtn.click();
+
+  console.log('Waiting for response / gateway redirect...');
+  await page.waitForTimeout(5000);
+
+  if (cooldownDetectedUntil) {
+    console.log(`\n======================================================`);
+    console.log(`NOTICE: Account cooldown active until ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+    console.log(`The database has been updated. Next automation run will wait until then.`);
+    console.log(`======================================================\n`);
+    await context.close();
+    await client.end();
+    return;
+  }
+
+  // Determine active payment page (either new tab or current page redirect)
+  const activePaymentPage: Page = paymentPage ?? page;
+  console.log(`Payment Page URL: ${activePaymentPage.url()}`);
+  console.log(`Payment Page Title: ${await activePaymentPage.title()}`);
+
+  // Inspect payment form elements (inputs, iframes)
+  const formAnalysis = await activePaymentPage.evaluate(() => {
+    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"])')).map((el) => ({
+      type: el.type,
+      id: el.id,
+      name: el.name,
+      placeholder: el.placeholder,
+      className: el.className,
+      ariaLabel: el.getAttribute('aria-label'),
+    }));
+    const iframes = Array.from(document.querySelectorAll('iframe')).map((f) => ({
+      src: f.src,
+      id: f.id,
+      title: f.title,
+    }));
+    const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]')).map((b) => ({
+      text: b.textContent?.trim(),
+      id: b.id,
+      className: b.className,
+    })).filter((b) => b.text);
+    return { inputs, iframes, buttons };
+  });
+
+  console.log('Payment Gateway Elements Detected:', JSON.stringify(formAnalysis, null, 2));
+
+  // If card payment details exist, try filling them
+  if (paymentDetails && paymentDetails.mode === 'full') {
+    console.log('\n--- Step 8: Attempting Card Details Auto-Fill ---');
+    try {
+      const cardNumSelector = 'input[name*="card" i], input[id*="card" i], input[placeholder*="Card Number" i], input[autocomplete*="cc-number" i]';
+      const expMonthSelector = 'input[name*="exp" i], input[id*="exp" i], input[placeholder*="MM" i], input[name*="month" i]';
+      const cvvSelector = 'input[name*="cvv" i], input[id*="cvv" i], input[placeholder*="CVV" i], input[name*="cvc" i], input[autocomplete*="cc-csc" i]';
+      const nameSelector = 'input[name*="name" i], input[id*="name" i], input[placeholder*="Name" i]';
+
+      if (paymentDetails.cardNumber) {
+        const numInput = activePaymentPage.locator(cardNumSelector).first();
+        if (await numInput.isVisible({ timeout: 3000 })) {
+          await numInput.fill(paymentDetails.cardNumber);
+          console.log('Filled Card Number');
+        }
+      }
+
+      if (paymentDetails.cvv) {
+        const cvvInput = activePaymentPage.locator(cvvSelector).first();
+        if (await cvvInput.isVisible({ timeout: 2000 })) {
+          await cvvInput.fill(paymentDetails.cvv);
+          console.log('Filled CVV');
+        }
+      }
+
+      if (paymentDetails.expiryMonth && paymentDetails.expiryYear) {
+        const expInput = activePaymentPage.locator(expMonthSelector).first();
+        if (await expInput.isVisible({ timeout: 2000 })) {
+          await expInput.fill(`${paymentDetails.expiryMonth}/${paymentDetails.expiryYear.slice(-2)}`);
+          console.log('Filled Expiry');
+        }
+      }
+
+      if (paymentDetails.nameOnCard) {
+        const nameInput = activePaymentPage.locator(nameSelector).first();
+        if (await nameInput.isVisible({ timeout: 2000 })) {
+          await nameInput.fill(paymentDetails.nameOnCard);
+          console.log('Filled Name on Card');
+        }
+      }
+    } catch (e) {
+      console.log('Auto-fill note:', e instanceof Error ? e.message : e);
+    }
+  }
+
+  await activePaymentPage.screenshot({ path: 'payment-gateway-screen.png' });
+  console.log('Saved payment-gateway-screen.png');
+
+  console.log('\n>>> ACTION: Payment screen is open on your display! <<<');
+  for (let sec = 0; sec < 60; sec++) {
+    await activePaymentPage.waitForTimeout(1000);
+    const currUrl = activePaymentPage.url();
+    if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com')) {
+      const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
+      const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
+      if (bookingMatch) {
+        console.log(`\n🎉 Booking Reference Found: ${bookingMatch[1]}`);
+        break;
+      }
+    }
+  }
+
+  await activePaymentPage.waitForTimeout(10000);
+  await context.close();
+  await client.end();
+  console.log('Done.');
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runBrowserTest().catch((err) => {
+    console.error('Test run error:', err);
+    process.exit(1);
+  });
+}

@@ -15,3 +15,9 @@
 supabase/.temp
 .temp
 .vercel
+
+# Playwright browser profiles
+.browser-data
+worker/.browser-data
+worker/*.png
+worker/node_modules

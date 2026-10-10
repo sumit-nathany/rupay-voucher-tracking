@@ -36,6 +36,7 @@ export interface PortalAccountView {
   lastConfirmedOrderAt: string | null;
   lastCheckedAt: string | null;
   statusDetailCode: string | null;
+  cooldownUntil: string | null;
   createdAt: string;
   updatedAt: string;
   mappingsCount: number;
@@ -183,6 +184,7 @@ export async function listPortalAccounts(ctx: Ctx): Promise<PortalAccountView[]>
     lastConfirmedOrderAt: a.lastConfirmedOrderAt ? a.lastConfirmedOrderAt.toISOString() : null,
     lastCheckedAt: a.lastCheckedAt ? a.lastCheckedAt.toISOString() : null,
     statusDetailCode: a.statusDetailCode,
+    cooldownUntil: a.cooldownUntil ? a.cooldownUntil.toISOString() : null,
     createdAt: a.createdAt.toISOString(),
     updatedAt: a.updatedAt.toISOString(),
     mappingsCount: mappingsMap.get(a.id) ?? 0,
@@ -224,6 +226,7 @@ export async function createPortalAccount(
     lastConfirmedOrderAt: null,
     lastCheckedAt: null,
     statusDetailCode: null,
+    cooldownUntil: null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     mappingsCount: 0,
@@ -277,6 +280,7 @@ export async function updatePortalAccount(
     lastConfirmedOrderAt: row.lastConfirmedOrderAt ? row.lastConfirmedOrderAt.toISOString() : null,
     lastCheckedAt: row.lastCheckedAt ? row.lastCheckedAt.toISOString() : null,
     statusDetailCode: row.statusDetailCode,
+    cooldownUntil: row.cooldownUntil ? row.cooldownUntil.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     mappingsCount: 0,
@@ -726,6 +730,11 @@ export async function findCandidatesForAccount(
 
   if (!account || account.status !== 'connected') return null;
 
+  // 1b. Check if account is in a portal 24-hour rate limit cooldown
+  if (account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
+    return null;
+  }
+
   // 2. Verify workspace has automation enabled
   const [settings] = await db
     .select()
@@ -962,4 +971,21 @@ export async function findCandidatesForAccount(
   });
 
   return eligibleCandidates[0].candidate;
+}
+
+export async function recordPortalAccountCooldown(
+  db: Database,
+  portalAccountId: string,
+  cooldownUntil: Date,
+  reason: string = 'daily_limit_reached',
+): Promise<void> {
+  await db
+    .update(portalAccounts)
+    .set({
+      cooldownUntil,
+      statusDetailCode: reason,
+      lastCheckedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(portalAccounts.id, portalAccountId));
 }
