@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Check, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
 import {
   chooseOptionAction,
   getInstanceAction,
@@ -19,9 +19,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
 import {
   AUTO_HIDE_MS,
   CODE_MASK,
@@ -33,12 +33,11 @@ import {
   errorMessage,
   formatDate,
   formatMoney,
-  neighbours,
   parseMoney,
   statusKind,
   validateCode,
   validateDetails,
-  workflowIndex,
+  WORKFLOW_STATUSES,
   type DetailsErrors,
   type DetailsForm,
 } from './helpers';
@@ -167,9 +166,9 @@ function DrawerBody({
 
       <CodeSection inst={inst} open={open} editable={editable} applied={applied} />
 
-      {kind === 'workflow' && <SaleSection key={`s-${String(inst.updatedAt)}`} inst={inst} applied={applied} reload={reload} />}
-
       <DetailsSection key={`d-${String(inst.updatedAt)}`} inst={inst} editable={editable} applied={applied} reload={reload} />
+
+      {kind === 'workflow' && <SaleSection key={`s-${String(inst.updatedAt)}`} inst={inst} applied={applied} reload={reload} />}
     </div>
   );
 }
@@ -190,9 +189,11 @@ function Summary({ inst }: { inst: InstanceView }) {
   ];
   return (
     <section aria-label="Summary" className="space-y-3">
-      <Badge variant={statusVariant(inst.orderStatus)} className={cn(inst.orderStatus === 'Withdrawn' && 'line-through')}>
-        {inst.orderStatus}
-      </Badge>
+      {inst.orderStatus === 'Withdrawn' && (
+        <Badge variant={statusVariant(inst.orderStatus)} className="line-through">
+          {inst.orderStatus}
+        </Badge>
+      )}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {rows.map(([k, v]) => (
           <div key={k}>
@@ -293,8 +294,7 @@ function StatusSection({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const kind = statusKind(inst.orderStatus);
-  const { prev, next } = neighbours(inst.orderStatus);
-  const current = workflowIndex(inst.orderStatus);
+  const selectId = React.useId();
 
   async function run(fn: () => Promise<InstanceView>) {
     setBusy(true);
@@ -303,68 +303,50 @@ function StatusSection({
       applied(await fn());
     } catch (e) {
       setError(errorMessage(e));
-      void reload(); // stale state (e.g. concurrent change): show the truth
+      void reload();
     } finally {
       setBusy(false);
     }
   }
-  const move = (status: OrderStatus) => run(() => setStatusAction({ instanceId: inst.id, status }));
+
+  async function onStatusChange(next: string) {
+    if (next === inst.orderStatus) return;
+    if (kind === 'skipped' && next === 'Not Ordered') {
+      await run(() => unskipInstanceAction(inst.id));
+      return;
+    }
+    await run(() => setStatusAction({ instanceId: inst.id, status: next as OrderStatus }));
+  }
+
+  const options =
+    kind === 'skipped'
+      ? (['Skipped', 'Not Ordered'] as const)
+      : WORKFLOW_STATUSES;
 
   return (
-    <section aria-label="Status" className="space-y-3">
-      <h3 className="text-sm font-semibold">Status</h3>
-
-      {kind === 'skipped' ? (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">You skipped this benefit. Unskip to track it again.</p>
-          <Button variant="outline" disabled={busy} onClick={() => void run(() => unskipInstanceAction(inst.id))}>
-            Unskip (back to Not Ordered)
-          </Button>
-        </div>
-      ) : (
-        <>
-          <ol className="grid grid-cols-2 gap-2 sm:grid-cols-1" aria-label="Workflow steps">
-            {WORKFLOW_STATUSES.map((s, i) => {
-              const isCurrent = i === current;
-              return (
-                <li key={s}>
-                  <button
-                    type="button"
-                    disabled={busy || isCurrent}
-                    aria-current={isCurrent ? 'step' : undefined}
-                    onClick={() => void move(s)}
-                    className={cn(
-                      'flex min-h-11 w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                      isCurrent
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'hover:bg-accent disabled:opacity-50',
-                      i < current && 'text-muted-foreground',
-                    )}
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs" aria-hidden>
-                      {i < current ? <Check className="h-3 w-3" /> : i + 1}
-                    </span>
-                    <span>{s}</span>
-                    {isCurrent && <span className="sr-only"> (current)</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" disabled={busy || !prev} onClick={() => prev && void move(prev)}>
-              <ChevronLeft className="h-4 w-4" aria-hidden /> Back
-            </Button>
-            <Button size="sm" disabled={busy || !next} onClick={() => next && void move(next)}>
-              Next <ChevronRight className="h-4 w-4" aria-hidden />
-            </Button>
-            {canSkip(inst.orderStatus) && (
-              <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(() => skipInstanceAction(inst.id))}>
-                Skip
-              </Button>
-            )}
-          </div>
-        </>
+    <section aria-label="Status" className="space-y-2">
+      <Label htmlFor={selectId} className="text-sm font-semibold">
+        Status
+      </Label>
+      {kind === 'skipped' && (
+        <p className="text-xs text-muted-foreground">Choose Not Ordered to track this benefit again.</p>
+      )}
+      <Select value={inst.orderStatus} onValueChange={(v) => void onStatusChange(v)} disabled={busy}>
+        <SelectTrigger id={selectId} aria-label="Order status">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {canSkip(inst.orderStatus) && (
+        <Button variant="ghost" size="sm" className="px-0" disabled={busy} onClick={() => void run(() => skipInstanceAction(inst.id))}>
+          Skip this benefit
+        </Button>
       )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -621,10 +603,17 @@ function SaleSection({
   applied: (v: InstanceView) => void;
   reload: () => Promise<void>;
 }) {
+  const hasSale = inst.soldFor != null;
   const [value, setValue] = React.useState(inst.soldFor ?? '');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [expanded, setExpanded] = React.useState(hasSale);
   const id = React.useId();
+
+  React.useEffect(() => {
+    setValue(inst.soldFor ?? '');
+    setExpanded(inst.soldFor != null);
+  }, [inst.id, inst.soldFor]);
 
   if (!canRecordSale(inst.orderStatus)) return null;
 
@@ -649,42 +638,60 @@ function SaleSection({
   }
 
   return (
-    <form
-      aria-label="Record sale"
-      className="space-y-2"
-      noValidate
-      onSubmit={(e) => {
-        e.preventDefault();
-        void save(value);
-      }}
+    <section
+      aria-label="Voucher sale"
+      className="mt-2 border-t border-border/60 pt-6"
     >
-      <h3 className="text-sm font-semibold">Sale</h3>
-      <Label htmlFor={id}>Sold for (₹)</Label>
-      <Input
-        id={id}
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="0.00"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? `${id}-err` : undefined}
-      />
-      <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={busy || value.trim() === ''}>
-          Record sale
+      <p className="text-sm text-muted-foreground">
+        Did you sell this voucher? If yes, add details here.
+      </p>
+
+      {!expanded ? (
+        <Button type="button" variant="link" size="sm" className="mt-1 h-auto px-0" onClick={() => setExpanded(true)}>
+          Add sale amount
         </Button>
-        {inst.soldFor != null && (
-          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void save('')}>
-            Clear sale
-          </Button>
-        )}
-      </div>
-      {error && (
-        <p id={`${id}-err`} role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+      ) : (
+        <form
+          className="mt-3 space-y-2 rounded-md border border-dashed border-border/80 bg-muted/25 p-3"
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save(value);
+          }}
+        >
+          <Label htmlFor={id} className="text-xs text-muted-foreground">Sold for (₹)</Label>
+          <Input
+            id={id}
+            inputMode="decimal"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="0.00"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-err` : undefined}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" variant="secondary" disabled={busy || value.trim() === ''}>
+              Save sale
+            </Button>
+            {hasSale && (
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void save('')}>
+                Clear sale
+              </Button>
+            )}
+            {!hasSale && (
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setExpanded(false)}>
+                Cancel
+              </Button>
+            )}
+          </div>
+          {error && (
+            <p id={`${id}-err`} role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+        </form>
       )}
-    </form>
+    </section>
   );
 }
 
