@@ -74,9 +74,11 @@ type BenefitMap = Map<string, BenefitEntry>; // key = "type|provider" (lowercase
 const BOI_DEBIT_BENEFITS: BenefitMap = new Map([
   ["spa services|", { id: "f08ab4f1-0178-42fb-a3e3-dca1fc4d5978", versionId: "ca1c1e9b-d379-4748-bd37-271ddfa5cedc", frequency: "Quarterly", pickOne: true }],
   ["ott entertainment|", { id: "f7970dcd-9353-4848-916d-3f662cd78557", versionId: "50d6720d-2a50-4f25-8df3-6d88cfe0ba1f", frequency: "Annual", pickOne: true }],
-  ["health check up|thyrocare", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: false }],
-  ["health checkup|thyrocare", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: false }],
-  ["health check up|srl", { id: "a7048611-b3b3-4206-bf60-f81c1eca2096", versionId: "808f21a2-a2e3-4d82-a636-8381b7c1328e", frequency: "Quarterly", pickOne: false }],
+  ["health check up|", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: true }],
+  ["health check up|thyrocare", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: true }],
+  ["health checkup|thyrocare", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: true }],
+  ["health check up|srl", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: true }],
+  ["health checkup|srl", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: true }],
   ["gym access|", { id: "6c7012a4-ad5e-4f1a-b78f-f812976c9222", versionId: "c9c57819-7de1-4097-bd8b-043672725ca4", frequency: "Quarterly", pickOne: true }],
   ["cab services|", { id: "54a0d991-3147-40b4-8bc7-15cac91e9089", versionId: "8e7921d8-f039-4f00-b069-976973aa1fe3", frequency: "Quarterly", pickOne: true }],
   ["travel|", { id: "54a0d991-3147-40b4-8bc7-15cac91e9089", versionId: "8e7921d8-f039-4f00-b069-976973aa1fe3", frequency: "Quarterly", pickOne: true }],
@@ -87,9 +89,11 @@ const PNB_IMPERIAL_BENEFITS: BenefitMap = new Map([
   ["spa services|", { id: "d95a470b-e207-440b-b9e5-2b73cb95f30e", versionId: "3b745699-f966-4238-b3e4-0a45d9afc50b", frequency: "Quarterly", pickOne: true }],
   ["ott entertainment|", { id: "09227671-ec6c-40ca-8ddf-33dcf7fc97af", versionId: "33e63c1c-9986-4ad1-bfa8-e8bdc15f9e39", frequency: "Annual", pickOne: true }],
   ["gym access|cult.fit", { id: "c3859cd3-9b71-4bbf-9b5b-ffd34bc6aed0", versionId: "9a673201-33aa-4bb9-86f2-ba523c71d331", frequency: "Quarterly", pickOne: false }],
-  ["health check up|thyrocare", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: false }],
-  ["health checkup|thyrocare", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: false }],
-  ["health check up|srl", { id: "a9e2fee9-6167-45ca-be26-f7eab1259d15", versionId: "daa6de76-1547-4e9d-bd88-f30369072789", frequency: "Annual", pickOne: false }],
+  ["health check up|", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: true }],
+  ["health check up|thyrocare", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: true }],
+  ["health checkup|thyrocare", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: true }],
+  ["health check up|srl", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: true }],
+  ["health checkup|srl", { id: "bff5cc27-fe03-4b82-b94c-c92a855f7584", versionId: "c3fef6ac-dd71-4ad5-bc26-4eb89d4d0e10", frequency: "Annual", pickOne: true }],
   ["online groceries|big basket", { id: "853d7bed-83c9-4fb2-812a-0c1f5027b6e1", versionId: "d4f7444a-39b6-465f-b703-68bf413da992", frequency: "Quarterly", pickOne: false }],
   ["food delivery|swiggy one", { id: "6386bbc0-7733-4a0a-9ea5-f971582841d7", versionId: "2a8b8dff-c25a-465e-98ee-7cab2567adf3", frequency: "Annual", pickOne: false }],
   ["entertainment|bookmyshow", { id: "b6041a6a-c052-4bd8-bb67-c9ec85abcc0b", versionId: "dbb4a849-2735-43c7-b1c3-022a03862bd9", frequency: "Quarterly", pickOne: false }],
@@ -109,9 +113,11 @@ const BOI_CREDIT_BENEFITS: BenefitMap = new Map([
   ["ott entertainment|prime video", { id: "49ce8263-195f-4fe5-bcc7-5d0f3ecbad44", versionId: "13bb45ed-6725-4224-88fd-be7b7e93980f", frequency: "Annual", pickOne: false }],
   ["ott entertainment|amazon prime", { id: "49ce8263-195f-4fe5-bcc7-5d0f3ecbad44", versionId: "13bb45ed-6725-4224-88fd-be7b7e93980f", frequency: "Annual", pickOne: false }],
   ["online groceries|big basket", { id: "25b95128-e407-4309-a220-a3b05059eaea", versionId: "05a77e73-2107-4d1b-90c7-d387d3868a80", frequency: "Monthly", pickOne: false }],
-  ["health check up|thyrocare", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: false }],
-  ["health checkup|thyrocare", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: false }],
-  ["health check up|srl", { id: "f6bcc078-16d4-4eb3-a540-0768b0650d38", versionId: "8fad9ecf-58cb-4d94-b584-c5460e604778", frequency: "Annual", pickOne: false }],
+  ["health check up|", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: true }],
+  ["health check up|thyrocare", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: true }],
+  ["health checkup|thyrocare", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: true }],
+  ["health check up|srl", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: true }],
+  ["health checkup|srl", { id: "52d1821c-8fbc-4374-b091-31629f1af847", versionId: "5bd33ea5-ee3a-4356-8ba0-5c9fb480fb33", frequency: "Annual", pickOne: true }],
   ["food delivery|swiggy one", { id: "b455d225-19b1-4dac-a65c-aad391244c50", versionId: "924e7efd-0ca6-4145-98f2-2eb2706daa0d", frequency: "Annual", pickOne: false }],
   ["entertainment|bookmyshow", { id: "eebb853b-4a8e-4a97-ac41-14fd5bf3549c", versionId: "91ff1c9e-a00b-424a-b97c-3636c927b36e", frequency: "Monthly", pickOne: false }],
 ]);
@@ -127,6 +133,18 @@ const PNB_CREDIT_BENEFITS: BenefitMap = new Map([
 
 // Pick-one option IDs: "benefitId|providerLower" → optionId
 const PICK_ONE_OPTIONS: Record<string, string> = {
+  // BOI Debit Health Check Up options
+  "771a2162-7ea8-4f8e-9d55-f6484ba9831e|thyrocare": "30628b09-01a1-4c9f-b904-498348142165",
+  "771a2162-7ea8-4f8e-9d55-f6484ba9831e|srl": "5b905088-e7f5-47f7-850b-bfd034433aaa",
+  "771a2162-7ea8-4f8e-9d55-f6484ba9831e|srl diagnostics": "5b905088-e7f5-47f7-850b-bfd034433aaa",
+  // PNB Imperial Health Check Up options
+  "bff5cc27-fe03-4b82-b94c-c92a855f7584|thyrocare": "b4a84395-34fd-40c3-8ed6-4284639f9acd",
+  "bff5cc27-fe03-4b82-b94c-c92a855f7584|srl": "fbe3255e-bf76-44a0-a811-15533c31c5ca",
+  "bff5cc27-fe03-4b82-b94c-c92a855f7584|srl diagnostics": "fbe3255e-bf76-44a0-a811-15533c31c5ca",
+  // BOI Credit Health Check Up options
+  "52d1821c-8fbc-4374-b091-31629f1af847|thyrocare": "eaab5b7c-dd71-4d1a-842d-1dd7806add09",
+  "52d1821c-8fbc-4374-b091-31629f1af847|srl": "050afe25-3511-4acc-9459-b45906e78a95",
+  "52d1821c-8fbc-4374-b091-31629f1af847|srl diagnostics": "050afe25-3511-4acc-9459-b45906e78a95",
   // BOI Debit Spa options
   "f08ab4f1-0178-42fb-a3e3-dca1fc4d5978|aromthai": "a460cc02-1875-4abd-8240-3b92606fa2df",
   "f08ab4f1-0178-42fb-a3e3-dca1fc4d5978|four fountains": "6ee42229-6287-42ec-975e-21f5688ad78a",

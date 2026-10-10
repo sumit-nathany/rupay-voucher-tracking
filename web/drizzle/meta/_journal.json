@@ -57,6 +57,13 @@
       "when": 1791630000000,
       "tag": "0007_boi_debit_cab_heal",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791640000000,
+      "tag": "0008_health_checkup_pick_one",
+      "breakpoints": true
     }
   ]
 }

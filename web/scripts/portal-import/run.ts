@@ -17,6 +17,7 @@ import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
 import { linkPortalIds, replaceCardBenefits } from "./load";
 import { isBoiSelectDebitCatalogCard, mergeBoiSelectDebitOlaUberCab } from "./boi-cab";
+import { mergeHealthCheckupOffers } from "./health-checkup";
 import { transformCard, type PortalDeal, type PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";
@@ -128,6 +129,7 @@ async function main() {
       if (isBoiSelectDebitCatalogCard(t.name)) {
         benefits = mergeBoiSelectDebitOlaUberCab(benefits);
       }
+      benefits = mergeHealthCheckupOffers(benefits);
       const r = await replaceCardBenefits(db, t.id, benefits, { dryRun: !write });
       console.log(`${t.name}: ${write ? "replaced" : "DRY RUN, would replace"}`, r);
     });
