@@ -3,11 +3,13 @@ import * as React from 'react';
 import { Check, ChevronDown, ChevronRight, EyeOff, Eye, Loader2, Pencil, X } from 'lucide-react';
 import {
   addCardTypesAction,
+  correctVersionAction,
   createVariantAction,
   listCardTypeBenefitsAction,
   updateCardTypeAction,
   updateVariantAction,
 } from '@/actions/catalog-admin';
+import type { OfferKind } from '@/domain/benefit-offer-kind';
 import { CurationBadge } from '@/components/cards/curation-badge';
 import { formatDate, formatINR } from '@/components/dashboard/format';
 import { Badge } from '@/components/ui/badge';
@@ -288,7 +290,16 @@ function TypeItem({
           {!benefitsLoading && benefits && benefits.length > 0 && (
             <ul className="space-y-3">
               {benefits.map((b) => (
-                <BenefitCatalogRow key={b.benefitId} benefit={b} />
+                <BenefitCatalogRow
+                  key={b.benefitId}
+                  mode={mode}
+                  benefit={b}
+                  onOfferKindChange={(offerKind) =>
+                    setBenefits((prev) =>
+                      prev?.map((row) => (row.benefitId === b.benefitId ? { ...row, offerKind } : row)) ?? null,
+                    )
+                  }
+                />
               ))}
             </ul>
           )}
@@ -298,7 +309,17 @@ function TypeItem({
   );
 }
 
-function BenefitCatalogRow({ benefit: b }: { benefit: CatalogBenefit }) {
+function BenefitCatalogRow({
+  mode,
+  benefit: b,
+  onOfferKindChange,
+}: {
+  mode: CatalogAdminMode;
+  benefit: CatalogBenefit;
+  onOfferKindChange: (offerKind: OfferKind) => void;
+}) {
+  const editing = mode === 'edit';
+  const { run, pending, error } = useRunAction();
   const value =
     b.defaultCashValue != null && b.defaultCashValue !== '' ? formatINR(Number(b.defaultCashValue)) : null;
   const ended = b.effectiveTo !== null;
@@ -308,6 +329,16 @@ function BenefitCatalogRow({ benefit: b }: { benefit: CatalogBenefit }) {
     ended
       ? `${formatDate(b.effectiveFrom)} – ${formatDate(b.effectiveTo!)}`
       : `From ${formatDate(b.effectiveFrom)}`;
+
+  const setOfferKind = (next: OfferKind) => {
+    if (next === b.offerKind) return;
+    run(async () => {
+      await correctVersionAction({ versionId: b.versionId, offerKind: next });
+      onOfferKindChange(next);
+      return true;
+    }, 'Could not update gift vs discount.');
+  };
+
   return (
     <li className="border-b border-border/60 pb-3 last:border-0 last:pb-0">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -316,6 +347,23 @@ function BenefitCatalogRow({ benefit: b }: { benefit: CatalogBenefit }) {
           {b.benefitProvider ? ` · ${b.benefitProvider}` : ''}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
+          {editing ? (
+            <Select value={b.offerKind} disabled={pending} onValueChange={(v) => setOfferKind(v as OfferKind)}>
+              <SelectTrigger aria-label="Offer type" className="h-8 w-[11.5rem] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="voucher">Gift voucher</SelectItem>
+                <SelectItem value="discount">Discount coupon</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            b.offerKind === 'discount' && (
+              <Badge variant="secondary" title="Discount coupon — hidden from the default benefits list">
+                Discount coupon
+              </Badge>
+            )
+          )}
           <Badge variant="outline">{freq}</Badge>
           {ended && <Badge variant="secondary">Ended</Badge>}
           {b.versionCount > 1 && (
@@ -325,6 +373,7 @@ function BenefitCatalogRow({ benefit: b }: { benefit: CatalogBenefit }) {
           )}
         </div>
       </div>
+      <ErrorText>{error}</ErrorText>
       <p className="mt-0.5 text-sm">{b.exactBenefit}</p>
       <p className="mt-1 text-xs text-muted-foreground">
         {window}

@@ -1,6 +1,7 @@
 // Pure transform: raw sheet rows -> shared-catalog seed data + entitlement-period instances.
 // Implements PLAN.md "Import normalization rules" 5-11, 13 and "Entitlement periods".
 // (Rules 1-4 are applied by reader.ts; rule 12/14 belong to the DB write layer.)
+import { inferOfferKind } from '../../src/domain/benefit-offer-kind';
 import {
   BankCardTypeOut,
   BenefitOut,
@@ -267,6 +268,7 @@ export function transform(raw: RawRow[]): TransformResult {
       exactBenefit: r.exactBenefit,
       frequency: r.frequency,
       instanceCount: info.count,
+      offerKind: inferOfferKind(r.benefitType, r.provider, r.exactBenefit),
       effectiveFrom: quarterStart(info.first), // rule 4: first quarter it appears in
       effectiveTo: effectiveTo.get(key) ?? null,
     });

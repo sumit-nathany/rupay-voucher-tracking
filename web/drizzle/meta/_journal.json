@@ -29,6 +29,20 @@
       "when": 1791575705931,
       "tag": "0003_benefit_options",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791580000000,
+      "tag": "0004_offer_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791583600000,
+      "tag": "0005_boi_debit_cab_pick_one",
+      "breakpoints": true
     }
   ]
 }

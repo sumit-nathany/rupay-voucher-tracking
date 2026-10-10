@@ -63,6 +63,9 @@ describe('admin curation', () => {
     const { benefitId, versionId } = await cat.createBenefit(admin, { ...base, bankCardTypeId: typeId });
     const row = await cat.correctVersion(admin, { versionId, exactBenefit: 'BigBasket' });
     expect(row.exactBenefit).toBe('BigBasket');
+    const tagged = await cat.correctVersion(admin, { versionId, offerKind: 'discount' });
+    expect(tagged.offerKind).toBe('discount');
+    expect(tagged.exactBenefit).toBe('BigBasket');
     expect((await versionsOf(benefitId)).length).toBe(1);
   });
 

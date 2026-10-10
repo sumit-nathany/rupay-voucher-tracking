@@ -1,6 +1,9 @@
+import Link from 'next/link';
 import type { HolderProgress as HP } from '@/domain/instance-queries';
+import type { ViewedPeriod } from '@/lib/periods';
+import { benefitsViewHref } from './benefits-link';
 
-export function HolderProgress({ holders }: { holders: HP[] }) {
+export function HolderProgress({ view, holders }: { view: ViewedPeriod; holders: HP[] }) {
   return (
     <section className="panel h-full">
       <div className="panel-header">
@@ -17,35 +20,40 @@ export function HolderProgress({ holders }: { holders: HP[] }) {
               const initial = h.holderName.trim().charAt(0).toUpperCase() || '?';
               return (
                 <li key={h.holderId}>
-                  <div className="mb-2 flex items-center gap-3">
-                    <span
-                      aria-hidden
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 font-semibold text-primary"
-                    >
-                      {initial}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-medium">{h.holderName}</span>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                          {h.redeemed}/{h.total} · {pct}%
-                        </span>
-                      </div>
-                      <div
-                        role="progressbar"
-                        aria-label={`${h.holderName} progress`}
-                        aria-valuemin={0}
-                        aria-valuemax={h.total}
-                        aria-valuenow={h.redeemed}
-                        className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+                  <Link
+                    href={benefitsViewHref(view, { holderId: h.holderId })}
+                    className="block rounded-lg transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mx-1 px-1 py-0.5"
+                  >
+                    <div className="mb-2 flex items-center gap-3">
+                      <span
+                        aria-hidden
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 font-semibold text-primary"
                       >
+                        {initial}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate font-medium">{h.holderName}</span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {h.redeemed}/{h.total} · {pct}%
+                          </span>
+                        </div>
                         <div
-                          className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-                          style={{ width: `${pct}%` }}
-                        />
+                          role="progressbar"
+                          aria-label={`${h.holderName} progress`}
+                          aria-valuemin={0}
+                          aria-valuemax={h.total}
+                          aria-valuenow={h.redeemed}
+                          className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+                        >
+                          <div
+                            className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 </li>
               );
             })}

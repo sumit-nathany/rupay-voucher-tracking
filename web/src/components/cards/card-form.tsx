@@ -52,16 +52,18 @@ function CardFormBody({
     () => types.filter((t) => t.active && t.variantId === variantId),
     [types, variantId],
   );
-  const [displayName, setDisplayName] = React.useState(card?.displayName ?? '');
-  const [nameTouched, setNameTouched] = React.useState(!!card);
+  const [displayName, setDisplayName] = React.useState(() => {
+    if (!card) return '';
+    const t = types.find((x) => x.id === card.bankCardTypeId);
+    if (t && card.displayName === t.displayName) return '';
+    return card.displayName;
+  });
   const [lastDigits, setLastDigits] = React.useState(card?.lastDigits ?? '');
   const [trackingFrom, setTrackingFrom] = React.useState(card?.trackingFrom ?? '');
   const [active, setActive] = React.useState(card?.active ?? true);
 
   function pickType(t: CardTypeOption) {
     setType(t);
-    // Decision: prefill the nickname from the card type until the user edits it.
-    if (!nameTouched) setDisplayName(t.displayName.slice(0, 100));
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -76,7 +78,7 @@ function CardFormBody({
           ? updateCard({
               id: card.id,
               holderId,
-              displayName,
+              displayName: displayName.trim() === '' ? null : displayName,
               lastDigits: lastDigits.trim() === '' ? null : lastDigits,
               trackingFrom: trackingFrom || undefined,
               active,
@@ -84,7 +86,7 @@ function CardFormBody({
           : createCard({
               holderId,
               bankCardTypeId: type!.id,
-              displayName,
+              displayName: displayName.trim() === '' ? null : displayName,
               lastDigits: lastDigits.trim() === '' ? null : lastDigits,
               trackingFrom: trackingFrom || undefined,
             }),
@@ -163,17 +165,18 @@ function CardFormBody({
         </>
       )}
 
-      <Field id="card-name" label="Nickname" hint="Shown in lists, e.g. PNB Imperial (7825).">
+      <Field
+        id="card-name"
+        label="Nickname (optional)"
+        hint="Leave blank to use the bank card name. When set, shown in lists instead."
+      >
         <Input
           id="card-name"
-          required
           maxLength={100}
+          placeholder={type?.displayName ?? 'Optional'}
           value={displayName}
           aria-describedby="card-name-hint"
-          onChange={(e) => {
-            setNameTouched(true);
-            setDisplayName(e.target.value);
-          }}
+          onChange={(e) => setDisplayName(e.target.value)}
         />
       </Field>
 

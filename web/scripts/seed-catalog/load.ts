@@ -124,6 +124,7 @@ export async function loadCatalog(
           exactBenefit: v.exactBenefit,
           frequency: v.frequency,
           instanceCount: v.instanceCount,
+          offerKind: v.offerKind,
           effectiveFrom: v.effectiveFrom,
           effectiveTo: v.effectiveTo,
         });

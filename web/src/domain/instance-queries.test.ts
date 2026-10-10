@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import {
   bankCardTypes, benefitCatalogVersions, benefitInstances, benefits,
@@ -146,6 +147,22 @@ describe('listInstances', () => {
     expect(ids(rows)).not.toContain(idQ3Alpha);
   });
 
+  it('scope lifetime lists across all periods with status and lapsed filters', async () => {
+    const later: Ctx = { ...A, today: '2026-10-05' };
+    const q3Only = await listInstances(later, { view: Q3 });
+    expect(ids(q3Only)).not.toContain(idQ2);
+    const allRedeemed = await listInstances(later, { view: Q3, scope: 'lifetime', status: 'Coupon Redeemed' });
+    expect(ids(allRedeemed)).toContain(idRedeemed);
+    const missed = await listInstances(later, {
+      view: Q3,
+      scope: 'lifetime',
+      status: 'Not Ordered',
+      lapsed: '1',
+    });
+    expect(ids(missed)).toContain(idQ2);
+    expect(ids(missed)).toContain(idQ3Alpha);
+  });
+
   it('sorts by period_end asc, then benefit name; includes Skipped and Withdrawn', async () => {
     const rows = await listInstances(A, { view: Q3, cardId: cardA1 });
     const keys = rows.map((r) => [r.periodEnd, r.benefitName.toLowerCase()]);
@@ -173,6 +190,20 @@ describe('listInstances', () => {
     expect(rows.find((x) => x.id === idYear)).toMatchObject({ defaultCashValue: null, value: 0 });
   });
 
+  it('filters by catalog benefit id and card override id', async () => {
+    const alphaRows = await listInstances(A, { view: Q3, benefitId: alpha.benefitId });
+    expect(alphaRows.length).toBeGreaterThan(0);
+    expect(alphaRows.every((r) => r.benefitName === 'Alpha Spa' || r.benefitProvider === 'Alpha Spa-prov')).toBe(
+      true,
+    );
+    expect(ids(alphaRows)).not.toContain(idQ3Beta);
+
+    const ov = await listInstances(A, { view: Q3, benefitId: overrideId });
+    expect(ids(ov)).toEqual([idOverride]);
+
+    expect(await listInstances(A, { view: Q3, benefitId: randomUUID() })).toEqual([]);
+  });
+
   it('filters by holder, card, status and search', async () => {
     const h = await listInstances(A, { view: Q3, holderId: holderA2 });
     expect(h.length).toBeGreaterThan(0);
@@ -196,6 +227,13 @@ describe('listInstances', () => {
   it('combined filters AND together', async () => {
     const r = await listInstances(A, { view: Q3, holderId: holderA1, status: 'Not Ordered', search: 'beta' });
     expect(ids(r)).toEqual([idQ3Beta]);
+    const byBenefit = await listInstances(A, {
+      view: Q3,
+      holderId: holderA1,
+      benefitId: beta.benefitId,
+      status: 'Not Ordered',
+    });
+    expect(ids(byBenefit)).toEqual([idQ3Beta]);
   });
 
   it('never leaks codeEncrypted; exposes hasCode only', async () => {
@@ -222,6 +260,7 @@ describe('listInstances', () => {
     await expect(listInstances(A, { view: Q3, holderId: 'nope' })).rejects.toThrow(ValidationError);
     await expect(listInstances(A, { view: { kind: 'quarter', year: 2026, quarter: 5 } as never })).rejects.toThrow(ValidationError);
     await expect(listInstances(A, { view: Q3, status: 'Bogus' as never })).rejects.toThrow(ValidationError);
+    await expect(listInstances(A, { view: Q3, benefitId: 'nope' })).rejects.toThrow(ValidationError);
   });
 });
 
@@ -283,6 +322,17 @@ describe('getDashboardSummary', () => {
     expect(s.orderedValue).toBe(200 + 1700 + 450);
     // outstanding: not-ordered 800 + ordered 200 + received excluding sold (200+500+500)
     expect(s.outstandingValue).toBe(1800 + 200 + 1200);
+    expect(s.actionValues).toEqual({
+      needOrder: 1800,
+      needOrderCount: 5,
+      awaitingCoupon: 200,
+      awaitingCouponCount: 1,
+      couponToUse: 1200,
+      couponToUseCount: 3,
+    });
+    // Q2 Alpha lapsed but outside the Q3 viewed set — counts in lifetime only.
+    expect(s.missedOrderLifetime).toBe(500);
+    expect(s.missedOrderLifetimeCount).toBe(1);
     expect(s.soldValue).toBe(300);
     expect(s.lapsedCount).toBe(0);
     expect(s.perHolder).toEqual([
@@ -295,6 +345,11 @@ describe('getDashboardSummary', () => {
     const s = await getDashboardSummary({ ...A, today: '2026-10-05' }, Q3);
     expect(s.lapsedCount).toBe(3);
     expect(s.lapsedValue).toBe(800);
+    // Q3 Not Ordered lapsed (500+200+100); H2/year Not Ordered still in period (1000+0).
+    expect(s.actionValues.needOrder).toBe(1000);
+    expect(s.actionValues.needOrderCount).toBe(2);
+    expect(s.missedOrderLifetime).toBe(1300);
+    expect(s.missedOrderLifetimeCount).toBe(4);
   });
 
   it('expiringSoon: Coupon Received, unsold, within 30 days of ctx.today, soonest first', async () => {
@@ -316,5 +371,79 @@ describe('getDashboardSummary', () => {
 
   it('validates the view', async () => {
     await expect(getDashboardSummary(A, { kind: 'year', year: 1 } as never)).rejects.toThrow(ValidationError);
+  });
+
+  it('reports redeemed totals anchored to ctx.today and lifetime, independent of the viewed period', async () => {
+    const inQ3 = await getDashboardSummary(A, Q3);
+    expect(inQ3.redeemedThisQuarter).toBe(450);
+    expect(inQ3.redeemedThisQuarterCount).toBe(1);
+    expect(inQ3.redeemedThisYear).toBe(450);
+    expect(inQ3.redeemedThisYearCount).toBe(1);
+    expect(inQ3.redeemedLifetime).toBe(450);
+    expect(inQ3.redeemedLifetimeCount).toBe(1);
+
+    const otherPeriod = await getDashboardSummary(A, { kind: 'quarter', year: 2025, quarter: 1 });
+    expect(otherPeriod.redeemedValue).toBe(0);
+    expect(otherPeriod.redeemedThisQuarter).toBe(450);
+    expect(otherPeriod.redeemedThisQuarterCount).toBe(1);
+    expect(otherPeriod.redeemedThisYear).toBe(450);
+    expect(otherPeriod.redeemedThisYearCount).toBe(1);
+    expect(otherPeriod.redeemedLifetime).toBe(450);
+    expect(otherPeriod.redeemedLifetimeCount).toBe(1);
+  });
+});
+
+describe('discount coupons', () => {
+  it('hides discount coupons by default; offerFilter all or discount controls visibility', async () => {
+    const discount = await mkVersion('Flat Rs. 250 Discount on Tickets', '250.00');
+    await db
+      .update(benefitCatalogVersions)
+      .set({ benefitProvider: 'BookMyShow', offerKind: 'discount' })
+      .where(eq(benefitCatalogVersions.id, discount.versionId));
+    const discId = await mk({
+      ws: A, card: cardA1, ben: discount, ...q3, status: 'Not Ordered',
+    });
+    const voucherId = (await listInstances(A, { view: Q3 }))[0]?.id;
+    expect(ids(await listInstances(A, { view: Q3 }))).not.toContain(discId);
+    const all = await listInstances(A, { view: Q3, offerFilter: 'all' });
+    expect(ids(all)).toContain(discId);
+    expect(all.find((x) => x.id === discId)!.offerKind).toBe('discount');
+    const discOnly = await listInstances(A, { view: Q3, offerFilter: 'discount' });
+    expect(ids(discOnly)).toContain(discId);
+    expect(discOnly.every((x) => x.offerKind === 'discount')).toBe(true);
+    if (voucherId) expect(ids(discOnly)).not.toContain(voucherId);
+  });
+
+  it('excludes discount coupons from dashboard action queue totals', async () => {
+    const discount = await mkVersion('10% Instant Discount - Yearly', '1500.00', 'Annual');
+    await db
+      .update(benefitCatalogVersions)
+      .set({ benefitProvider: 'MakeMyTrip', offerKind: 'discount' })
+      .where(eq(benefitCatalogVersions.id, discount.versionId));
+    await mk({
+      ws: A, card: cardA1, ben: discount, ...yr, status: 'Not Ordered',
+    });
+    const s = await getDashboardSummary(A, Q3);
+    expect(s.actionValues.needOrder).toBe(1800);
+  });
+
+  it('excludes lapsed discount coupons from missedOrderLifetime totals', async () => {
+    const ctx = { ...A, today: '2026-10-05' as const };
+    const before = await getDashboardSummary(ctx, Q3);
+    const discount = await mkVersion('Flat Rs. 250 Discount on Tickets', '250.00');
+    await db
+      .update(benefitCatalogVersions)
+      .set({ benefitProvider: 'BookMyShow', offerKind: 'discount' })
+      .where(eq(benefitCatalogVersions.id, discount.versionId));
+    await mk({
+      ws: A, card: cardA1, ben: discount, ...q3, status: 'Not Ordered',
+    });
+    const after = await getDashboardSummary(ctx, Q3);
+    expect(after.lapsedCount).toBe(before.lapsedCount + 1);
+    expect(after.lapsedValue).toBe(before.lapsedValue + 250);
+    expect(after.missedOrderLifetime).toBe(before.missedOrderLifetime);
+    expect(after.missedOrderLifetimeCount).toBe(before.missedOrderLifetimeCount);
+    expect(before.missedOrderLifetime).toBe(1300);
+    expect(before.missedOrderLifetimeCount).toBe(4);
   });
 });

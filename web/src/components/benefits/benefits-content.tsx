@@ -10,22 +10,33 @@ import { BenefitList } from './benefit-list';
 export type BenefitFilters = {
   holderId?: string;
   cardId?: string;
+  /** Catalog benefit id or card-override id. */
+  benefitId?: string;
   status?: (typeof ORDER_STATUSES)[number];
   search?: string;
+  offerFilter?: 'all' | 'discount';
+  /** Not Ordered only: `1` lapsed rows, `0` still in period. */
+  lapsed?: '0' | '1';
 };
 
 export async function BenefitsContent({
   view,
   filters,
   filtered,
+  lifetime = false,
 }: {
   view: ViewedPeriod;
   filters: BenefitFilters;
   filtered: boolean;
+  lifetime?: boolean;
 }) {
   let items: InstanceListItem[];
   try {
-    items = await loadBenefitsAction({ view, ...filters });
+    items = await loadBenefitsAction({
+      view,
+      ...filters,
+      scope: lifetime ? 'lifetime' : undefined,
+    });
   } catch (e) {
     unstable_rethrow(e);
     return <ErrorPanel message="The benefits list could not be loaded. Check the filters and try again." />;
@@ -34,10 +45,12 @@ export async function BenefitsContent({
   if (items.length === 0) {
     return (
       <EmptyState
-        title={filtered ? 'No matches' : 'Nothing in this period'}
+        title={filtered ? 'No matches' : lifetime ? 'Nothing yet' : 'Nothing in this period'}
         description={
           filtered
-            ? 'Try clearing a filter or choosing another period.'
+            ? lifetime
+              ? 'Try clearing a filter or pick a single period above.'
+              : 'Try clearing a filter or choosing another period.'
             : 'Add a card on the Cards page — benefits appear here automatically.'
         }
       />

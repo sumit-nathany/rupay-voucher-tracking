@@ -158,11 +158,17 @@ export const benefitCatalogVersions = app.table(
     frequency: text("frequency").notNull(),
     instanceCount: integer("instance_count").notNull().default(1),
     defaultCashValue: numeric("default_cash_value", { precision: 10, scale: 2 }),
+    /** `voucher` = gift card / redeemable benefit; `discount` = coupon-style offer. */
+    offerKind: text("offer_kind").notNull().default("voucher"),
     effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
     effectiveTo: date("effective_to", { mode: "string" }),
     createdAt: createdAt(),
   },
   (t) => [
+    check(
+      "benefit_catalog_versions_offer_kind_check",
+      sql`${t.offerKind} IN ('voucher','discount')`,
+    ),
     check(
       "benefit_catalog_versions_frequency_check",
       sql`${t.frequency} IN ('Annual','6 months','Quarterly','Monthly')`,
@@ -265,10 +271,12 @@ export const cardBenefitOverrides = app.table(
     frequency: text("frequency"),
     instanceCount: integer("instance_count"),
     defaultCashValue: numeric("default_cash_value", { precision: 10, scale: 2 }),
+    offerKind: text("offer_kind").notNull().default("voucher"),
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [
+    check("card_benefit_overrides_offer_kind_check", sql`${t.offerKind} IN ('voucher','discount')`),
     check("card_benefit_overrides_kind_check", sql`${t.kind} IN ('add','suppress')`),
     check(
       "card_benefit_overrides_frequency_check",

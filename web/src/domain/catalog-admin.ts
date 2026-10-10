@@ -10,6 +10,7 @@ import {
   systemAdmins,
 } from '@/db/schema';
 import { AuthzError, NotFoundError, type Ctx } from '@/lib/context';
+import { OFFER_KINDS, type OfferKind } from '@/domain/benefit-offer-kind';
 import { parseCardList } from '@/lib/card-list';
 
 // Admin-only curation of the shared catalog (PLAN.md Phase 3 / Database notes).
@@ -43,6 +44,7 @@ const isoDate = z
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
   }, 'Not a real calendar date');
 const frequency = z.enum(['Annual', '6 months', 'Quarterly', 'Monthly']);
+const offerKind = z.enum(OFFER_KINDS);
 const money = z.number().finite().min(0).max(99_999_999.99);
 const text = (max = 500) => z.string().trim().min(1).max(max);
 
@@ -59,6 +61,7 @@ const createBenefitInput = z
     bankCardTypeId: uuid,
     ...details,
     frequency,
+    offerKind: offerKind.optional(),
     effectiveFrom: isoDate,
     effectiveTo: isoDate.nullable().optional(),
   })
@@ -72,6 +75,7 @@ const correctInput = z
     exactBenefit: details.exactBenefit.optional(),
     instanceCount: details.instanceCount.optional(),
     defaultCashValue: details.defaultCashValue,
+    offerKind: offerKind.optional(),
     frequency: frequency.optional(),
     // Must be literally true to change frequency in place (see correctVersion).
     correctsErroneousFrequency: z.literal(true).optional(),
@@ -87,6 +91,7 @@ const newVersionInput = z
     exactBenefit: details.exactBenefit.optional(),
     instanceCount: details.instanceCount.optional(),
     defaultCashValue: details.defaultCashValue,
+    offerKind: offerKind.optional(),
   })
   .strict(); // no `frequency`: a frequency change is changeFrequency()
 
@@ -100,6 +105,7 @@ const forkInput = z
     exactBenefit: details.exactBenefit.optional(),
     instanceCount: details.instanceCount.optional(),
     defaultCashValue: details.defaultCashValue,
+    offerKind: offerKind.optional(),
   })
   .strict();
 
@@ -179,6 +185,7 @@ export async function createBenefit(
         frequency: p.frequency,
         instanceCount: p.instanceCount,
         defaultCashValue: toMoney(p.defaultCashValue),
+        offerKind: p.offerKind ?? 'voucher',
         effectiveFrom: p.effectiveFrom,
         effectiveTo: p.effectiveTo ?? null,
       })
@@ -230,6 +237,7 @@ export async function correctVersion(
     if (p.exactBenefit !== undefined) patch.exactBenefit = p.exactBenefit;
     if (p.instanceCount !== undefined) patch.instanceCount = p.instanceCount;
     if (p.defaultCashValue !== undefined) patch.defaultCashValue = toMoney(p.defaultCashValue);
+    if (p.offerKind !== undefined) patch.offerKind = p.offerKind;
     if (freqChanges) patch.frequency = p.frequency;
     if (Object.keys(patch).length === 0) return cur;
     const [row] = await tx
@@ -264,6 +272,7 @@ export async function createVersion(
         frequency: current.frequency,
         instanceCount: p.instanceCount ?? current.instanceCount,
         defaultCashValue: p.defaultCashValue === undefined ? current.defaultCashValue : toMoney(p.defaultCashValue),
+        offerKind: p.offerKind ?? (current.offerKind as OfferKind),
         effectiveFrom: p.effectiveFrom,
         effectiveTo: null,
       })
@@ -306,6 +315,7 @@ export async function changeFrequency(
         frequency: p.newFrequency,
         instanceCount: p.instanceCount ?? current.instanceCount,
         defaultCashValue: p.defaultCashValue === undefined ? current.defaultCashValue : toMoney(p.defaultCashValue),
+        offerKind: p.offerKind ?? (current.offerKind as OfferKind),
         effectiveFrom: p.effectiveFrom,
         effectiveTo: null,
       })
@@ -422,6 +432,7 @@ export interface CardTypeBenefitRow {
   frequency: string;
   instanceCount: number;
   defaultCashValue: string | null;
+  offerKind: OfferKind;
   effectiveFrom: string;
   effectiveTo: string | null;
   versionCount: number;
@@ -439,6 +450,7 @@ type VersionSlice = {
   frequency: string;
   instanceCount: number;
   defaultCashValue: string | null;
+  offerKind: string;
   effectiveFrom: string;
   effectiveTo: string | null;
 };
@@ -472,6 +484,7 @@ export async function listCardTypeBenefits(
       frequency: benefitCatalogVersions.frequency,
       instanceCount: benefitCatalogVersions.instanceCount,
       defaultCashValue: benefitCatalogVersions.defaultCashValue,
+      offerKind: benefitCatalogVersions.offerKind,
       effectiveFrom: benefitCatalogVersions.effectiveFrom,
       effectiveTo: benefitCatalogVersions.effectiveTo,
     })
@@ -526,6 +539,7 @@ export async function listCardTypeBenefits(
       frequency: chosen.frequency,
       instanceCount: chosen.instanceCount,
       defaultCashValue: chosen.defaultCashValue,
+      offerKind: chosen.offerKind as OfferKind,
       effectiveFrom: chosen.effectiveFrom,
       effectiveTo: chosen.effectiveTo,
       versionCount,

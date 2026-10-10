@@ -10,7 +10,8 @@ import {
   cards,
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
-import { expandViewedPeriod, type ViewedPeriod } from '@/lib/periods';
+import { calendarQuarterForDate, expandViewedPeriod, type ViewedPeriod } from '@/lib/periods';
+import { type OfferKind, resolveOfferKind } from './benefit-offer-kind';
 import { ORDER_STATUSES, type OrderStatus } from './instances';
 import { ValidationError } from './workspace-data';
 
@@ -37,8 +38,16 @@ const filterSchema = z.strictObject({
   view: viewSchema,
   holderId: uuid.optional(),
   cardId: uuid.optional(),
+  /** Catalog `benefit_id` or card-override id — matches either column on instances. */
+  benefitId: uuid.optional(),
   status: z.enum(ORDER_STATUSES).optional(),
   search: z.string().trim().max(100).optional(),
+  /** `voucher` (default): gift vouchers only; `all`: include discounts; `discount`: discounts only. */
+  offerFilter: z.enum(['voucher', 'all', 'discount']).optional(),
+  /** With status Not Ordered: `1` = lapsed only, `0` = not lapsed only. */
+  lapsed: z.enum(['0', '1']).optional(),
+  /** All workspace periods — ignores `view` for the period filter. */
+  scope: z.literal('lifetime').optional(),
 });
 
 function parse<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
@@ -80,6 +89,8 @@ export interface InstanceListItem {
   benefitType: string;
   benefitProvider: string | null;
   frequency: Frequency;
+  /** Gift voucher vs discount-style coupon (not a straight redeemable gift card). */
+  offerKind: OfferKind;
   /** 'catalog' (shared catalog version) or 'override' (card-level add). */
   source: 'catalog' | 'override';
   cardId: string;
@@ -88,6 +99,10 @@ export interface InstanceListItem {
   cardTypeName: string;
   holderId: string;
   holderName: string;
+  /** Catalog benefit id when `source === 'catalog'`. */
+  benefitId: string | null;
+  /** Card-level add override id when `source === 'override'`. */
+  overrideId: string | null;
 }
 
 export type StatusCounts = Record<OrderStatus, number>;
@@ -101,9 +116,27 @@ export interface HolderProgress {
   redeemed: number;
 }
 
+/** Rupee totals for the actionable voucher queues in the viewed period set (discount coupons excluded). */
+export interface ActionQueueValues {
+  /** Not Ordered, period not ended — benefits still to place. */
+  needOrder: number;
+  /** Instances counted in `needOrder`. */
+  needOrderCount: number;
+  /** Ordered but Coupon not received — waiting on the bank/portal. */
+  awaitingCoupon: number;
+  /** Instances counted in `awaitingCoupon`. */
+  awaitingCouponCount: number;
+  /** Coupon Received, not sold — coupon in hand, not yet redeemed. */
+  couponToUse: number;
+  /** Instances counted in `couponToUse`. */
+  couponToUseCount: number;
+}
+
 export interface DashboardSummary {
   /** Every status present (zero-filled), over the viewed period set. */
   counts: StatusCounts;
+  /** Cash value (instance or catalog default) for actionable status queues. */
+  actionValues: ActionQueueValues;
   /** Instances excluding Skipped and Withdrawn. */
   totalCount: number;
   /** Sum of `value` over those instances. */
@@ -123,6 +156,21 @@ export interface DashboardSummary {
   /** Coupon Received, not sold, expiry_date in [today, today+30], workspace-wide (not limited to the view). */
   expiringSoon: InstanceListItem[];
   expiringWithinDays: number;
+  /** Sum of `value` for Coupon Redeemed in the calendar quarter of ctx.today (not the viewed period). */
+  redeemedThisQuarter: number;
+  /** Coupon Redeemed instances in that quarter (includes discounts). */
+  redeemedThisQuarterCount: number;
+  /** Sum of `value` for Coupon Redeemed in the calendar year of ctx.today. */
+  redeemedThisYear: number;
+  /** Coupon Redeemed instances in that year (includes discounts). */
+  redeemedThisYearCount: number;
+  /** Sum of `value` for every Coupon Redeemed instance in the workspace. */
+  redeemedLifetime: number;
+  /** Every Coupon Redeemed instance in the workspace (includes discounts). */
+  redeemedLifetimeCount: number;
+  /** Not Ordered, period ended, gift vouchers only — whole workspace, all periods. */
+  missedOrderLifetime: number;
+  missedOrderLifetimeCount: number;
 }
 
 // ── internals ───────────────────────────────────────────────────────────────
@@ -132,6 +180,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const selection = {
   id: benefitInstances.id,
+  benefitId: benefitInstances.benefitId,
   status: benefitInstances.orderStatus,
   periodStart: benefitInstances.periodStart,
   periodEnd: benefitInstances.periodEnd,
@@ -151,11 +200,13 @@ const selection = {
   vName: benefitCatalogVersions.exactBenefit,
   vFreq: benefitCatalogVersions.frequency,
   vValue: benefitCatalogVersions.defaultCashValue,
+  vOfferKind: benefitCatalogVersions.offerKind,
   oType: cardBenefitOverrides.benefitType,
   oProvider: cardBenefitOverrides.benefitProvider,
   oName: cardBenefitOverrides.exactBenefit,
   oFreq: cardBenefitOverrides.frequency,
   oValue: cardBenefitOverrides.defaultCashValue,
+  oOfferKind: cardBenefitOverrides.offerKind,
   cProvider: benefitOptions.provider,
   cName: benefitOptions.offerName,
   cValue: benefitOptions.cashValue,
@@ -178,6 +229,11 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
   const defaultCashValue = chosen ? (num(r.cValue) ?? num(r.vValue)) : num(fromOverride ? r.oValue : r.vValue);
   const cashValue = num(r.cashValue);
   const status = r.status as OrderStatus;
+  const benefitName = (chosen ? r.cName : fromOverride ? r.oName : r.vName) ?? '';
+  const benefitType = (fromOverride ? r.oType : r.vType) ?? '';
+  const benefitProvider = (chosen ? r.cProvider : fromOverride ? r.oProvider : r.vProvider) ?? null;
+  const storedKind = (fromOverride ? r.oOfferKind : r.vOfferKind) as OfferKind | null;
+  const offerKind = resolveOfferKind(storedKind, benefitType, benefitProvider, benefitName);
   return {
     id: r.id,
     status,
@@ -196,10 +252,11 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     rupayBookingId: r.rupayBookingId,
     comments: r.comments,
     hasCode: Boolean(r.hasCode),
-    benefitName: (chosen ? r.cName : fromOverride ? r.oName : r.vName) ?? '',
-    benefitType: (fromOverride ? r.oType : r.vType) ?? '',
-    benefitProvider: (chosen ? r.cProvider : fromOverride ? r.oProvider : r.vProvider) ?? null,
+    benefitName,
+    benefitType,
+    benefitProvider,
     frequency: ((fromOverride ? r.oFreq : r.vFreq) ?? 'Quarterly') as Frequency,
+    offerKind,
     source: fromOverride ? 'override' : 'catalog',
     cardId: r.cardId,
     cardName: r.cardName,
@@ -207,6 +264,8 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     cardTypeName: r.cardTypeName,
     holderId: r.holderId,
     holderName: r.holderName,
+    benefitId: fromOverride ? null : r.benefitId,
+    overrideId: fromOverride ? r.overrideId : null,
   };
 }
 
@@ -250,6 +309,31 @@ async function query(ctx: Ctx, where: SQL | undefined): Promise<InstanceListItem
   return (rows as unknown as SelRow[]).map((r) => toItem(r, ctx.today));
 }
 
+function sumRedeemed(items: InstanceListItem[]): { value: number; count: number } {
+  let value = 0;
+  let count = 0;
+  for (const it of items) {
+    if (it.status === 'Coupon Redeemed') {
+      value += it.value;
+      count += 1;
+    }
+  }
+  return { value: round2(value), count };
+}
+
+function sumMissedOrdering(items: InstanceListItem[]): { value: number; count: number } {
+  let value = 0;
+  let count = 0;
+  for (const it of items) {
+    if (it.offerKind === 'discount') continue;
+    if (it.status === 'Not Ordered' && it.lapsed) {
+      value += it.value;
+      count += 1;
+    }
+  }
+  return { value: round2(value), count };
+}
+
 function periodClause(view: ViewedPeriod, todayStr: string): SQL {
   // Same set ensureInstances generates for this view: the viewed period plus
   // nested/containing periods. Period ranges are unique per grain, so
@@ -275,14 +359,24 @@ export async function listInstances(
     view: ViewedPeriod;
     holderId?: string;
     cardId?: string;
+    benefitId?: string;
     status?: OrderStatus;
     search?: string;
+    offerFilter?: 'voucher' | 'all' | 'discount';
+    lapsed?: '0' | '1';
+    scope?: 'lifetime';
   },
 ): Promise<InstanceListItem[]> {
   const f = parse(filterSchema, input);
-  const conds: SQL[] = [periodClause(f.view, ctx.today)];
+  const conds: SQL[] = [];
+  if (f.scope !== 'lifetime') conds.push(periodClause(f.view, ctx.today));
   if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
   if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
+  if (f.benefitId) {
+    conds.push(
+      or(eq(benefitInstances.benefitId, f.benefitId), eq(benefitInstances.overrideId, f.benefitId))!,
+    );
+  }
   if (f.status) conds.push(eq(benefitInstances.orderStatus, f.status));
   if (f.search) {
     const p = `%${likeEscape(f.search)}%`;
@@ -300,7 +394,95 @@ export async function listInstances(
       )!,
     );
   }
-  return query(ctx, and(...conds));
+  let items = await query(ctx, conds.length ? and(...conds) : undefined);
+  const offerFilter = f.offerFilter ?? 'voucher';
+  if (offerFilter === 'voucher') items = items.filter((it) => it.offerKind !== 'discount');
+  else if (offerFilter === 'discount') items = items.filter((it) => it.offerKind === 'discount');
+  if (f.lapsed === '1') items = items.filter((it) => it.lapsed);
+  else if (f.lapsed === '0') items = items.filter((it) => !it.lapsed);
+  return items;
+}
+
+export interface BenefitFilterOption {
+  id: string;
+  label: string;
+}
+
+/** Label for benefit filter options and list section headers (`type · provider`). */
+export function benefitOptionLabel(
+  benefitType: string | null,
+  benefitProvider: string | null,
+  exactBenefit: string | null,
+): string {
+  const name = (exactBenefit ?? '').trim();
+  const type = (benefitType ?? '').trim();
+  const prov = (benefitProvider ?? '').trim() || name;
+  return type ? `${type} · ${prov}` : prov || name || 'Benefit';
+}
+
+/**
+ * Distinct catalog benefits and card-level adds that appear on workspace instances.
+ * Optional holder/card narrow which instances are considered (for filter dropdowns).
+ */
+const benefitOptsSchema = z.strictObject({ holderId: uuid.optional(), cardId: uuid.optional() });
+
+export async function listBenefitFilterOptions(
+  ctx: Ctx,
+  input?: { holderId?: string; cardId?: string },
+): Promise<BenefitFilterOption[]> {
+  const f = parse(benefitOptsSchema, input ?? {});
+
+  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId)];
+  if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
+  if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
+
+  const rows = await ctx.db
+    .select({
+      benefitId: benefitInstances.benefitId,
+      overrideId: benefitInstances.overrideId,
+      vType: benefitCatalogVersions.benefitType,
+      vProvider: benefitCatalogVersions.benefitProvider,
+      vName: benefitCatalogVersions.exactBenefit,
+      oType: cardBenefitOverrides.benefitType,
+      oProvider: cardBenefitOverrides.benefitProvider,
+      oName: cardBenefitOverrides.exactBenefit,
+    })
+    .from(benefitInstances)
+    .innerJoin(
+      cards,
+      and(eq(cards.id, benefitInstances.cardId), eq(cards.workspaceId, ctx.workspaceId)),
+    )
+    .leftJoin(
+      benefitCatalogVersions,
+      eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
+    )
+    .leftJoin(
+      cardBenefitOverrides,
+      and(
+        eq(cardBenefitOverrides.id, benefitInstances.overrideId),
+        eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .where(and(...conds));
+
+  const byId = new Map<string, BenefitFilterOption>();
+  for (const r of rows) {
+    const fromOverride = r.overrideId != null;
+    const id = (fromOverride ? r.overrideId : r.benefitId) as string | null;
+    if (!id || byId.has(id)) continue;
+    byId.set(
+      id,
+      {
+        id,
+        label: benefitOptionLabel(
+          fromOverride ? r.oType : r.vType,
+          fromOverride ? r.oProvider : r.vProvider,
+          fromOverride ? r.oName : r.vName,
+        ),
+      },
+    );
+  }
+  return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 }
 
 const EXPIRING_DAYS = 30;
@@ -333,12 +515,31 @@ export async function getDashboardSummary(
   const holders = new Map<string, HolderProgress>();
   let totalCount = 0, totalValue = 0, orderedValue = 0, redeemedValue = 0;
   let outstandingValue = 0, lapsedCount = 0, lapsedValue = 0, soldValue = 0;
+  let needOrder = 0,
+    needOrderCount = 0,
+    awaitingCoupon = 0,
+    awaitingCouponCount = 0,
+    couponToUse = 0,
+    couponToUseCount = 0;
 
   for (const it of items) {
     counts[it.status] += 1;
     if (it.status === 'Skipped' || it.status === 'Withdrawn') continue;
     totalCount += 1;
     totalValue += it.value;
+    const voucherQueue = it.offerKind !== 'discount';
+    if (voucherQueue && it.status === 'Not Ordered' && !it.lapsed) {
+      needOrder += it.value;
+      needOrderCount += 1;
+    }
+    if (voucherQueue && it.status === 'Ordered but Coupon not received') {
+      awaitingCoupon += it.value;
+      awaitingCouponCount += 1;
+    }
+    if (voucherQueue && it.status === 'Coupon Received' && it.soldFor == null) {
+      couponToUse += it.value;
+      couponToUseCount += 1;
+    }
     const sold = it.soldFor != null;
     if (sold) soldValue += it.soldFor!;
     if (it.status !== 'Not Ordered') orderedValue += it.value;
@@ -365,14 +566,42 @@ export async function getDashboardSummary(
       sql`${benefitInstances.expiryDate} <= ${addDays(ctx.today, EXPIRING_DAYS)}`,
     ),
   );
-  expiring.sort(
+  const expiringVouchers = expiring.filter((it) => it.offerKind !== 'discount');
+  expiringVouchers.sort(
     (a, b) =>
       (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '') ||
       a.benefitName.localeCompare(b.benefitName),
   );
 
+  const todayYear = Number(ctx.today.slice(0, 4));
+  const [quarterRedeemedItems, yearRedeemedItems, lifetimeRedeemedItems, lifetimeMissedItems] =
+    await Promise.all([
+      query(ctx, periodClause(calendarQuarterForDate(ctx.today), ctx.today)),
+      query(ctx, periodClause({ kind: 'year', year: todayYear }, ctx.today)),
+      query(ctx, eq(benefitInstances.orderStatus, 'Coupon Redeemed')),
+      query(
+        ctx,
+        and(
+          eq(benefitInstances.orderStatus, 'Not Ordered'),
+          sql`${benefitInstances.periodEnd} < ${ctx.today}`,
+        ),
+      ),
+    ]);
+  const missedLifetime = sumMissedOrdering(lifetimeMissedItems);
+  const redeemedQuarter = sumRedeemed(quarterRedeemedItems);
+  const redeemedYear = sumRedeemed(yearRedeemedItems);
+  const redeemedLifetime = sumRedeemed(lifetimeRedeemedItems);
+
   return {
     counts,
+    actionValues: {
+      needOrder: round2(needOrder),
+      needOrderCount,
+      awaitingCoupon: round2(awaitingCoupon),
+      awaitingCouponCount,
+      couponToUse: round2(couponToUse),
+      couponToUseCount,
+    },
     totalCount,
     totalValue: round2(totalValue),
     orderedValue: round2(orderedValue),
@@ -382,7 +611,15 @@ export async function getDashboardSummary(
     lapsedValue: round2(lapsedValue),
     soldValue: round2(soldValue),
     perHolder: [...holders.values()].sort((a, b) => a.holderName.localeCompare(b.holderName)),
-    expiringSoon: expiring,
+    expiringSoon: expiringVouchers,
     expiringWithinDays: EXPIRING_DAYS,
+    redeemedThisQuarter: redeemedQuarter.value,
+    redeemedThisQuarterCount: redeemedQuarter.count,
+    redeemedThisYear: redeemedYear.value,
+    redeemedThisYearCount: redeemedYear.count,
+    redeemedLifetime: redeemedLifetime.value,
+    redeemedLifetimeCount: redeemedLifetime.count,
+    missedOrderLifetime: missedLifetime.value,
+    missedOrderLifetimeCount: missedLifetime.count,
   };
 }

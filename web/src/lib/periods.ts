@@ -27,6 +27,13 @@ const IST_DATE = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 });
 
+/** Calendar quarter containing `todayStr` (YYYY-MM-DD). */
+export function calendarQuarterForDate(todayStr: string): ViewedPeriod & { kind: 'quarter' } {
+  const year = Number(todayStr.slice(0, 4));
+  const month = Number(todayStr.slice(5, 7));
+  return { kind: 'quarter', year, quarter: (Math.ceil(month / 3) as 1 | 2 | 3 | 4) };
+}
+
 /** Current calendar date in Asia/Kolkata as 'YYYY-MM-DD'. `now` is injectable for tests. */
 export function today(now: Date = new Date()): string {
   const parts = IST_DATE.formatToParts(now);

@@ -1,4 +1,7 @@
+import Link from 'next/link';
 import type { DashboardSummary } from '@/domain/instance-queries';
+import type { ViewedPeriod } from '@/lib/periods';
+import { benefitsStatusHref } from './benefits-link';
 
 const ROWS: { key: keyof DashboardSummary['counts']; label: string; tone?: string }[] = [
   { key: 'Not Ordered', label: 'Not ordered', tone: 'bg-muted-foreground/40' },
@@ -9,7 +12,7 @@ const ROWS: { key: keyof DashboardSummary['counts']; label: string; tone?: strin
   { key: 'Withdrawn', label: 'Withdrawn', tone: 'bg-border' },
 ];
 
-export function StatusCounts({ s }: { s: DashboardSummary }) {
+export function StatusCounts({ view, s }: { view: ViewedPeriod; s: DashboardSummary }) {
   const total = Object.values(s.counts).reduce((a, b) => a + b, 0) || 1;
   return (
     <section className="panel h-full">
@@ -23,29 +26,41 @@ export function StatusCounts({ s }: { s: DashboardSummary }) {
             const n = s.counts[r.key];
             if (!n) return null;
             return (
-              <div
+              <Link
                 key={r.key}
-                className={`${r.tone} h-full`}
+                href={benefitsStatusHref(view, r.key)}
+                className={`${r.tone} h-full transition-opacity hover:opacity-80`}
                 style={{ width: `${(n / total) * 100}%` }}
                 title={`${r.label}: ${n}`}
+                aria-label={`${r.label}: ${n}`}
               />
             );
           })}
         </div>
         <ul className="space-y-2.5">
           {ROWS.map((r) => (
-            <li key={r.key} className="flex items-center justify-between gap-3 text-sm">
-              <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${r.tone}`} aria-hidden />
-                {r.label}
-              </span>
-              <span className="font-semibold tabular-nums">{s.counts[r.key]}</span>
+            <li key={r.key}>
+              <Link
+                href={benefitsStatusHref(view, r.key)}
+                className="flex items-center justify-between gap-3 rounded-md text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mx-2 px-2 py-1"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${r.tone}`} aria-hidden />
+                  {r.label}
+                </span>
+                <span className="font-semibold tabular-nums">{s.counts[r.key]}</span>
+              </Link>
             </li>
           ))}
           {s.lapsedCount > 0 && (
-            <li className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-sm text-destructive">
-              <span>Lapsed (in Not ordered)</span>
-              <span className="font-semibold tabular-nums">{s.lapsedCount}</span>
+            <li>
+              <Link
+                href={benefitsStatusHref(view, 'Not Ordered', { lapsed: '1' })}
+                className="flex items-center justify-between gap-3 rounded-md border-t border-border/60 pt-2 text-sm text-destructive transition-colors hover:bg-destructive/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mx-2 px-2 py-1"
+              >
+                <span>Lapsed (in Not ordered)</span>
+                <span className="font-semibold tabular-nums">{s.lapsedCount}</span>
+              </Link>
             </li>
           )}
         </ul>

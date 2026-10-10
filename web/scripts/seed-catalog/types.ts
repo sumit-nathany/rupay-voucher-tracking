@@ -73,6 +73,7 @@ export interface VersionOut {
   exactBenefit: string;
   frequency: Frequency;
   instanceCount: number;
+  offerKind: 'voucher' | 'discount';
   effectiveFrom: string; // YYYY-MM-DD, start of first quarter the identity appears in
   effectiveTo: string | null; // end of last quarter, only for fork-superseded identities
 }

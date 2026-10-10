@@ -1,16 +1,19 @@
-import { today, type ViewedPeriod } from '@/lib/periods';
+import { calendarQuarterForDate, today, type ViewedPeriod } from '@/lib/periods';
 
 // URL contract: ?v=year|half|quarter|month &y=<year> &n=<half|quarter|month number>.
-// Decision (spec silent): invalid/missing params fall back to the current quarter.
+// Invalid/missing params fall back to the calendar quarter containing today (IST).
 
 export function defaultView(todayStr: string = today()): ViewedPeriod {
-  const year = Number(todayStr.slice(0, 4));
-  const month = Number(todayStr.slice(5, 7));
-  return { kind: 'quarter', year, quarter: (Math.ceil(month / 3) as 1 | 2 | 3 | 4) };
+  return calendarQuarterForDate(todayStr);
 }
 
 type Raw = string | string[] | undefined;
 const first = (v: Raw) => (Array.isArray(v) ? v[0] : v);
+
+/** Benefits list across every period in the workspace (`?lifetime=1`). */
+export function isLifetimeScope(sp: Record<string, Raw>): boolean {
+  return first(sp.lifetime) === '1';
+}
 
 export function parseView(sp: Record<string, Raw>, todayStr: string = today()): ViewedPeriod {
   const fallback = defaultView(todayStr);

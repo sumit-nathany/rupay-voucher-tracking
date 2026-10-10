@@ -7,7 +7,9 @@ import { EmptyState } from '@/components/layout/empty-state';
 import { ErrorPanel } from './error-panel';
 import { ExpiringSoon } from './expiring-soon';
 import { HolderProgress } from './holder-progress';
-import { StatCards } from './stat-cards';
+import { ActionQueueCards } from './action-queue-cards';
+import { LifetimeSection } from './lifetime-section';
+import { RedeemedValueCards } from './redeemed-value-cards';
 import { StatusCounts } from './status-counts';
 
 export async function DashboardContent({ view, today }: { view: ViewedPeriod; today: string }) {
@@ -35,12 +37,14 @@ export async function DashboardContent({ view, today }: { view: ViewedPeriod; to
 
   return (
     <div className="space-y-6">
-      <StatCards s={s} />
+      <ActionQueueCards view={view} s={s} />
+      <RedeemedValueCards s={s} today={today} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <StatusCounts s={s} />
-        <HolderProgress holders={s.perHolder} />
+        <StatusCounts view={view} s={s} />
+        <HolderProgress view={view} holders={s.perHolder} />
       </div>
       <ExpiringSoon items={s.expiringSoon} days={s.expiringWithinDays} today={today} />
+      <LifetimeSection s={s} />
     </div>
   );
 }

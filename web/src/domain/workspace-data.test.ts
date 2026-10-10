@@ -75,6 +75,14 @@ describe('cards', () => {
     expect(b.trackingFrom).toBe('2026-01-15');
     await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad', trackingFrom: '2026-02-30' })).rejects.toBeInstanceOf(d.ValidationError);
   });
+  it('optional nickname falls back to bank card type name', async () => {
+    const created = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: null });
+    expect(created.displayName).toBe('PNB Select');
+    const nicknamed = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'My Eterna' });
+    expect(nicknamed.displayName).toBe('My Eterna');
+    const cleared = await d.updateCard(A, { id: nicknamed.id, displayName: null });
+    expect(cleared.displayName).toBe('BoB Eterna');
+  });
   it('bank_card_type_id is immutable with a clean error', async () => {
     await expect(d.updateCard(A, { id: cardA, bankCardTypeId: typeY })).rejects.toBeInstanceOf(d.ImmutableFieldError);
     expect((await d.updateCard(A, { id: cardA, bankCardTypeId: typeX, lastDigits: '1234' })).lastDigits).toBe('1234');

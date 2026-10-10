@@ -20,19 +20,28 @@ export const SheetOverlay = React.forwardRef<
 ));
 SheetOverlay.displayName = 'SheetOverlay';
 
+type SheetContentProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & {
+  /** `left` — full-height nav drawer; default — bottom sheet / right panel. */
+  side?: 'default' | 'left';
+};
+
 /** Right-side panel on >=640px, bottom sheet below. */
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  SheetContentProps
+>(({ className, side = 'default', children, ...props }, ref) => (
   <SheetPrimitive.Portal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
         'fixed z-50 flex flex-col gap-4 overflow-y-auto bg-card p-6 shadow-[var(--shadow-stage)] focus:outline-none',
-        'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t animate-[sheet-in-bottom_280ms_cubic-bezier(0.22,1,0.36,1)]',
-        'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:h-full sm:w-full sm:max-w-lg sm:rounded-none sm:border-t-0 sm:border-l sm:animate-[sheet-in-right_280ms_cubic-bezier(0.22,1,0.36,1)]',
+        side === 'left' &&
+          'inset-y-0 left-0 h-full w-[17rem] max-w-[min(17rem,85vw)] rounded-none border-r p-0 animate-[sheet-in-left_280ms_cubic-bezier(0.22,1,0.36,1)]',
+        side === 'default' && [
+          'inset-x-0 bottom-0 max-h-[90dvh] rounded-t-2xl border-t animate-[sheet-in-bottom_280ms_cubic-bezier(0.22,1,0.36,1)]',
+          'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:h-full sm:w-full sm:max-w-lg sm:rounded-none sm:border-t-0 sm:border-l sm:animate-[sheet-in-right_280ms_cubic-bezier(0.22,1,0.36,1)]',
+        ],
         className,
       )}
       {...props}

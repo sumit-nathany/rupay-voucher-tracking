@@ -28,3 +28,7 @@ export async function listInstancesAction(input: Parameters<typeof q.listInstanc
 export async function getDashboardSummaryAction(view: Parameters<typeof q.getDashboardSummary>[1]) {
   return q.getDashboardSummary(await getCtx(), view);
 }
+
+export async function listBenefitFilterOptionsAction(input?: Parameters<typeof q.listBenefitFilterOptions>[1]) {
+  return q.listBenefitFilterOptions(await getCtx(), input);
+}

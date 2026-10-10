@@ -170,10 +170,27 @@ export async function listBankCardTypes(ctx: Ctx) {
 
 // ── cards ───────────────────────────────────────────────────────────────────
 
+/** Optional nickname; empty/missing falls back to the bank card type name at write time. */
+const cardNickname = optText(100);
+
+async function resolveCardDisplayName(
+  ctx: Ctx,
+  bankCardTypeId: string,
+  nickname: string | null | undefined,
+): Promise<string> {
+  if (nickname) return nickname;
+  const [type] = await ctx.db
+    .select({ displayName: bankCardTypes.displayName })
+    .from(bankCardTypes)
+    .where(eq(bankCardTypes.id, bankCardTypeId));
+  if (!type) throw new ValidationError('Unknown card type');
+  return type.displayName;
+}
+
 const cardCreate = z.strictObject({
   holderId: uuid,
   bankCardTypeId: uuid,
-  displayName: trimmed(100),
+  displayName: cardNickname,
   lastDigits: z.string().trim().regex(/^\d{4}$/, 'expected 4 digits').nullable().optional(),
   trackingFrom: dateStr.optional(),
 });
@@ -182,7 +199,7 @@ const cardUpdate = z.strictObject({
   // Accepted only so we can reject a change with a clean error.
   bankCardTypeId: uuid.optional(),
   holderId: uuid.optional(),
-  displayName: trimmed(100).optional(),
+  displayName: cardNickname,
   lastDigits: z.string().trim().regex(/^\d{4}$/, 'expected 4 digits').nullable().optional(),
   trackingFrom: dateStr.optional(),
   active: z.boolean().optional(),
@@ -219,6 +236,7 @@ export async function createCard(ctx: Ctx, input: unknown) {
     .where(eq(bankCardTypes.id, v.bankCardTypeId));
   if (!type) throw new ValidationError('Unknown card type');
   if (type.active === false) throw new ValidationError('This card type is no longer available');
+  const displayName = await resolveCardDisplayName(ctx, v.bankCardTypeId, v.displayName);
   return mapConflicts('A card with this display name', async () => {
     const [row] = await ctx.db
       .insert(cards)
@@ -226,7 +244,7 @@ export async function createCard(ctx: Ctx, input: unknown) {
         workspaceId: ctx.workspaceId,
         holderId: v.holderId,
         bankCardTypeId: v.bankCardTypeId,
-        displayName: v.displayName,
+        displayName,
         lastDigits: v.lastDigits ?? null,
         trackingFrom: v.trackingFrom ?? ctx.today, // Asia/Kolkata today; backdating allowed
       })
@@ -244,7 +262,9 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   if (holderId !== undefined) await getHolder(ctx, { id: holderId });
   const set: Partial<typeof cards.$inferInsert> = {};
   if (holderId !== undefined) set.holderId = holderId;
-  if (patch.displayName !== undefined) set.displayName = patch.displayName;
+  if (patch.displayName !== undefined) {
+    set.displayName = await resolveCardDisplayName(ctx, existing.bankCardTypeId, patch.displayName);
+  }
   if (patch.lastDigits !== undefined) set.lastDigits = patch.lastDigits;
   if (patch.trackingFrom !== undefined) set.trackingFrom = patch.trackingFrom;
   if (patch.active !== undefined) set.active = patch.active;

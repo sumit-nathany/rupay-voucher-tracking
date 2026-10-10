@@ -6,7 +6,8 @@ import { formatINR } from '@/components/dashboard/format';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { cn } from '@/lib/utils';
 import { benefitLabel } from './label';
-import { type BenefitSort, groupItems, sortBenefitItems } from './group';
+import { isLifetimeScope } from '@/components/dashboard/view-params';
+import { type BenefitSort, groupBenefitItems, resolveBenefitGroupMode, sortBenefitItems } from './group';
 import { StatusBadge } from './status-badge';
 import { useBenefitDrawer } from './use-drawer';
 
@@ -40,6 +41,11 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
         <span className="hidden text-right text-sm tabular-nums md:block">{formatINR(it.value)}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5 md:mt-0 md:justify-end">
           <StatusBadge item={it} />
+          {it.offerKind === 'discount' && (
+            <Badge variant="secondary" title="Discount coupon — not a standard gift voucher">
+              Discount
+            </Badge>
+          )}
           {it.hasCode && (
             <Badge variant="outline" className="gap-1" title="A voucher code is stored">
               <Gift className="h-3 w-3" aria-hidden /> Code
@@ -52,15 +58,17 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
 }
 
 function parseSort(raw: string | null): BenefitSort {
-  if (raw === 'value-desc' || raw === 'value-asc') return raw;
-  return 'default';
+  if (raw === 'value-asc') return 'value-asc';
+  return 'value-desc';
 }
 
 export function BenefitList({ items }: { items: InstanceListItem[] }) {
   const { open, drawer } = useBenefitDrawer();
   const sp = useSearchParams();
   const sort = parseSort(sp.get('sort'));
-  const groups = groupItems(items).map((g) => ({
+  const lifetime = isLifetimeScope({ lifetime: sp.get('lifetime') ?? undefined });
+  const groupMode = resolveBenefitGroupMode(sp.get('group'), lifetime);
+  const groups = groupBenefitItems(items, groupMode).map((g) => ({
     ...g,
     items: sortBenefitItems(g.items, sort),
   }));
@@ -68,11 +76,11 @@ export function BenefitList({ items }: { items: InstanceListItem[] }) {
     <div className="space-y-8">
       {groups.map((g) => (
         <section key={g.key} aria-labelledby={`g-${g.key}`}>
-          <div className="mb-3 flex items-end justify-between gap-3">
-            <h2 id={`g-${g.key}`} className="font-semibold tracking-tight text-xl">
+          <div className="mb-3 flex items-center justify-between gap-3 border-b border-border/60 pb-2">
+            <h2 id={`g-${g.key}`} className="text-base font-semibold tracking-tight text-foreground sm:text-lg">
               {g.title}
             </h2>
-            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+            <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
               {g.items.length}
             </span>
           </div>

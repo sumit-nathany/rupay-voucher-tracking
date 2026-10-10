@@ -16,6 +16,7 @@ import postgres from "postgres";
 import * as schema from "../../src/db/schema";
 import type { Database } from "../../src/lib/context";
 import { linkPortalIds, replaceCardBenefits } from "./load";
+import { isBoiSelectDebitCatalogCard, mergeBoiSelectDebitOlaUberCab } from "../../src/domain/boi-debit-cab-pick-one";
 import { transformCard, type PortalDeal, type PortalService } from "./transform";
 
 const API = "https://apirupayselect.truztee.com/api";
@@ -115,7 +116,7 @@ async function main() {
 
   if (cmd === "import") {
     const data = readJson<{ services: PortalService[]; deals: Record<string, PortalDeal[]> }>(path.join(dir, `benefits-${card}.json`));
-    const { benefits, warnings } = transformCard(data.services, new Map(Object.entries(data.deals)));
+    let { benefits, warnings } = transformCard(data.services, new Map(Object.entries(data.deals)));
     for (const b of benefits) {
       console.log(`  ${b.benefitType} | ${b.benefitProvider ?? "(choose one)"} | ${b.exactBenefit} | ${b.frequency} x${b.instanceCount} | ${b.defaultCashValue ?? "-"} | ${b.effectiveFrom}..${b.effectiveTo ?? ""}`);
       for (const o of b.options) console.log(`      - ${o.provider}: ${o.offerName} (${o.cashValue ?? "-"})`);
@@ -124,6 +125,9 @@ async function main() {
     await withDb(async (db) => {
       const [t] = await db.select({ id: schema.bankCardTypes.id, name: schema.bankCardTypes.displayName }).from(schema.bankCardTypes).where(eq(schema.bankCardTypes.portalCardId, card));
       if (!t) throw new Error(`No catalog card has portal_card_id ${card}; run link-ids first`);
+      if (isBoiSelectDebitCatalogCard(t.name)) {
+        benefits = mergeBoiSelectDebitOlaUberCab(benefits);
+      }
       const r = await replaceCardBenefits(db, t.id, benefits, { dryRun: !write });
       console.log(`${t.name}: ${write ? "replaced" : "DRY RUN, would replace"}`, r);
     });

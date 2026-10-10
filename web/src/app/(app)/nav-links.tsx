@@ -14,7 +14,15 @@ const links = [
   { href: '/overrides', label: 'Overrides', icon: SlidersHorizontal, hint: 'Catalog fixes' },
 ];
 
-export function NavLinks({ variant, showAdmin }: { variant: 'sidebar' | 'tabbar'; showAdmin?: boolean }) {
+export function NavLinks({
+  variant,
+  showAdmin,
+  onNavigate,
+}: {
+  variant: 'sidebar' | 'tabbar';
+  showAdmin?: boolean;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const items = showAdmin ? [...links, adminLink] : links;
@@ -28,6 +36,7 @@ export function NavLinks({ variant, showAdmin }: { variant: 'sidebar' | 'tabbar'
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
+            onClick={onNavigate}
             className={cn(
               'group relative transition-[color,background] duration-150 ease-out active:scale-[0.98]',
               variant === 'sidebar'

@@ -78,8 +78,8 @@ const BOI_DEBIT_BENEFITS: BenefitMap = new Map([
   ["health checkup|thyrocare", { id: "771a2162-7ea8-4f8e-9d55-f6484ba9831e", versionId: "c1df8ac3-2b81-4b0f-bb5f-2749e92b2d35", frequency: "Quarterly", pickOne: false }],
   ["health check up|srl", { id: "a7048611-b3b3-4206-bf60-f81c1eca2096", versionId: "808f21a2-a2e3-4d82-a636-8381b7c1328e", frequency: "Quarterly", pickOne: false }],
   ["gym access|", { id: "6c7012a4-ad5e-4f1a-b78f-f812976c9222", versionId: "c9c57819-7de1-4097-bd8b-043672725ca4", frequency: "Quarterly", pickOne: true }],
-  ["cab services|uber", { id: "899823cc-b1d4-43b3-aaf0-828611fe5fb6", versionId: "ee5ab49a-cd4a-4b84-97b0-8d45d6d2641b", frequency: "Quarterly", pickOne: false }],
-  ["cab services|ola", { id: "54a0d991-3147-40b4-8bc7-15cac91e9089", versionId: "8e7921d8-f039-4f00-b069-976973aa1fe3", frequency: "Quarterly", pickOne: false }],
+  ["cab services|", { id: "54a0d991-3147-40b4-8bc7-15cac91e9089", versionId: "8e7921d8-f039-4f00-b069-976973aa1fe3", frequency: "Quarterly", pickOne: true }],
+  ["travel|", { id: "54a0d991-3147-40b4-8bc7-15cac91e9089", versionId: "8e7921d8-f039-4f00-b069-976973aa1fe3", frequency: "Quarterly", pickOne: true }],
 ]);
 
 // PNB Imperial benefits
@@ -142,6 +142,9 @@ const PICK_ONE_OPTIONS: Record<string, string> = {
   "f7970dcd-9353-4848-916d-3f662cd78557|amazon prime": "df722df1-4431-4ffd-9979-84acf66a469e",
   "f7970dcd-9353-4848-916d-3f662cd78557|sonyliv": "023ef549-0566-4549-bf40-fa937563952c",
   "f7970dcd-9353-4848-916d-3f662cd78557|zee5": "273ca0a3-b9ca-46e9-8ffe-5bf22620373d",
+  // BOI Debit Cab / Travel (Ola or Uber)
+  "54a0d991-3147-40b4-8bc7-15cac91e9089|ola": "7c4e6a10-b011-4cab-8001-010000000001",
+  "54a0d991-3147-40b4-8bc7-15cac91e9089|uber": "7c4e6a10-b011-4cab-8001-010000000002",
   // PNB Imperial Spa options
   "d95a470b-e207-440b-b9e5-2b73cb95f30e|four fountains": "2fdfed8e-8dad-47bf-b8bd-69286a31f9f0",
   "d95a470b-e207-440b-b9e5-2b73cb95f30e|aromthai": "c49c2f1a-08fa-401d-9e11-9e4982927cf3",
