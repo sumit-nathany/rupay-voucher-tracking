@@ -161,6 +161,17 @@ async function main() {
   `);
   console.log('Cleared chosen_option_id on un-ordered Cab Services instances:', clearedChoices.length);
 
+  // 7. Ensure retired standalone Uber version ended on 2026-09-30 so Q4 never regenerates it
+  await db.execute(sql`
+    UPDATE "app"."benefit_catalog_versions"
+    SET "effective_to" = '2026-09-30'
+    WHERE "id" = 'ee5ab49a-cd4a-4b84-97b0-8d45d6d2641b';
+
+    DELETE FROM "app"."benefit_instances"
+    WHERE "benefit_id" = ${BOI_SELECT_DEBIT_CAB_UBER_BENEFIT_ID}::uuid
+      AND "period_start" >= '2026-10-01'::date;
+  `);
+
   console.log('Retrospective fix completed successfully.');
   await client.end();
 }

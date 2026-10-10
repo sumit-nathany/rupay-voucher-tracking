@@ -116,4 +116,13 @@ BEGIN
     AND "rupay_booking_id" IS NULL
     AND "order_status" IN ('Not Ordered', 'Withdrawn', 'Skipped')
     AND "chosen_option_id" IS NOT NULL;
+
+  -- 7. Ensure retired standalone Uber version ended on 2026-09-30 so Q4 never regenerates it
+  UPDATE "app"."benefit_catalog_versions"
+  SET "effective_to" = '2026-09-30'
+  WHERE "id" = 'ee5ab49a-cd4a-4b84-97b0-8d45d6d2641b';
+
+  DELETE FROM "app"."benefit_instances"
+  WHERE "benefit_id" = '899823cc-b1d4-43b3-aaf0-828611fe5fb6'::uuid
+    AND "period_start" >= '2026-10-01'::date;
 END $$;
