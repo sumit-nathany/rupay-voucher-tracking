@@ -580,7 +580,7 @@ async function main() {
       const periods = getPeriod(row.cy, row.quarter, benefit.frequency);
 
       let period: { start: string; end: string; label: string };
-      let instanceNumber = 1;
+      const instanceNumber = 1;
 
       if (benefit.frequency === "Monthly") {
         // Each row in the quarter = a separate monthly instance
@@ -645,10 +645,9 @@ async function main() {
         })();
 
       // Look up bankCardTypeId for this card
-      let bankCardTypeId: string;
       const cardRow = await sql`SELECT bank_card_type_id FROM app.cards WHERE id = ${cardId}`;
       if (!cardRow.length) { stats.warnings.push(`Card ${cardId} not found`); continue; }
-      bankCardTypeId = cardRow[0].bank_card_type_id as string;
+      const bankCardTypeId = cardRow[0].bank_card_type_id as string;
 
       const existKey = `${cardId}||${instKey.benefitEntry.id}||${instKey.period.label}||${instKey.instanceNumber}`;
       const existing4 = existingMap.get(existKey);

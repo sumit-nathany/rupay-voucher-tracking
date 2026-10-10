@@ -117,7 +117,8 @@ async function main() {
 
   if (cmd === "import") {
     const data = readJson<{ services: PortalService[]; deals: Record<string, PortalDeal[]> }>(path.join(dir, `benefits-${card}.json`));
-    let { benefits, warnings } = transformCard(data.services, new Map(Object.entries(data.deals)));
+    const { benefits: initialBenefits, warnings } = transformCard(data.services, new Map(Object.entries(data.deals)));
+    let benefits = initialBenefits;
     for (const b of benefits) {
       console.log(`  ${b.benefitType} | ${b.benefitProvider ?? "(choose one)"} | ${b.exactBenefit} | ${b.frequency} x${b.instanceCount} | ${b.defaultCashValue ?? "-"} | ${b.effectiveFrom}..${b.effectiveTo ?? ""}`);
       for (const o of b.options) console.log(`      - ${o.provider}: ${o.offerName} (${o.cashValue ?? "-"})`);
