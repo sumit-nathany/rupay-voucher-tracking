@@ -19,7 +19,7 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
     <li>
       <button
         type="button"
-        onClick={() => onOpen(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${it.holderName} · ${it.cardName}` })}
+        onClick={() => onOpen(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${it.holderName} · ${it.cardName}${it.cardLastDigits ? ` ••${it.cardLastDigits}` : ''}${it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}` })}
         className={cn(
           'block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           GRID,
@@ -37,6 +37,7 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
         <span className="mt-0.5 block min-w-0 truncate text-xs text-muted-foreground md:mt-0 md:text-sm">
           {it.holderName} · {it.cardName}
           {it.cardLastDigits ? ` ••${it.cardLastDigits}` : ''}
+          {it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}
         </span>
         <span className="hidden text-right text-sm tabular-nums md:block">{formatINR(it.value)}</span>
         <span className="mt-2 flex flex-wrap items-center gap-1.5 md:mt-0 md:justify-end">

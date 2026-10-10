@@ -385,13 +385,18 @@ export async function listInstances(
       or(
         ilike(benefitCatalogVersions.exactBenefit, p),
         ilike(benefitCatalogVersions.benefitProvider, p),
+        ilike(benefitCatalogVersions.benefitType, p),
         ilike(benefitOptions.provider, p),
         ilike(benefitOptions.offerName, p),
         ilike(cardBenefitOverrides.exactBenefit, p),
         ilike(cardBenefitOverrides.benefitProvider, p),
+        ilike(cardBenefitOverrides.benefitType, p),
         ilike(cards.displayName, p),
+        ilike(cards.lastDigits, p),
         ilike(cardHolders.name, p),
         ilike(bankCardTypes.displayName, p),
+        ilike(benefitInstances.rupayBookingId, p),
+        ilike(benefitInstances.comments, p),
       )!,
     );
   }

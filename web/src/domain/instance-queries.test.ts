@@ -37,6 +37,7 @@ type Ins = {
   ws: Ctx; card: string; ben: { benefitId: string; versionId: string };
   start: string; end: string; label: string; status?: string;
   cash?: string | null; sold?: string | null; expiry?: string | null; code?: string | null;
+  bookingId?: string | null;
 };
 async function mk(i: Ins) {
   n += 1;
@@ -46,6 +47,7 @@ async function mk(i: Ins) {
     periodStart: i.start, periodEnd: i.end, periodLabel: i.label, orderDeadline: i.end,
     orderStatus: i.status ?? 'Not Ordered', cashValue: i.cash ?? null, soldFor: i.sold ?? null,
     expiryDate: i.expiry ?? null, codeEncrypted: i.code ?? null, instanceNumber: n,
+    rupayBookingId: i.bookingId ?? null,
   }).returning();
   return r.id;
 }
@@ -89,7 +91,7 @@ beforeAll(async () => {
   // Workspace A, viewed (Q3 2026) set. Inserted out of order on purpose.
   idYear = await mk({ ws: A, card: cardA1, ben: annual, ...yr });
   idH2 = await mk({ ws: A, card: cardA1, ben: half, ...h2 });
-  idQ3Beta = await mk({ ws: A, card: cardA1, ben: beta, ...q3 });
+  idQ3Beta = await mk({ ws: A, card: cardA1, ben: beta, ...q3, bookingId: 'RUPAY-BOOK-1234' });
   idQ3Alpha = await mk({ ws: A, card: cardA1, ben: alpha, ...q3, code: 'ENCRYPTED-BLOB-XYZ' });
   idQ2 = await mk({ ws: A, card: cardA1, ben: alpha, ...q2 }); // outside the view, lapsed
   idSkipped = await mk({ ws: A, card: cardA2, ben: alpha, ...q3, status: 'Skipped' });
@@ -220,6 +222,9 @@ describe('listInstances', () => {
     const byHolder = await listInstances(A, { view: Q3, search: 'bhav' });
     expect(byHolder.every((r) => r.holderName === 'Bhavin')).toBe(true);
     expect(byHolder.length).toBeGreaterThan(0);
+    const byBooking = await listInstances(A, { view: Q3, search: 'BOOK-1234' });
+    expect(ids(byBooking)).toEqual([idQ3Beta]);
+
     // LIKE wildcards are literal.
     expect(await listInstances(A, { view: Q3, search: '%' })).toEqual([]);
   });
