@@ -78,7 +78,7 @@ export function PeriodSelector({
       aria-busy={pending}
     >
       <Select value={String(year)} onValueChange={(v) => go({ kind: 'year', year: Number(v) })}>
-        <SelectTrigger aria-label="Year" className="w-24 shrink-0">
+        <SelectTrigger aria-label="Year" className="w-auto shrink-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -95,7 +95,7 @@ export function PeriodSelector({
           else go({ kind: 'quarter', year, quarter: Number(v) as 1 | 2 | 3 | 4 });
         }}
       >
-        <SelectTrigger aria-label="Quarter" className="w-32 shrink-0">
+        <SelectTrigger aria-label="Quarter" className="w-auto shrink-0">
           <SelectValue placeholder="All year" />
         </SelectTrigger>
         <SelectContent>
@@ -114,7 +114,7 @@ export function PeriodSelector({
             else go({ kind: 'month', year, month: Number(v) });
           }}
         >
-          <SelectTrigger aria-label="Month" className="w-36 shrink-0">
+          <SelectTrigger aria-label="Month" className="w-auto shrink-0">
             <SelectValue placeholder="All quarter" />
           </SelectTrigger>
           <SelectContent>

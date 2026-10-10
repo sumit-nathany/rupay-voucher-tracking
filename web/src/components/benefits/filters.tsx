@@ -246,7 +246,7 @@ export function Filters({
           >
             <SelectTrigger
               aria-label="Group by"
-              className={`w-full ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
+              className={`w-fit ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
             >
               <SelectValue />
             </SelectTrigger>
