@@ -93,6 +93,10 @@ export function Filters({
     groupRaw ||
     (searchScope === 'all' && Boolean(urlSearch));
 
+  /** Applied to a SelectTrigger when it has a non-default value selected. */
+  const activeFilter = 'border-primary/50 bg-primary/5 text-primary font-medium';
+  const base = 'w-full min-w-0 sm:w-fit sm:max-w-full';
+
   return (
     <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -135,11 +139,12 @@ export function Filters({
           }`}
           title={searchScope === 'all' && Boolean(urlSearch) ? 'Filters are ignored while searching across everything' : undefined}
         >
+          {/* Holder */}
           <Select
             value={holder || '__all__'}
             onValueChange={(v) => set({ holder: v === '__all__' ? '' : v, card: '' })}
           >
-            <SelectTrigger aria-label="Holder" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Holder" className={`${base} ${holder ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -150,11 +155,12 @@ export function Filters({
             </SelectContent>
           </Select>
 
+          {/* Card */}
           <Select
             value={card || '__all__'}
             onValueChange={(v) => set({ card: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Card" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Card" className={`${base} ${card ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -165,11 +171,12 @@ export function Filters({
             </SelectContent>
           </Select>
 
+          {/* Status */}
           <Select
             value={status || '__all__'}
             onValueChange={(v) => set({ status: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Status" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Status" className={`${base} ${status ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -180,11 +187,12 @@ export function Filters({
             </SelectContent>
           </Select>
 
+          {/* Benefit */}
           <Select
             value={benefit || '__all__'}
             onValueChange={(v) => set({ benefit: v === '__all__' ? '' : v })}
           >
-            <SelectTrigger aria-label="Benefit" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Benefit" className={`${base} ${benefit ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -195,26 +203,28 @@ export function Filters({
             </SelectContent>
           </Select>
 
+          {/* Sort */}
           <Select
             value={sort === 'value-asc' ? 'value-asc' : 'value-desc'}
             onValueChange={(v) => set({ sort: v === 'value-desc' ? '' : v })}
           >
-            <SelectTrigger aria-label="Sort by" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Sort by" className={`${base} ${sort === 'value-asc' ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="value-desc">Value: high → low</SelectItem>
-              <SelectItem value="value-asc">Value: low → high</SelectItem>
+              <SelectItem value="value-desc">Value: high &#x2192; low</SelectItem>
+              <SelectItem value="value-asc">Value: low &#x2192; high</SelectItem>
             </SelectContent>
           </Select>
 
+          {/* Offer type */}
           <Select
             value={discounts === '1' ? 'all' : discounts === 'only' ? 'discount-only' : 'vouchers'}
             onValueChange={(v) =>
               set({ discounts: v === 'all' ? '1' : v === 'discount-only' ? 'only' : '' })
             }
           >
-            <SelectTrigger aria-label="Offer type" className="w-full min-w-0 sm:w-fit sm:max-w-full">
+            <SelectTrigger aria-label="Offer type" className={`${base} ${discounts ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -231,7 +241,7 @@ export function Filters({
             <Input
               type="search"
               aria-label="Search benefits"
-              placeholder={searchScope === 'all' && Boolean(urlSearch) ? 'Search everything…' : 'Search…'}
+              placeholder={searchScope === 'all' && Boolean(urlSearch) ? 'Search everything\u2026' : 'Search\u2026'}
               value={text}
               onChange={(e) => {
                 const val = e.target.value;
@@ -245,6 +255,7 @@ export function Filters({
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:contents">
+            {/* Group by */}
             <Select
               value={groupMode}
               onValueChange={(v) => {
@@ -252,7 +263,10 @@ export function Filters({
                 set({ group: mode === groupDefault ? '' : mode });
               }}
             >
-              <SelectTrigger aria-label="Group by" className="w-full min-w-0 sm:w-fit sm:max-w-full sm:order-1">
+              <SelectTrigger
+                aria-label="Group by"
+                className={`${base} sm:order-1 ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -263,6 +277,7 @@ export function Filters({
               </SelectContent>
             </Select>
 
+            {/* Search scope */}
             <Select
               value={hasSearch && searchScopeRaw === 'all' ? 'all' : 'current'}
               disabled={!hasSearch}
@@ -278,9 +293,9 @@ export function Filters({
                 aria-label="Search scope"
                 disabled={!hasSearch}
                 title={!hasSearch ? 'Enter search terms to search across everything' : undefined}
-                className={`w-full min-w-0 sm:w-fit sm:max-w-full sm:order-3 ${
+                className={`${base} sm:order-3 ${
                   hasSearch && searchScopeRaw === 'all'
-                    ? 'border-primary/50 bg-primary/5 text-primary font-medium'
+                    ? activeFilter
                     : ''
                 }`}
               >
