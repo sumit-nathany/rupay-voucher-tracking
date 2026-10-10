@@ -115,6 +115,24 @@ describe('code handling', () => {
     await inst.setCode(A, { instanceId: id, code: null });
     expect(await inst.revealCode(A, id)).toBeNull();
   });
+  it('auto-advances "Ordered but Coupon not received" to "Coupon Received" when adding code', async () => {
+    const id = await fresh('Ordered but Coupon not received');
+    const updated = await inst.setCode(A, { instanceId: id, code: 'VOUCHER123' });
+    expect(updated.orderStatus).toBe('Coupon Received');
+    expect(updated.hasCode).toBe(true);
+
+    // clearing code does not revert status
+    const cleared = await inst.setCode(A, { instanceId: id, code: null });
+    expect(cleared.orderStatus).toBe('Coupon Received');
+    expect(cleared.hasCode).toBe(false);
+
+    // other statuses remain unchanged when code is added
+    const notOrdered = await fresh('Not Ordered');
+    expect((await inst.setCode(A, { instanceId: notOrdered, code: 'XYZ' })).orderStatus).toBe('Not Ordered');
+
+    const redeemed = await fresh('Coupon Redeemed');
+    expect((await inst.setCode(A, { instanceId: redeemed, code: 'XYZ' })).orderStatus).toBe('Coupon Redeemed');
+  });
   it('updates updated_at', async () => {
     const id = await fresh();
     const [r0] = await db.select().from(benefitInstances).where(eq(benefitInstances.id, id));

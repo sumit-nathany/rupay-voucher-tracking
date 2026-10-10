@@ -245,7 +245,16 @@ export async function setCode(
   const { instanceId, code } = codeInput.parse(input);
   const row = await load(ctx, instanceId);
   assertNotWithdrawn(row);
-  return update(ctx, row, { codeEncrypted: code == null ? null : encryptCode(code, row.id) });
+
+  const patch: Partial<typeof benefitInstances.$inferInsert> = {
+    codeEncrypted: code == null ? null : encryptCode(code, row.id),
+  };
+
+  if (code != null && row.orderStatus === 'Ordered but Coupon not received') {
+    patch.orderStatus = 'Coupon Received';
+  }
+
+  return update(ctx, row, patch);
 }
 
 // ── "redeem any one" choice ─────────────────────────────────────────────────
