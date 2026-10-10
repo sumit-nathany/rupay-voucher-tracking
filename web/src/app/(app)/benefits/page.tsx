@@ -61,7 +61,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   const lapsed = lapsedRaw === '1' ? '1' : lapsedRaw === '0' ? '0' : undefined;
   const benefitRaw = first(sp.benefit);
   const searchScopeRaw = first(sp.search_scope);
-  const searchScope = searchScopeRaw === 'all' ? 'all' : 'current';
+  const searchScope = q && searchScopeRaw === 'all' ? 'all' : 'current';
   const filters: BenefitFilters = {
     holderId: holder && UUID.test(holder) ? holder : undefined,
     cardId: card && UUID.test(card) ? card : undefined,

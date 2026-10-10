@@ -57,16 +57,30 @@ export function Filters({
   }
 
   useEffect(() => {
-    if (text.trim() === urlSearch) return;
-    const t = setTimeout(() => set({ q: text.trim() }), 400);
+    if (urlSearch !== text.trim()) {
+      setText(urlSearch);
+    }
+  }, [urlSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      if (spRef.current.get('search_scope') || spRef.current.get('q')) {
+        set({ search_scope: '', q: '' });
+      }
+      return;
+    }
+    if (trimmed === urlSearch) return;
+    const t = setTimeout(() => set({ q: trimmed }), 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
 
+  const hasSearch = Boolean(text.trim());
   const visibleCards = holder ? cards.filter((c) => c.holderId === holder) : cards;
   const lapsed = sp.get('lapsed') ?? '';
   const searchScopeRaw = sp.get('search_scope') ?? '';
-  const searchScope = searchScopeRaw === 'all' ? 'all' : 'current';
+  const searchScope = Boolean(urlSearch) && searchScopeRaw === 'all' ? 'all' : 'current';
   const active =
     holder ||
     card ||
@@ -77,7 +91,7 @@ export function Filters({
     urlSearch ||
     lapsed ||
     groupRaw ||
-    searchScope === 'all';
+    (searchScope === 'all' && Boolean(urlSearch));
 
   return (
     <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
@@ -85,7 +99,7 @@ export function Filters({
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <Filter className="h-3.5 w-3.5" aria-hidden /> Refine list
         </div>
-        {searchScope === 'all' && (
+        {searchScope === 'all' && Boolean(urlSearch) && (
           <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             Across everything
           </span>
@@ -117,9 +131,9 @@ export function Filters({
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
         <div
           className={`grid grid-cols-2 gap-2 sm:flex sm:min-w-0 sm:flex-1 sm:flex-wrap sm:items-center transition-opacity ${
-            searchScope === 'all' ? 'opacity-60' : ''
+            searchScope === 'all' && Boolean(urlSearch) ? 'opacity-60' : ''
           }`}
-          title={searchScope === 'all' ? 'Filters are ignored while searching across everything' : undefined}
+          title={searchScope === 'all' && Boolean(urlSearch) ? 'Filters are ignored while searching across everything' : undefined}
         >
           <Select
             value={holder || '__all__'}
@@ -217,9 +231,15 @@ export function Filters({
             <Input
               type="search"
               aria-label="Search benefits"
-              placeholder={searchScope === 'all' ? 'Search everything…' : 'Search…'}
+              placeholder={searchScope === 'all' && Boolean(urlSearch) ? 'Search everything…' : 'Search…'}
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setText(val);
+                if (!val.trim() && spRef.current.get('search_scope')) {
+                  set({ search_scope: '', q: '' });
+                }
+              }}
               className="pl-9 w-full"
             />
           </div>
@@ -244,13 +264,22 @@ export function Filters({
             </Select>
 
             <Select
-              value={searchScope}
-              onValueChange={(v) => set({ search_scope: v === 'all' ? 'all' : '' })}
+              value={hasSearch && searchScopeRaw === 'all' ? 'all' : 'current'}
+              disabled={!hasSearch}
+              onValueChange={(v) => {
+                if (!text.trim()) return;
+                set({
+                  search_scope: v === 'all' ? 'all' : '',
+                  q: text.trim(),
+                });
+              }}
             >
               <SelectTrigger
                 aria-label="Search scope"
+                disabled={!hasSearch}
+                title={!hasSearch ? 'Enter search terms to search across everything' : undefined}
                 className={`w-full min-w-0 sm:w-fit sm:max-w-full sm:order-3 ${
-                  searchScope === 'all'
+                  hasSearch && searchScopeRaw === 'all'
                     ? 'border-primary/50 bg-primary/5 text-primary font-medium'
                     : ''
                 }`}

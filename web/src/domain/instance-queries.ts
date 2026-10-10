@@ -372,7 +372,7 @@ export async function listInstances(
   },
 ): Promise<InstanceListItem[]> {
   const f = parse(filterSchema, input);
-  const isAll = f.scope === 'all' || f.searchScope === 'all';
+  const isAll = f.scope === 'all' || (f.searchScope === 'all' && Boolean(f.search));
   const conds: SQL[] = [];
   if (!isAll && f.scope !== 'lifetime') conds.push(periodClause(f.view, ctx.today));
   if (!isAll) {

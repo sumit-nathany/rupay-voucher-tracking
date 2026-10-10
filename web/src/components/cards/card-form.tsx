@@ -72,25 +72,31 @@ function CardFormBody({
       setError('Choose a card variant, then a bank card.');
       return;
     }
+    const cleanDigits = lastDigits.trim();
+    if (!cleanDigits || cleanDigits.length !== 4 || !/^\d{4}$/.test(cleanDigits)) {
+      setError('Enter the last 4 digits of the card (exactly 4 digits).');
+      return;
+    }
+    const cleanDisplayName = displayName.trim() === '' ? null : displayName.trim();
     const ok = await run(
       () =>
         card
           ? updateCard({
               id: card.id,
               holderId,
-              displayName: displayName.trim() === '' ? null : displayName,
-              lastDigits: lastDigits.trim() === '' ? null : lastDigits,
+              displayName: cleanDisplayName,
+              lastDigits: cleanDigits,
               trackingFrom: trackingFrom || undefined,
               active,
             })
           : createCard({
               holderId,
               bankCardTypeId: type!.id,
-              displayName: displayName.trim() === '' ? null : displayName,
-              lastDigits: lastDigits.trim() === '' ? null : lastDigits,
+              displayName: cleanDisplayName,
+              lastDigits: cleanDigits,
               trackingFrom: trackingFrom || undefined,
             }),
-      'Could not save. Check the nickname is unique and the last digits are exactly 4 digits.',
+      'Could not save. Check that the last 4 digits are not already used for this card type.',
     );
     if (ok) close();
   }
@@ -173,21 +179,23 @@ function CardFormBody({
         <Input
           id="card-name"
           maxLength={100}
-          placeholder={type?.displayName ?? 'Optional'}
+          placeholder={type?.displayName ?? 'Optional nickname'}
           value={displayName}
           aria-describedby="card-name-hint"
           onChange={(e) => setDisplayName(e.target.value)}
         />
       </Field>
 
-      <Field id="card-digits" label="Last 4 digits (optional)">
+      <Field id="card-digits" label="Last 4 digits" hint="Enter the last 4 digits of the card number.">
         <Input
           id="card-digits"
           inputMode="numeric"
           pattern="\d{4}"
           maxLength={4}
           placeholder="1234"
+          required
           value={lastDigits}
+          aria-describedby="card-digits-hint"
           onChange={(e) => setLastDigits(e.target.value.replace(/\D/g, ''))}
         />
       </Field>

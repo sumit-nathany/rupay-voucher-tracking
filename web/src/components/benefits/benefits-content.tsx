@@ -34,7 +34,7 @@ export async function BenefitsContent({
   searchScope?: 'current' | 'all';
 }) {
   let items: InstanceListItem[];
-  const isAll = searchScope === 'all' || filters.searchScope === 'all';
+  const isAll = (searchScope === 'all' || filters.searchScope === 'all') && Boolean(filters.search);
   try {
     items = await loadBenefitsAction({
       view,

@@ -33,8 +33,8 @@ beforeAll(async () => {
   benY = by.id;
   holderA = (await d.createHolder(A, { name: 'Papa' })).id;
   holderB = (await d.createHolder(B, { name: 'Papa' })).id; // same name in another workspace is fine
-  cardA = (await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: 'c' })).id;
-  cardB = (await d.createCard(B, { holderId: holderB, bankCardTypeId: typeX, displayName: 'c' })).id;
+  cardA = (await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: 'c', lastDigits: '1111' })).id;
+  cardB = (await d.createCard(B, { holderId: holderB, bankCardTypeId: typeX, displayName: 'c', lastDigits: '1111' })).id;
   ovA = (await d.createOverride(A, { kind: 'suppress', cardId: cardA, benefitId: benX })).id;
   ovB = (await d.createOverride(B, { kind: 'suppress', cardId: cardB, benefitId: benX })).id;
 });
@@ -69,16 +69,31 @@ describe('holders', () => {
 
 describe('cards', () => {
   it('tracking_from defaults to ctx.today and may be backdated', async () => {
-    const c = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'default' });
+    const c = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'default', lastDigits: '2222' });
     expect(c.trackingFrom).toBe('2026-10-09');
-    const b = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'back', trackingFrom: '2026-01-15' });
+    const b = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'back', trackingFrom: '2026-01-15', lastDigits: '3333' });
     expect(b.trackingFrom).toBe('2026-01-15');
-    await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad', trackingFrom: '2026-02-30' })).rejects.toBeInstanceOf(d.ValidationError);
+    await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad', trackingFrom: '2026-02-30', lastDigits: '4444' })).rejects.toBeInstanceOf(d.ValidationError);
   });
-  it('optional nickname falls back to bank card type name', async () => {
-    const created = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: null });
-    expect(created.displayName).toBe('PNB Select');
-    const nicknamed = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'My Eterna' });
+  it('requires exactly 4 digits for lastDigits', async () => {
+    await expect(
+      d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'no-digits' } as unknown),
+    ).rejects.toBeInstanceOf(d.ValidationError);
+    await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad-digits', lastDigits: '123' })).rejects.toBeInstanceOf(d.ValidationError);
+    await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad-digits', lastDigits: '12345' })).rejects.toBeInstanceOf(d.ValidationError);
+    await expect(d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'bad-digits', lastDigits: 'abcd' })).rejects.toBeInstanceOf(d.ValidationError);
+  });
+  it('optional nickname falls back to bank card type name, and allows multiple cards of same type with different lastDigits', async () => {
+    const created1 = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: null, lastDigits: '5551' });
+    expect(created1.displayName).toBe('PNB Select');
+    expect(created1.lastDigits).toBe('5551');
+
+    // A second card of the same type without nickname also falls back to bank card type name without conflict
+    const created2 = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeX, displayName: '', lastDigits: '5552' });
+    expect(created2.displayName).toBe('PNB Select');
+    expect(created2.lastDigits).toBe('5552');
+
+    const nicknamed = await d.createCard(A, { holderId: holderA, bankCardTypeId: typeY, displayName: 'My Eterna', lastDigits: '6666' });
     expect(nicknamed.displayName).toBe('My Eterna');
     const cleared = await d.updateCard(A, { id: nicknamed.id, displayName: null });
     expect(cleared.displayName).toBe('BoB Eterna');
@@ -100,7 +115,7 @@ describe('cards', () => {
     await rejectsNotFound(d.deleteCard(A, { id: cardB }));
   });
   it('cannot attach A card to B holder (app + DB composite FK)', async () => {
-    await rejectsNotFound(d.createCard(A, { holderId: holderB, bankCardTypeId: typeX, displayName: 'x' }));
+    await rejectsNotFound(d.createCard(A, { holderId: holderB, bankCardTypeId: typeX, displayName: 'x', lastDigits: '7777' }));
     await rejectsNotFound(d.updateCard(A, { id: cardA, holderId: holderB }));
     await expect(
       db.insert(cards).values({ workspaceId: A.workspaceId, holderId: holderB, bankCardTypeId: typeX, displayName: 'raw' }),

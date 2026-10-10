@@ -232,7 +232,7 @@ export const cards = app.table(
       .notNull()
       .references(() => bankCardTypes.id),
     displayName: text("display_name").notNull(),
-    lastDigits: text("last_digits"),
+    lastDigits: text("last_digits").notNull().default("0000"),
     // Convenience default only; the app overwrites with the Asia/Kolkata today.
     trackingFrom: date("tracking_from", { mode: "string" })
       .notNull()
@@ -241,7 +241,6 @@ export const cards = app.table(
     createdAt: createdAt(),
   },
   (t) => [
-    unique("cards_workspace_id_display_name_key").on(t.workspaceId, t.displayName),
     unique("cards_workspace_id_id_key").on(t.workspaceId, t.id),
     unique("cards_workspace_id_id_bank_card_type_id_key").on(
       t.workspaceId,

@@ -267,9 +267,38 @@ describe('listInstances', () => {
     expect(ids(constrainedSearch)).toContain(idQ3Alpha);
     expect(ids(constrainedSearch)).toContain(idSkipped); // holderA2 and status Skipped
 
-    // Also works with searchScope='all' parameter
-    const searchScopeAll = await listInstances(A, { view: Q3, searchScope: 'all', search: 'Alpha' });
+    // Also works with searchScope='all' parameter with a search term (searches across periods and filters)
+    const searchScopeAll = await listInstances(A, {
+      view: Q3,
+      searchScope: 'all',
+      holderId: holderA1,
+      status: 'Not Ordered',
+      search: 'Alpha',
+    });
     expect(ids(searchScopeAll)).toContain(idQ2);
+    expect(ids(searchScopeAll)).toContain(idQ3Alpha);
+    expect(ids(searchScopeAll)).toContain(idSkipped);
+
+    // searchScope='all' WITHOUT a search term does NOT bypass period and filters (has no effect)
+    const searchScopeNoSearch = await listInstances(A, { view: Q3, searchScope: 'all' });
+    const defaultQ3 = await listInstances(A, { view: Q3 });
+    expect(ids(searchScopeNoSearch)).toEqual(ids(defaultQ3));
+    expect(ids(searchScopeNoSearch)).not.toContain(idQ2);
+
+    const searchScopeNoSearchFiltered = await listInstances(A, {
+      view: Q3,
+      searchScope: 'all',
+      holderId: holderA1,
+      status: 'Not Ordered',
+    });
+    const defaultQ3Filtered = await listInstances(A, {
+      view: Q3,
+      holderId: holderA1,
+      status: 'Not Ordered',
+    });
+    expect(ids(searchScopeNoSearchFiltered)).toEqual(ids(defaultQ3Filtered));
+    expect(ids(searchScopeNoSearchFiltered)).not.toContain(idSkipped);
+    expect(ids(searchScopeNoSearchFiltered)).not.toContain(idQ2);
 
     // Searching with scope='all' without a search query cleanly returns all instances across periods
     const allNoSearch = await listInstances(A, { view: Q3, scope: 'all' });

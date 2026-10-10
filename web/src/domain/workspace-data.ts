@@ -187,11 +187,13 @@ async function resolveCardDisplayName(
   return type.displayName;
 }
 
+const cardDigits = z.string().trim().regex(/^\d{4}$/, 'expected exactly 4 digits');
+
 const cardCreate = z.strictObject({
   holderId: uuid,
   bankCardTypeId: uuid,
   displayName: cardNickname,
-  lastDigits: z.string().trim().regex(/^\d{4}$/, 'expected 4 digits').nullable().optional(),
+  lastDigits: cardDigits,
   trackingFrom: dateStr.optional(),
 });
 const cardUpdate = z.strictObject({
@@ -200,7 +202,7 @@ const cardUpdate = z.strictObject({
   bankCardTypeId: uuid.optional(),
   holderId: uuid.optional(),
   displayName: cardNickname,
-  lastDigits: z.string().trim().regex(/^\d{4}$/, 'expected 4 digits').nullable().optional(),
+  lastDigits: cardDigits.optional(),
   trackingFrom: dateStr.optional(),
   active: z.boolean().optional(),
 });
@@ -237,20 +239,18 @@ export async function createCard(ctx: Ctx, input: unknown) {
   if (!type) throw new ValidationError('Unknown card type');
   if (type.active === false) throw new ValidationError('This card type is no longer available');
   const displayName = await resolveCardDisplayName(ctx, v.bankCardTypeId, v.displayName);
-  return mapConflicts('A card with this display name', async () => {
-    const [row] = await ctx.db
-      .insert(cards)
-      .values({
-        workspaceId: ctx.workspaceId,
-        holderId: v.holderId,
-        bankCardTypeId: v.bankCardTypeId,
-        displayName,
-        lastDigits: v.lastDigits ?? null,
-        trackingFrom: v.trackingFrom ?? ctx.today, // Asia/Kolkata today; backdating allowed
-      })
-      .returning();
-    return row;
-  });
+  const [row] = await ctx.db
+    .insert(cards)
+    .values({
+      workspaceId: ctx.workspaceId,
+      holderId: v.holderId,
+      bankCardTypeId: v.bankCardTypeId,
+      displayName,
+      lastDigits: v.lastDigits,
+      trackingFrom: v.trackingFrom ?? ctx.today, // Asia/Kolkata today; backdating allowed
+    })
+    .returning();
+  return row;
 }
 
 export async function updateCard(ctx: Ctx, input: unknown) {
@@ -269,15 +269,13 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   if (patch.trackingFrom !== undefined) set.trackingFrom = patch.trackingFrom;
   if (patch.active !== undefined) set.active = patch.active;
   if (Object.keys(set).length === 0) return existing;
-  return mapConflicts('A card with this display name', async () => {
-    const [row] = await ctx.db
-      .update(cards)
-      .set(set)
-      .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)))
-      .returning();
-    if (!row) throw new NotFoundError('Card not found');
-    return row;
-  });
+  const [row] = await ctx.db
+    .update(cards)
+    .set(set)
+    .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)))
+    .returning();
+  if (!row) throw new NotFoundError('Card not found');
+  return row;
 }
 
 /** Deletes only a card with no overrides or instances; otherwise deactivate. */
