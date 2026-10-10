@@ -12,6 +12,7 @@ export type BenefitFilters = {
   cardId?: string;
   /** Catalog benefit id or card-override id. */
   benefitId?: string;
+  category?: string;
   status?: (typeof ORDER_STATUSES)[number];
   search?: string;
   offerFilter?: 'all' | 'discount';

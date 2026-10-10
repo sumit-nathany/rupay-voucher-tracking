@@ -8,7 +8,7 @@ import {
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
 import { ValidationError } from './workspace-data';
-import { getDashboardSummary, listInstances } from './instance-queries';
+import { getDashboardSummary, listCategoryFilterOptions, listInstances } from './instance-queries';
 
 let db: Ctx['db'];
 let close: () => Promise<void>;
@@ -204,6 +204,30 @@ describe('listInstances', () => {
     expect(ids(ov)).toEqual([idOverride]);
 
     expect(await listInstances(A, { view: Q3, benefitId: randomUUID() })).toEqual([]);
+  });
+
+  it('filters by category (benefitType)', async () => {
+    const extraRows = await listInstances(A, { view: Q3, category: 'Extra' });
+    expect(ids(extraRows)).toEqual([idOverride]);
+
+    const voucherRows = await listInstances(A, { view: Q3, category: 'Voucher' });
+    expect(voucherRows.length).toBeGreaterThan(0);
+    expect(ids(voucherRows)).not.toContain(idOverride);
+    expect(voucherRows.every((r) => r.benefitType === 'Voucher')).toBe(true);
+
+    expect(await listInstances(A, { view: Q3, category: 'Nonexistent' })).toEqual([]);
+  });
+
+  it('lists distinct category filter options', async () => {
+    const opts = await listCategoryFilterOptions(A);
+    expect(opts).toEqual([
+      { id: 'Extra', label: 'Extra' },
+      { id: 'Voucher', label: 'Voucher' },
+    ]);
+
+    // Narrowing by card
+    const card2Opts = await listCategoryFilterOptions(A, { cardId: cardA2 });
+    expect(card2Opts).toEqual([{ id: 'Voucher', label: 'Voucher' }]);
   });
 
   it('filters by holder, card, status and search', async () => {

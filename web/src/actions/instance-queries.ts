@@ -32,3 +32,7 @@ export async function getDashboardSummaryAction(view: Parameters<typeof q.getDas
 export async function listBenefitFilterOptionsAction(input?: Parameters<typeof q.listBenefitFilterOptions>[1]) {
   return q.listBenefitFilterOptions(await getCtx(), input);
 }
+
+export async function listCategoryFilterOptionsAction(input?: Parameters<typeof q.listCategoryFilterOptions>[1]) {
+  return q.listCategoryFilterOptions(await getCtx(), input);
+}

@@ -22,11 +22,11 @@ export interface FilterOption {
 export function Filters({
   holders,
   cards,
-  benefits,
+  categories,
 }: {
   holders: FilterOption[];
   cards: FilterOption[];
-  benefits: FilterOption[];
+  categories: FilterOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,7 +37,7 @@ export function Filters({
   const status = sp.get('status') ?? '';
   const sort = sp.get('sort') ?? '';
   const discounts = sp.get('discounts') ?? '';
-  const benefit = sp.get('benefit') ?? '';
+  const category = sp.get('category') ?? sp.get('benefit') ?? '';
   const lifetime = isLifetimeScope({ lifetime: sp.get('lifetime') ?? undefined });
   const groupRaw = sp.get('group');
   const groupMode = parseBenefitGroupMode(groupRaw) ?? defaultBenefitGroupMode(lifetime);
@@ -84,7 +84,7 @@ export function Filters({
   const active =
     holder ||
     card ||
-    benefit ||
+    category ||
     status ||
     sort === 'value-asc' ||
     discounts ||
@@ -117,6 +117,7 @@ export function Filters({
               set({
                 holder: '',
                 card: '',
+                category: '',
                 benefit: '',
                 status: '',
                 sort: '',
@@ -187,18 +188,18 @@ export function Filters({
             </SelectContent>
           </Select>
 
-          {/* Benefit */}
+          {/* Category */}
           <Select
-            value={benefit || '__all__'}
-            onValueChange={(v) => set({ benefit: v === '__all__' ? '' : v })}
+            value={category || '__all__'}
+            onValueChange={(v) => set({ category: v === '__all__' ? '' : v, benefit: '' })}
           >
-            <SelectTrigger aria-label="Benefit" className={`${base} ${benefit ? activeFilter : ''}`}>
-              <SelectValue />
+            <SelectTrigger aria-label="Category" className={`${base} ${category ? activeFilter : ''}`}>
+              <SelectValue placeholder="All categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">All benefits</SelectItem>
-              {benefits.map((b) => (
-                <SelectItem key={b.id} value={b.id}>{b.label}</SelectItem>
+              <SelectItem value="__all__">All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>

@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { unstable_rethrow } from 'next/navigation';
 import { listCards } from '@/actions/cards';
-import { listBenefitFilterOptionsAction } from '@/actions/instance-queries';
+import { listCategoryFilterOptionsAction } from '@/actions/instance-queries';
 import { listHolders } from '@/actions/holders';
 import { BenefitsContent, type BenefitFilters } from '@/components/benefits/benefits-content';
 import { Filters, type FilterOption } from '@/components/benefits/filters';
@@ -21,13 +21,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function loadOptions(holderId?: string, cardId?: string): Promise<{
   holders: FilterOption[];
   cards: FilterOption[];
-  benefits: FilterOption[];
+  categories: FilterOption[];
 }> {
   try {
-    const [h, c, benefits] = await Promise.all([
+    const [h, c, categories] = await Promise.all([
       listHolders(),
       listCards(),
-      listBenefitFilterOptionsAction({ holderId, cardId }),
+      listCategoryFilterOptionsAction({ holderId, cardId }),
     ]);
     const holderById = new Map(h.map((x) => [x.id, x.name]));
     return {
@@ -41,11 +41,11 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
         }),
         holderId: x.holderId,
       })),
-      benefits,
+      categories,
     };
   } catch (e) {
     unstable_rethrow(e);
-    return { holders: [], cards: [], benefits: [] }; // filters degrade; the list itself reports its own errors
+    return { holders: [], cards: [], categories: [] }; // filters degrade; the list itself reports its own errors
   }
 }
 
@@ -65,13 +65,14 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
     discountsRaw === '1' ? 'all' : discountsRaw === 'only' ? 'discount' : ('voucher' as const);
   const lapsedRaw = first(sp.lapsed);
   const lapsed = lapsedRaw === '1' ? '1' : lapsedRaw === '0' ? '0' : undefined;
-  const benefitRaw = first(sp.benefit);
+  const categoryRaw = first(sp.category) ?? first(sp.benefit);
+  const category = categoryRaw?.trim() ? categoryRaw.trim() : undefined;
   const searchScopeRaw = first(sp.search_scope);
   const searchScope = q && searchScopeRaw === 'all' ? 'all' : 'current';
   const filters: BenefitFilters = {
     holderId: holder && UUID.test(holder) ? holder : undefined,
     cardId: card && UUID.test(card) ? card : undefined,
-    benefitId: benefitRaw && UUID.test(benefitRaw) ? benefitRaw : undefined,
+    category,
     status: ORDER_STATUSES.find((s) => s === status),
     search: q || undefined,
     offerFilter: offerFilter === 'voucher' ? undefined : offerFilter,
@@ -82,7 +83,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
     Boolean(
       filters.holderId ||
         filters.cardId ||
-        filters.benefitId ||
+        filters.category ||
         filters.status ||
         filters.search ||
         filters.lapsed,
@@ -106,7 +107,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
         }
         actions={<PeriodSelector view={view} today={today} lifetime={lifetime} />}
       />
-      <Filters holders={options.holders} cards={options.cards} benefits={options.benefits} />
+      <Filters holders={options.holders} cards={options.cards} categories={options.categories} />
       <div className="mt-10">
         <Suspense key={JSON.stringify([view, filters, lifetime, searchScope])} fallback={<PageSkeleton />}>
           <BenefitsContent

@@ -41,6 +41,7 @@ const filterSchema = z.strictObject({
   cardId: uuid.optional(),
   /** Catalog `benefit_id` or card-override id — matches either column on instances. */
   benefitId: uuid.optional(),
+  category: z.string().trim().max(100).optional(),
   status: z.enum(ORDER_STATUSES).optional(),
   search: z.string().trim().max(100).optional(),
   /** `voucher` (default): gift vouchers only; `all`: include discounts; `discount`: discounts only. */
@@ -363,6 +364,7 @@ export async function listInstances(
     holderId?: string;
     cardId?: string;
     benefitId?: string;
+    category?: string;
     status?: OrderStatus;
     search?: string;
     offerFilter?: 'voucher' | 'all' | 'discount';
@@ -381,6 +383,14 @@ export async function listInstances(
     if (f.benefitId) {
       conds.push(
         or(eq(benefitInstances.benefitId, f.benefitId), eq(benefitInstances.overrideId, f.benefitId))!,
+      );
+    }
+    if (f.category) {
+      conds.push(
+        or(
+          ilike(benefitCatalogVersions.benefitType, f.category),
+          ilike(cardBenefitOverrides.benefitType, f.category),
+        )!,
       );
     }
     if (f.status) conds.push(eq(benefitInstances.orderStatus, f.status));
@@ -487,6 +497,58 @@ export async function listBenefitFilterOptions(
     );
   }
   return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+}
+
+export interface CategoryFilterOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Distinct categories (benefitType) that appear on workspace instances.
+ * Optional holder/card narrow which instances are considered (for filter dropdowns).
+ */
+export async function listCategoryFilterOptions(
+  ctx: Ctx,
+  input?: { holderId?: string; cardId?: string },
+): Promise<CategoryFilterOption[]> {
+  const f = parse(benefitOptsSchema, input ?? {});
+
+  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId)];
+  if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
+  if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
+
+  const rows = await ctx.db
+    .select({
+      vType: benefitCatalogVersions.benefitType,
+      oType: cardBenefitOverrides.benefitType,
+    })
+    .from(benefitInstances)
+    .innerJoin(
+      cards,
+      and(eq(cards.id, benefitInstances.cardId), eq(cards.workspaceId, ctx.workspaceId)),
+    )
+    .leftJoin(
+      benefitCatalogVersions,
+      eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
+    )
+    .leftJoin(
+      cardBenefitOverrides,
+      and(
+        eq(cardBenefitOverrides.id, benefitInstances.overrideId),
+        eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .where(and(...conds));
+
+  const categories = new Set<string>();
+  for (const r of rows) {
+    const cat = (r.oType ?? r.vType)?.trim();
+    if (cat) categories.add(cat);
+  }
+  return [...categories]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map((c) => ({ id: c, label: c }));
 }
 
 const EXPIRING_DAYS = 30;
