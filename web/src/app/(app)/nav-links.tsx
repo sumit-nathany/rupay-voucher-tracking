@@ -19,7 +19,7 @@ export function NavLinks({
   showAdmin,
   onNavigate,
 }: {
-  variant: 'sidebar' | 'tabbar';
+  variant: 'sidebar' | 'tabbar' | 'topbar';
   showAdmin?: boolean;
   onNavigate?: () => void;
 }) {
@@ -39,16 +39,22 @@ export function NavLinks({
             onClick={onNavigate}
             className={cn(
               'group relative transition-[color,background] duration-150 ease-out active:scale-[0.98]',
-              variant === 'sidebar'
-                ? 'flex items-center gap-3 rounded-xl px-3 py-2.5'
-                : 'flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-[9px] font-bold uppercase tracking-wide',
+              variant === 'sidebar' && 'flex items-center gap-3 rounded-xl px-3 py-2.5',
+              variant === 'tabbar' &&
+                'flex min-w-0 flex-1 flex-col items-center gap-0.5 py-2.5 text-[9px] font-bold uppercase tracking-wide',
+              variant === 'topbar' &&
+                'flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium',
               active
                 ? variant === 'sidebar'
                   ? 'bg-primary/10 text-primary'
-                  : 'text-primary'
+                  : variant === 'topbar'
+                    ? 'bg-primary/10 text-primary font-semibold'
+                    : 'text-primary'
                 : variant === 'sidebar'
                   ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                  : variant === 'topbar'
+                    ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {variant === 'sidebar' && active && (
@@ -60,7 +66,7 @@ export function NavLinks({
             <Icon
               className={cn(
                 'shrink-0 transition-transform duration-150 group-hover:scale-105',
-                variant === 'sidebar' ? 'h-5 w-5' : 'h-5 w-5',
+                variant === 'sidebar' ? 'h-5 w-5' : variant === 'topbar' ? 'h-4 w-4' : 'h-5 w-5',
               )}
             />
             <span className={cn('truncate', variant === 'sidebar' && 'flex min-w-0 flex-col items-start')}>
