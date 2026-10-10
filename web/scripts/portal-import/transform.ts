@@ -102,7 +102,12 @@ export function transformCard(
     const type = cleanText(svc.servicename);
     const deals: (PortalDeal & { freq: Frequency })[] = [];
     for (const d of dealsByService.get(String(svc.id)) ?? []) {
-      const freq = mapFrequency(d.cvalidity);
+      let freq = mapFrequency(d.cvalidity);
+      // RuPay API quirk: Kalyan Jewellery offline half-yearly offer specifies cvalidity: "Quarterly"
+      // even though productname specifies Half-Yearly and is redeemable once per 6 months (H1 and H2).
+      if (/half[-\s]?yearly/i.test(d.productname) || /kalyan/i.test(d.productname) || /kalyan/i.test(d.spname)) {
+        freq = "6 months";
+      }
       if (!freq) {
         warnings.push(`${type} / ${cleanText(d.productname)}: unknown validity "${d.cvalidity}", skipped`);
         continue;

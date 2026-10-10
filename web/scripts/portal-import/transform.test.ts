@@ -72,4 +72,18 @@ describe("transformCard", () => {
     expect(benefits).toHaveLength(0);
     expect(warnings[0]).toMatch(/unknown validity/);
   });
+
+  it("maps Kalyan Jewellers / half-yearly offers to 6 months even when cvalidity says Quarterly", () => {
+    const { benefits } = transformCard([shop], new Map([["53", [
+      deal({
+        servicename: "Online Shopping",
+        spname: "Kalyan Jewellery",
+        productname: "Kalyan Jewelley Offline- Half-Yearly",
+        cvalidity: "Quarterly",
+        netrate: "2000",
+      }),
+    ]]]));
+    expect(benefits).toHaveLength(1);
+    expect(benefits[0].frequency).toBe("6 months");
+  });
 });
