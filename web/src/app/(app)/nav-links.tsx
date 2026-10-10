@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Gift, Users, CreditCard, SlidersHorizontal, Library } from 'lucide-react';
+import { LayoutDashboard, Gift, Users, CreditCard, SlidersHorizontal, Library, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const adminLink = { href: '/admin/catalog', label: 'Catalog', icon: Library, hint: 'Shared card data' };
@@ -11,6 +11,7 @@ const links = [
   { href: '/benefits', label: 'Benefits', icon: Gift, hint: 'Every voucher' },
   { href: '/holders', label: 'Holders', icon: Users, hint: 'People' },
   { href: '/cards', label: 'Cards', icon: CreditCard, hint: 'Plastic' },
+  { href: '/automation', label: 'Automation', icon: Bot, hint: 'Auto ordering' },
   { href: '/overrides', label: 'Overrides', icon: SlidersHorizontal, hint: 'Catalog fixes' },
 ];
 

@@ -20,6 +20,7 @@ import {
   integer,
   numeric,
   pgSchema,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -441,6 +442,197 @@ export const reminderLog = app.table(
       t.reminderType,
       t.daysBefore,
     ),
+  ],
+);
+
+// ── Automated RuPay Ordering ────────────────────────────────────────────────
+
+export const automationSettings = app.table("automation_settings", {
+  workspaceId: uuid("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const portalAccounts = app.table(
+  "portal_accounts",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    credentialsEncrypted: text("credentials_encrypted").notNull(),
+    status: text("status").notNull().default("connected"),
+    lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    statusDetailCode: text("status_detail_code"),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    check(
+      "portal_accounts_status_check",
+      sql`${t.status} IN ('connected', 'paused', 'credentials_expired', 'challenge_required', 'portal_changed', 'needs_attention')`,
+    ),
+    unique("portal_accounts_workspace_id_id_key").on(t.workspaceId, t.id),
+    unique("portal_accounts_workspace_id_label_key").on(t.workspaceId, t.label),
+  ],
+);
+
+export const portalCardMappings = app.table(
+  "portal_card_mappings",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    portalAccountId: uuid("portal_account_id").notNull(),
+    cardId: uuid("card_id").notNull(),
+    portalCardId: text("portal_card_id").notNull(),
+    portalCardbinId: text("portal_cardbin_id"),
+    portalCardLabel: text("portal_card_label"),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("portal_card_mappings_workspace_card_key").on(t.workspaceId, t.cardId),
+    unique("portal_card_mappings_account_card_key").on(t.portalAccountId, t.cardId),
+    foreignKey({
+      name: "portal_card_mappings_account_fkey",
+      columns: [t.workspaceId, t.portalAccountId],
+      foreignColumns: [portalAccounts.workspaceId, portalAccounts.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "portal_card_mappings_card_fkey",
+      columns: [t.workspaceId, t.cardId],
+      foreignColumns: [cards.workspaceId, cards.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const orderingRules = app.table(
+  "ordering_rules",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    portalAccountId: uuid("portal_account_id").notNull(),
+    name: text("name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    priority: integer("priority").notNull().default(10),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("ordering_rules_account_name_key").on(t.portalAccountId, t.name),
+    foreignKey({
+      name: "ordering_rules_account_fkey",
+      columns: [t.workspaceId, t.portalAccountId],
+      foreignColumns: [portalAccounts.workspaceId, portalAccounts.id],
+    }).onDelete("cascade"),
+  ],
+);
+
+export const orderingRuleCards = app.table(
+  "ordering_rule_cards",
+  {
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => orderingRules.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.cardId] })],
+);
+
+export const orderingRuleBenefits = app.table(
+  "ordering_rule_benefits",
+  {
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => orderingRules.id, { onDelete: "cascade" }),
+    benefitId: uuid("benefit_id")
+      .notNull()
+      .references(() => benefits.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.benefitId] })],
+);
+
+export const orderingRuleOptionDefaults = app.table(
+  "ordering_rule_option_defaults",
+  {
+    ruleId: uuid("rule_id")
+      .notNull()
+      .references(() => orderingRules.id, { onDelete: "cascade" }),
+    benefitId: uuid("benefit_id")
+      .notNull()
+      .references(() => benefits.id, { onDelete: "cascade" }),
+    optionId: uuid("option_id")
+      .notNull()
+      .references(() => benefitOptions.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.ruleId, t.benefitId] })],
+);
+
+export const orderingJobRuns = app.table(
+  "ordering_job_runs",
+  {
+    id: id(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    status: text("status").notNull().default("running"),
+    accountsProcessed: integer("accounts_processed").notNull().default(0),
+    ordersConfirmed: integer("orders_confirmed").notNull().default(0),
+    ordersFailed: integer("orders_failed").notNull().default(0),
+    failureCode: text("failure_code"),
+  },
+  (t) => [
+    check(
+      "ordering_job_runs_status_check",
+      sql`${t.status} IN ('running', 'completed', 'failed')`,
+    ),
+  ],
+);
+
+export const portalOrderAttempts = app.table(
+  "portal_order_attempts",
+  {
+    id: id(),
+    jobRunId: uuid("job_run_id").references(() => orderingJobRuns.id, { onDelete: "set null" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    portalAccountId: uuid("portal_account_id").notNull(),
+    ruleId: uuid("rule_id").references(() => orderingRules.id, { onDelete: "set null" }),
+    instanceId: uuid("instance_id")
+      .notNull()
+      .references(() => benefitInstances.id, { onDelete: "cascade" }),
+    state: text("state").notNull(),
+    reservedAt: timestamp("reserved_at", { withTimezone: true }).notNull().defaultNow(),
+    submissionStartedAt: timestamp("submission_started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    bookingReference: text("booking_reference"),
+    failureCode: text("failure_code"),
+  },
+  (t) => [
+    check(
+      "portal_order_attempts_state_check",
+      sql`${t.state} IN ('reserved', 'submitting', 'confirmed', 'failed_pre_submit', 'uncertain', 'resolved_no_order', 'cancelled')`,
+    ),
+    foreignKey({
+      name: "portal_order_attempts_account_fkey",
+      columns: [t.workspaceId, t.portalAccountId],
+      foreignColumns: [portalAccounts.workspaceId, portalAccounts.id],
+    }).onDelete("cascade"),
+    index("portal_order_attempts_account_submission_idx").on(t.portalAccountId, t.submissionStartedAt.desc()),
+    index("portal_order_attempts_workspace_instance_idx").on(t.workspaceId, t.instanceId),
   ],
 );
 
