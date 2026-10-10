@@ -24,7 +24,10 @@ set -u
 BASE="${NEXT_PUBLIC_SUPABASE_URL%/}/rest/v1"
 TABLES=(workspaces workspace_members card_holders bank_card_types benefits
   benefit_catalog_versions system_admins cards card_benefit_overrides
-  benefit_instances notification_preferences reminder_log)
+  benefit_instances notification_preferences reminder_log
+  automation_settings portal_accounts portal_card_mappings ordering_rules
+  ordering_rule_cards ordering_rule_benefits ordering_rule_option_defaults
+  ordering_job_runs portal_order_attempts)
 fail=0
 
 check() { # label key method profile table
