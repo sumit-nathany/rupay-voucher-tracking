@@ -15,11 +15,17 @@ export function mapAuthError(message: string, status?: number): string {
   if (lower.includes('user not found')) {
     return 'No account for this email. You need an invite before you can sign in.';
   }
+  if (lower.includes('user already registered') || lower.includes('already registered')) {
+    return 'An account with this email already exists. Please sign in.';
+  }
+  if (lower.includes('password should be') || lower.includes('password is too short')) {
+    return 'Password must be at least 6 characters.';
+  }
   if (status === 429 || lower.includes('rate limit')) {
     return 'Too many attempts. Wait a minute and try again.';
   }
   if (process.env.NODE_ENV === 'development' && m) {
     return m;
   }
-  return 'Could not sign in. Check your email and password, or use your invite link to set a password first.';
+  return 'Could not complete request. Check your details or try again.';
 }

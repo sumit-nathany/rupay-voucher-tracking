@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:preprod": "tsx scripts/dev-preprod.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
