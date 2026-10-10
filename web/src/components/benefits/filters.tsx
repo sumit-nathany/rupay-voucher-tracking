@@ -235,49 +235,49 @@ export function Filters({
           </Select>
         </div>
 
-        <div className="flex w-full flex-col gap-2 border-border pt-2 border-t sm:border-t-0 sm:pt-0 sm:ml-auto sm:w-auto sm:shrink-0 sm:flex-row sm:items-center sm:border-l sm:pl-4">
-          <div className="relative w-full sm:w-44 shrink-0 order-1 sm:order-2">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              type="search"
-              aria-label="Search benefits"
-              placeholder={searchScope === 'all' && Boolean(urlSearch) ? 'Search everything\u2026' : 'Search\u2026'}
-              value={text}
-              onChange={(e) => {
-                const val = e.target.value;
-                setText(val);
-                if (!val.trim() && spRef.current.get('search_scope')) {
-                  set({ search_scope: '', q: '' });
-                }
-              }}
-              className="pl-9 w-full"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:contents">
-            {/* Group by */}
-            <Select
-              value={groupMode}
-              onValueChange={(v) => {
-                const mode = v as BenefitGroupMode;
-                set({ group: mode === groupDefault ? '' : mode });
-              }}
+        <div className="flex w-full flex-col gap-2 border-border border-t pt-2 sm:border-t-0 sm:pt-0 sm:ml-auto sm:w-auto sm:shrink-0 sm:border-l sm:pl-4">
+          {/* Row 1: Group by */}
+          <Select
+            value={groupMode}
+            onValueChange={(v) => {
+              const mode = v as BenefitGroupMode;
+              set({ group: mode === groupDefault ? '' : mode });
+            }}
+          >
+            <SelectTrigger
+              aria-label="Group by"
+              className={`w-full ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
             >
-              <SelectTrigger
-                aria-label="Group by"
-                className={`${base} sm:order-1 ${groupRaw && groupMode !== groupDefault ? activeFilter : ''}`}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="period">Group: period</SelectItem>
-                <SelectItem value="card">Group: card</SelectItem>
-                <SelectItem value="holder">Group: holder</SelectItem>
-                <SelectItem value="benefit">Group: benefit</SelectItem>
-              </SelectContent>
-            </Select>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="period">Group: period</SelectItem>
+              <SelectItem value="card">Group: card</SelectItem>
+              <SelectItem value="holder">Group: holder</SelectItem>
+              <SelectItem value="benefit">Group: benefit</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {/* Search scope */}
+          {/* Row 2: Search input + scope */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input
+                type="search"
+                aria-label="Search benefits"
+                placeholder={searchScope === 'all' && Boolean(urlSearch) ? 'Search everything\u2026' : 'Search\u2026'}
+                value={text}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setText(val);
+                  if (!val.trim() && spRef.current.get('search_scope')) {
+                    set({ search_scope: '', q: '' });
+                  }
+                }}
+                className="pl-9 w-full"
+              />
+            </div>
+
             <Select
               value={hasSearch && searchScopeRaw === 'all' ? 'all' : 'current'}
               disabled={!hasSearch}
@@ -293,11 +293,7 @@ export function Filters({
                 aria-label="Search scope"
                 disabled={!hasSearch}
                 title={!hasSearch ? 'Enter search terms to search across everything' : undefined}
-                className={`${base} sm:order-3 ${
-                  hasSearch && searchScopeRaw === 'all'
-                    ? activeFilter
-                    : ''
-                }`}
+                className={hasSearch && searchScopeRaw === 'all' ? activeFilter : ''}
               >
                 <SelectValue />
               </SelectTrigger>
