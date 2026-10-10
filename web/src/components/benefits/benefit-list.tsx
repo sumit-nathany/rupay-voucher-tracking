@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatINR } from '@/components/dashboard/format';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { cn } from '@/lib/utils';
+import { formatCardLabel } from '@/domain/card-label';
 import { benefitLabel } from './label';
 import { isLifetimeScope } from '@/components/dashboard/view-params';
 import { type BenefitSort, groupBenefitItems, resolveBenefitGroupMode, sortBenefitItems } from './group';
@@ -15,11 +16,12 @@ const GRID = 'md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.4fr)_minmax(0,2.3
 
 function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { title: string; subtitle: string }) => void }) {
   const muted = it.status === 'Withdrawn' || it.status === 'Skipped';
+  const cardLabel = formatCardLabel({ holderName: it.holderName, cardName: it.cardName, lastDigits: it.cardLastDigits });
   return (
     <li>
       <button
         type="button"
-        onClick={() => onOpen(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${it.holderName} · ${it.cardName}${it.cardLastDigits ? ` ••${it.cardLastDigits}` : ''}${it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}` })}
+        onClick={() => onOpen(it.id, { title: `${it.benefitType}: ${benefitLabel(it)}`, subtitle: `${cardLabel}${it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}` })}
         className={cn(
           'block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
           GRID,
@@ -35,8 +37,7 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
           <span className="shrink-0 text-sm font-medium tabular-nums md:hidden">{formatINR(it.value)}</span>
         </span>
         <span className="mt-0.5 block min-w-0 truncate text-xs text-muted-foreground md:mt-0 md:text-sm">
-          {it.holderName} · {it.cardName}
-          {it.cardLastDigits ? ` ••${it.cardLastDigits}` : ''}
+          {cardLabel}
           {it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}
         </span>
         <span className="hidden text-right text-sm tabular-nums md:block">{formatINR(it.value)}</span>

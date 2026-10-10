@@ -85,14 +85,14 @@ describe('groupItemsByCard', () => {
       mkCard('b1', 'card-b', 'holder-b', 'Bina', 'HDFC Infinia', '9999'),
     ]);
     expect(g.map((x) => [x.title, x.key, x.items.map((i) => i.id)])).toEqual([
-      ['Asha · PNB Select ••1234', 'card-a', ['a1', 'a2']],
-      ['Bina · HDFC Infinia ••9999', 'card-b', ['b2', 'b1']],
+      ['Asha • PNB Select (xx1234)', 'card-a', ['a1', 'a2']],
+      ['Bina • HDFC Infinia (xx9999)', 'card-b', ['b2', 'b1']],
     ]);
   });
 
   it('omits last digits in title when absent', () => {
     const g = groupItemsByCard([mkCard('x', 'card-x', 'holder-a', 'Asha', 'PNB Select', null)]);
-    expect(g[0]?.title).toBe('Asha · PNB Select');
+    expect(g[0]?.title).toBe('Asha • PNB Select');
   });
 });
 

@@ -1,4 +1,5 @@
 import { listCards } from '@/actions/cards';
+import { listHolders } from '@/actions/holders';
 import { listOverrides } from '@/actions/overrides';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,13 +8,31 @@ import { OverrideFormSheet } from '@/components/overrides/override-form';
 import { ContentStage } from '@/components/layout/content-stage';
 import { EmptyState } from '@/components/layout/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
+import { formatCardLabel } from '@/domain/card-label';
 
 export const dynamic = 'force-dynamic';
 
 export default async function OverridesPage() {
-  const [overrides, cards] = await Promise.all([listOverrides(), listCards()]);
-  const cardName = new Map(cards.map((c) => [c.id, c.displayName]));
-  const cardOptions = cards.map((c) => ({ id: c.id, name: c.displayName }));
+  const [overrides, cards, holders] = await Promise.all([listOverrides(), listCards(), listHolders()]);
+  const holderById = new Map(holders.map((h) => [h.id, h.name]));
+  const cardName = new Map(
+    cards.map((c) => [
+      c.id,
+      formatCardLabel({
+        holderName: holderById.get(c.holderId),
+        cardName: c.displayName,
+        lastDigits: c.lastDigits,
+      }),
+    ]),
+  );
+  const cardOptions = cards.map((c) => ({
+    id: c.id,
+    name: formatCardLabel({
+      holderName: holderById.get(c.holderId),
+      cardName: c.displayName,
+      lastDigits: c.lastDigits,
+    }),
+  }));
 
   return (
     <ContentStage className="max-w-3xl">

@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { CardFormSheet } from '@/components/cards/card-form';
 import { CurationBadge } from '@/components/cards/curation-badge';
 import { DeleteCardButton } from '@/components/cards/delete-card-button';
+import { formatCardLabel } from '@/domain/card-label';
 import { ContentStage } from '@/components/layout/content-stage';
 import { EmptyState } from '@/components/layout/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
@@ -65,7 +66,9 @@ export default async function CardsPage() {
                       </span>
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold leading-snug">{c.displayName}</span>
+                          <span className="font-semibold leading-snug">
+                            {formatCardLabel({ holderName: holder?.name, cardName: c.displayName, lastDigits: c.lastDigits })}
+                          </span>
                           {c.active === false && <Badge variant="secondary" className="leading-none">Inactive</Badge>}
                           {t && <CurationBadge status={t.curationStatus} />}
                         </div>
@@ -74,8 +77,7 @@ export default async function CardsPage() {
                         )}
                         {!t && <p className="text-sm text-muted-foreground">Card type no longer listed</p>}
                         <p className="text-xs text-muted-foreground">
-                          {holder?.name ?? 'Unknown holder'}
-                          {c.lastDigits ? ` · ••${c.lastDigits}` : ''} · since {c.trackingFrom}
+                          since {c.trackingFrom}
                         </p>
                       </div>
                     </div>
@@ -94,7 +96,10 @@ export default async function CardsPage() {
                           active: c.active ?? true,
                         }}
                       />
-                      <DeleteCardButton id={c.id} name={c.displayName} />
+                      <DeleteCardButton
+                        id={c.id}
+                        name={formatCardLabel({ holderName: holder?.name, cardName: c.displayName, lastDigits: c.lastDigits })}
+                      />
                     </div>
                   </CardContent>
                 </Card>

@@ -1,4 +1,5 @@
 import { benefitOptionLabel } from '@/domain/benefit-label';
+import { formatCardLabel } from '@/domain/card-label';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { monthName } from '@/components/dashboard/view-params';
 
@@ -91,8 +92,11 @@ export function groupItems(items: InstanceListItem[]): Group[] {
 export function cardSectionTitle(
   item: Pick<InstanceListItem, 'holderName' | 'cardName' | 'cardLastDigits'>,
 ): string {
-  const digits = item.cardLastDigits ? ` ••${item.cardLastDigits}` : '';
-  return `${item.holderName} · ${item.cardName}${digits}`;
+  return formatCardLabel({
+    holderName: item.holderName,
+    cardName: item.cardName,
+    lastDigits: item.cardLastDigits,
+  });
 }
 
 /** Lifetime benefits view: one section per physical card. */

@@ -10,6 +10,7 @@ import { PeriodSelector } from '@/components/dashboard/period-selector';
 import { isLifetimeScope, parseView, viewLabel } from '@/components/dashboard/view-params';
 import { ContentStage } from '@/components/layout/content-stage';
 import { PageHeader } from '@/components/layout/page-header';
+import { formatCardLabel } from '@/domain/card-label';
 import { ORDER_STATUSES } from '@/domain/instances';
 import { today as istToday } from '@/lib/periods';
 
@@ -28,11 +29,16 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
       listCards(),
       listBenefitFilterOptionsAction({ holderId, cardId }),
     ]);
+    const holderById = new Map(h.map((x) => [x.id, x.name]));
     return {
       holders: h.map((x) => ({ id: x.id, label: x.name })),
       cards: c.map((x) => ({
         id: x.id,
-        label: x.lastDigits ? `${x.displayName} ••${x.lastDigits}` : x.displayName,
+        label: formatCardLabel({
+          holderName: holderById.get(x.holderId),
+          cardName: x.displayName,
+          lastDigits: x.lastDigits,
+        }),
         holderId: x.holderId,
       })),
       benefits,

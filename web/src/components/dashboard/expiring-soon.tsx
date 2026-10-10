@@ -1,5 +1,6 @@
 'use client';
 import { AlarmClock } from 'lucide-react';
+import { formatCardLabel } from '@/domain/card-label';
 import { benefitLabel } from '@/components/benefits/label';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { useBenefitDrawer } from '@/components/benefits/use-drawer';
@@ -35,15 +36,15 @@ export function ExpiringSoon({ items, days, today }: { items: InstanceListItem[]
                     onClick={() =>
                       open(it.id, {
                         title: `${it.benefitType}: ${benefitLabel(it)}`,
-                        subtitle: `${it.holderName} · ${it.cardName}`,
+                        subtitle: formatCardLabel({ holderName: it.holderName, cardName: it.cardName, lastDigits: it.cardLastDigits }),
                       })
                     }
                     className="benefit-card flex w-full flex-col gap-2 p-4 text-left transition-transform active:scale-[0.99]"
                   >
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{it.benefitType}</span>
                     <span className="line-clamp-2 font-medium leading-snug">{benefitLabel(it)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {it.holderName} · {formatINR(it.value)}
+                    <span className="text-xs text-muted-foreground truncate">
+                      {formatCardLabel({ holderName: it.holderName, cardName: it.cardName, lastDigits: it.cardLastDigits })} · {formatINR(it.value)}
                     </span>
                     <span
                       className={`mt-1 inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${
