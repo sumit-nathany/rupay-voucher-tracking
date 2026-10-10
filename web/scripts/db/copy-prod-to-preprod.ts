@@ -60,16 +60,20 @@ async function main() {
   console.log('[copy-data] Starting data copy from Production to Pre-Production...');
 
   // 1. Read keys
-  const prodBakCandidates = [
-    resolve(process.cwd(), '.env.local.prod.bak'),
-    resolve(process.cwd(), 'web/.env.local.prod.bak'),
-  ];
-  const prodBakPath = prodBakCandidates.find((p) => existsSync(p));
-  if (!prodBakPath) throw new Error('Could not find .env.local.prod.bak');
-  const prodBak = readFileSync(prodBakPath, 'utf8');
-  const prodKeyMatch = prodBak.match(/VOUCHER_ENCRYPTION_KEY=(.*)/);
-  if (!prodKeyMatch) throw new Error('Could not find prod VOUCHER_ENCRYPTION_KEY');
-  const prodKey = parseKey(prodKeyMatch[1].trim());
+  let prodKeyRaw = process.env.PROD_VOUCHER_ENCRYPTION_KEY;
+  if (!prodKeyRaw) {
+    const prodBakCandidates = [
+      resolve(process.cwd(), '.env.local.prod.bak'),
+      resolve(process.cwd(), 'web/.env.local.prod.bak'),
+    ];
+    const prodBakPath = prodBakCandidates.find((p) => existsSync(p));
+    if (prodBakPath) {
+      const prodBak = readFileSync(prodBakPath, 'utf8');
+      const prodKeyMatch = prodBak.match(/VOUCHER_ENCRYPTION_KEY=(.*)/);
+      if (prodKeyMatch) prodKeyRaw = prodKeyMatch[1].trim();
+    }
+  }
+  const prodKey = prodKeyRaw ? parseKey(prodKeyRaw) : null;
 
   const preprodCandidates = [
     resolve(process.cwd(), '.env.preprod'),
@@ -172,11 +176,11 @@ async function main() {
         await tx`
           INSERT INTO app.benefit_catalog_versions (
             id, benefit_id, benefit_type, benefit_provider, exact_benefit, frequency,
-            instance_count, offer_kind, effective_from, effective_to, created_at
+            instance_count, offer_kind, effective_from, effective_to, default_cash_value, created_at
           ) VALUES (
             ${val(v.id)}, ${val(v.benefit_id)}, ${val(v.benefit_type)}, ${val(v.benefit_provider)}, ${val(v.exact_benefit)},
             ${val(v.frequency)}, ${val(v.instance_count)}, ${val(v.offer_kind)}, ${val(v.effective_from)}, ${val(v.effective_to)},
-            ${val(v.created_at)}
+            ${val(v.default_cash_value)}, ${val(v.created_at)}
           )
           ON CONFLICT (id) DO UPDATE SET
             benefit_type = EXCLUDED.benefit_type,
@@ -186,7 +190,8 @@ async function main() {
             instance_count = EXCLUDED.instance_count,
             offer_kind = EXCLUDED.offer_kind,
             effective_from = EXCLUDED.effective_from,
-            effective_to = EXCLUDED.effective_to
+            effective_to = EXCLUDED.effective_to,
+            default_cash_value = EXCLUDED.default_cash_value
         `;
       }
       console.log(`[copy-data] ✓ Upserted ${catalogVersions.length} catalog versions`);
@@ -195,15 +200,16 @@ async function main() {
       for (const o of benefitOptions) {
         await tx`
           INSERT INTO app.benefit_options (
-            id, version_id, provider, offer_name, cash_value, sort_order, created_at
+            id, version_id, provider, offer_name, cash_value, portal_offer_id, sort_order, created_at
           ) VALUES (
             ${val(o.id)}, ${val(o.version_id)}, ${val(o.provider)}, ${val(o.offer_name)}, ${val(o.cash_value)},
-            ${val(o.sort_order)}, ${val(o.created_at)}
+            ${val(o.portal_offer_id)}, ${val(o.sort_order)}, ${val(o.created_at)}
           )
           ON CONFLICT (id) DO UPDATE SET
             provider = EXCLUDED.provider,
             offer_name = EXCLUDED.offer_name,
             cash_value = EXCLUDED.cash_value,
+            portal_offer_id = EXCLUDED.portal_offer_id,
             sort_order = EXCLUDED.sort_order
         `;
       }
@@ -250,7 +256,7 @@ async function main() {
       let reencryptedCount = 0;
       for (const bi of benefitInstances) {
         let codeEncrypted = bi.code_encrypted;
-        if (codeEncrypted) {
+        if (codeEncrypted && prodKey) {
           try {
             const plain = decrypt(codeEncrypted, bi.id, prodKey);
             codeEncrypted = encrypt(plain, bi.id, preprodKey);
