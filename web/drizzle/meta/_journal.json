@@ -92,6 +92,13 @@
       "when": 1791680000000,
       "tag": "0012_automated_ordering",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791690000000,
+      "tag": "0013_portal_card_mappings_payment_details",
+      "breakpoints": true
     }
   ]
 }

@@ -25,18 +25,18 @@ export class PortalOrderError extends Error {
 }
 
 export interface PortalCardMappingInfo {
-  portalCardId: string;
-  portalCardbinId: string | null;
+  portalCardId?: string | null;
+  portalCardbinId?: string | null;
 }
 
 export interface ResolvedPortalCard {
-  portalCardId: string;
+  portalCardId?: string | null;
   cardName: string;
 }
 
 export interface OrderRequest {
-  portalCardId: string;
-  portalCardbinId: string | null;
+  portalCardId?: string | null;
+  portalCardbinId?: string | null;
   serviceId?: string | null;
   offerId?: string | null;
 }

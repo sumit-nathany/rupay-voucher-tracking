@@ -96,9 +96,21 @@ const saveMappingSchema = z.object({
   id: z.string().uuid().optional(),
   portalAccountId: z.string().uuid(),
   cardId: z.string().uuid(),
-  portalCardId: z.string().min(1, 'Portal card ID is required'),
+  portalCardId: z.string().nullable().optional(),
   portalCardbinId: z.string().nullable().optional(),
   portalCardLabel: z.string().nullable().optional(),
+  paymentDetails: z
+    .object({
+      version: z.literal(1).default(1),
+      mode: z.enum(['full', 'saved_card']).default('full'),
+      cardNumber: z.string().optional(),
+      expiryMonth: z.string().optional(),
+      expiryYear: z.string().optional(),
+      cvv: z.string().optional(),
+      nameOnCard: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
   active: z.boolean().optional(),
 });
 

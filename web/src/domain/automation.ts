@@ -18,6 +18,12 @@ import {
 import type { Ctx, Database } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
 import { encryptPortalCredentials } from '@/lib/portal-credentials';
+import {
+  decryptPaymentDetails,
+  encryptPaymentDetails,
+  maskPaymentSummary,
+  type PaymentDetails,
+} from '@/lib/card-payment-details';
 
 // ── Types and Views ──────────────────────────────────────────────────────────
 
@@ -44,9 +50,16 @@ export interface PortalCardMappingView {
   cardName: string;
   holderName: string;
   last4: string | null;
-  portalCardId: string;
+  portalCardId: string | null;
   portalCardbinId: string | null;
   portalCardLabel: string | null;
+  paymentDetails: {
+    mode: 'full' | 'saved_card';
+    maskedCardNumber: string | null;
+    expirySummary: string | null;
+    hasCvv: boolean;
+    nameOnCard: string | null;
+  } | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -92,7 +105,7 @@ export interface CandidateNomination {
     benefitId: string;
     orderDeadline: string;
     chosenOptionId: string | null;
-    portalCardId: string;
+    portalCardId: string | null;
     portalCardbinId: string | null;
     ruleId: string;
     rulePriority: number;
@@ -303,6 +316,7 @@ export async function listPortalCardMappings(ctx: Ctx, portalAccountId?: string)
       cardName: bankCardTypes.displayName,
       holderName: cardHolders.name,
       last4: cards.lastDigits,
+      paymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
       portalCardId: portalCardMappings.portalCardId,
       portalCardbinId: portalCardMappings.portalCardbinId,
       portalCardLabel: portalCardMappings.portalCardLabel,
@@ -323,21 +337,33 @@ export async function listPortalCardMappings(ctx: Ctx, portalAccountId?: string)
     .orderBy(asc(bankCardTypes.displayName));
 
   const rows = await query;
-  return rows.map((r) => ({
-    id: r.id,
-    workspaceId: r.workspaceId,
-    portalAccountId: r.portalAccountId,
-    cardId: r.cardId,
-    cardName: r.cardName,
-    holderName: r.holderName,
-    last4: r.last4,
-    portalCardId: r.portalCardId,
-    portalCardbinId: r.portalCardbinId,
-    portalCardLabel: r.portalCardLabel,
-    active: r.active,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  }));
+  return rows.map((r) => {
+    let paymentDetails = null;
+    if (r.paymentDetailsEncrypted) {
+      try {
+        const decrypted = decryptPaymentDetails(r.paymentDetailsEncrypted, r.id);
+        paymentDetails = maskPaymentSummary(decrypted);
+      } catch {
+        paymentDetails = null;
+      }
+    }
+    return {
+      id: r.id,
+      workspaceId: r.workspaceId,
+      portalAccountId: r.portalAccountId,
+      cardId: r.cardId,
+      cardName: r.cardName,
+      holderName: r.holderName,
+      last4: r.last4,
+      portalCardId: r.portalCardId,
+      portalCardbinId: r.portalCardbinId,
+      portalCardLabel: r.portalCardLabel,
+      paymentDetails,
+      active: r.active,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    };
+  });
 }
 
 export async function savePortalCardMapping(
@@ -346,9 +372,10 @@ export async function savePortalCardMapping(
     id?: string;
     portalAccountId: string;
     cardId: string;
-    portalCardId: string;
+    portalCardId?: string | null;
     portalCardbinId?: string | null;
     portalCardLabel?: string | null;
+    paymentDetails?: PaymentDetails | null;
     active?: boolean;
   },
 ): Promise<void> {
@@ -367,37 +394,51 @@ export async function savePortalCardMapping(
   if (!acc) throw new NotFoundError('Portal account not found');
 
   if (input.id) {
+    const patch: Partial<typeof portalCardMappings.$inferInsert> = {
+      portalAccountId: input.portalAccountId,
+      cardId: input.cardId,
+      portalCardId: input.portalCardId ?? null,
+      portalCardbinId: input.portalCardbinId ?? null,
+      portalCardLabel: input.portalCardLabel ?? null,
+      active: input.active ?? true,
+      updatedAt: new Date(),
+    };
+    if (input.paymentDetails !== undefined) {
+      patch.paymentDetailsEncrypted = input.paymentDetails
+        ? encryptPaymentDetails(input.paymentDetails, input.id)
+        : null;
+    }
     await ctx.db
       .update(portalCardMappings)
-      .set({
-        portalAccountId: input.portalAccountId,
-        cardId: input.cardId,
-        portalCardId: input.portalCardId,
-        portalCardbinId: input.portalCardbinId ?? null,
-        portalCardLabel: input.portalCardLabel ?? null,
-        active: input.active ?? true,
-        updatedAt: new Date(),
-      })
+      .set(patch)
       .where(and(eq(portalCardMappings.workspaceId, ctx.workspaceId), eq(portalCardMappings.id, input.id)));
   } else {
+    const mappingId = crypto.randomUUID();
+    const paymentDetailsEncrypted = input.paymentDetails
+      ? encryptPaymentDetails(input.paymentDetails, mappingId)
+      : null;
+
     await ctx.db
       .insert(portalCardMappings)
       .values({
+        id: mappingId,
         workspaceId: ctx.workspaceId,
         portalAccountId: input.portalAccountId,
         cardId: input.cardId,
-        portalCardId: input.portalCardId,
+        portalCardId: input.portalCardId ?? null,
         portalCardbinId: input.portalCardbinId ?? null,
         portalCardLabel: input.portalCardLabel ?? null,
+        paymentDetailsEncrypted,
         active: input.active ?? true,
       })
       .onConflictDoUpdate({
         target: [portalCardMappings.workspaceId, portalCardMappings.cardId],
         set: {
           portalAccountId: input.portalAccountId,
-          portalCardId: input.portalCardId,
+          portalCardId: input.portalCardId ?? null,
           portalCardbinId: input.portalCardbinId ?? null,
           portalCardLabel: input.portalCardLabel ?? null,
+          paymentDetailsEncrypted,
           active: input.active ?? true,
           updatedAt: new Date(),
         },
