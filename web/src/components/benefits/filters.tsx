@@ -21,6 +21,7 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
   const holder = sp.get('holder') ?? '';
   const card = sp.get('card') ?? '';
   const status = sp.get('status') ?? '';
+  const sort = sp.get('sort') ?? '';
   const urlSearch = sp.get('q') ?? '';
   const [text, setText] = useState(urlSearch);
   const spRef = useRef(sp);
@@ -43,14 +44,14 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
   }, [text]);
 
   const visibleCards = holder ? cards.filter((c) => c.holderId === holder) : cards;
-  const active = holder || card || status || urlSearch;
+  const active = holder || card || status || sort || urlSearch;
 
   return (
     <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Filter className="h-3.5 w-3.5" aria-hidden /> Refine list
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <div className="relative sm:col-span-2 lg:col-span-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
@@ -107,6 +108,20 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
             ))}
           </SelectContent>
         </Select>
+
+        <Select
+          value={sort || 'default'}
+          onValueChange={(v) => set({ sort: v === 'default' ? '' : v })}
+        >
+          <SelectTrigger aria-label="Sort by" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="default">Default order</SelectItem>
+            <SelectItem value="value-desc">Value: high → low</SelectItem>
+            <SelectItem value="value-asc">Value: low → high</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {active && (
@@ -115,7 +130,7 @@ export function Filters({ holders, cards }: { holders: FilterOption[]; cards: Fi
           className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
           onClick={() => {
             setText('');
-            set({ holder: '', card: '', status: '', q: '' });
+            set({ holder: '', card: '', status: '', sort: '', q: '' });
           }}
         >
           <X className="h-3.5 w-3.5" aria-hidden /> Clear all filters

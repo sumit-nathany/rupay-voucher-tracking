@@ -1,11 +1,12 @@
 'use client';
+import { useSearchParams } from 'next/navigation';
 import { Gift } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatINR } from '@/components/dashboard/format';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { cn } from '@/lib/utils';
 import { benefitLabel } from './label';
-import { groupItems } from './group';
+import { type BenefitSort, groupItems, sortBenefitItems } from './group';
 import { StatusBadge } from './status-badge';
 import { useBenefitDrawer } from './use-drawer';
 
@@ -50,9 +51,19 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
   );
 }
 
+function parseSort(raw: string | null): BenefitSort {
+  if (raw === 'value-desc' || raw === 'value-asc') return raw;
+  return 'default';
+}
+
 export function BenefitList({ items }: { items: InstanceListItem[] }) {
   const { open, drawer } = useBenefitDrawer();
-  const groups = groupItems(items);
+  const sp = useSearchParams();
+  const sort = parseSort(sp.get('sort'));
+  const groups = groupItems(items).map((g) => ({
+    ...g,
+    items: sortBenefitItems(g.items, sort),
+  }));
   return (
     <div className="space-y-8">
       {groups.map((g) => (

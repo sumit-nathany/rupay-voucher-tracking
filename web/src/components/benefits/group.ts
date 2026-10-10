@@ -26,3 +26,11 @@ export function groupItems(items: InstanceListItem[]): Group[] {
     .sort((x, y) => x.r - y.r || x.end.localeCompare(y.end) || x.start.localeCompare(y.start))
     .map(({ key, title, items }) => ({ key, title, items }));
 }
+
+export type BenefitSort = 'default' | 'value-desc' | 'value-asc';
+
+export function sortBenefitItems(items: InstanceListItem[], sort: BenefitSort): InstanceListItem[] {
+  if (sort === 'default') return items;
+  const dir = sort === 'value-desc' ? -1 : 1;
+  return [...items].sort((a, b) => dir * (a.value - b.value) || a.id.localeCompare(b.id));
+}

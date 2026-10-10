@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { InstanceListItem } from '@/domain/instance-queries';
-import { groupItems } from './group';
+import { groupItems, sortBenefitItems } from './group';
 
-const mk = (id: string, frequency: string, periodLabel: string, periodStart: string, periodEnd: string) =>
-  ({ id, frequency, periodLabel, periodStart, periodEnd }) as unknown as InstanceListItem;
+const mk = (
+  id: string,
+  frequency: string,
+  periodLabel: string,
+  periodStart: string,
+  periodEnd: string,
+  value = 0,
+) => ({ id, frequency, periodLabel, periodStart, periodEnd, value }) as unknown as InstanceListItem;
 
 describe('groupItems', () => {
   it('annual, then half-yearly, then each shorter period in date order', () => {
@@ -21,5 +27,12 @@ describe('groupItems', () => {
       ['Nov 2026', ['m']],
       ['Q4 2026', ['q']],
     ]);
+  });
+});
+
+describe('sortBenefitItems', () => {
+  it('sorts by value descending with stable id tie-break', () => {
+    const items = [mk('b', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 100), mk('a', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 500)];
+    expect(sortBenefitItems(items, 'value-desc').map((i) => i.id)).toEqual(['a', 'b']);
   });
 });
