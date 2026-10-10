@@ -61,7 +61,8 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
 
 function parseSort(raw: string | null): BenefitSort {
   if (raw === 'value-asc') return 'value-asc';
-  return 'value-desc';
+  if (raw === 'value-desc') return 'value-desc';
+  return 'category';
 }
 
 export function BenefitList({ items }: { items: InstanceListItem[] }) {

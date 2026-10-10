@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import {
   benefitGroupKey,
+  groupBenefitItems,
   groupItems,
   groupItemsByBenefit,
+  groupItemsByCategory,
   groupItemsByCard,
   groupItemsByHolder,
   sortBenefitItems,
@@ -148,6 +150,40 @@ describe('groupItemsByBenefit', () => {
   });
 });
 
+describe('groupItemsByCategory', () => {
+  const mkCat = (id: string, benefitType: string) =>
+    ({
+      ...mk(id, 'Monthly', '2026-11', '2026-11-01', '2026-11-30'),
+      benefitType,
+    }) as unknown as InstanceListItem;
+
+  it('groups by benefitType alphabetically', () => {
+    const g = groupItemsByCategory([
+      mkCat('1', 'Spa Services'),
+      mkCat('2', 'Dining'),
+      mkCat('3', 'Spa Services'),
+      mkCat('4', 'OTT'),
+    ]);
+    expect(g.map((x) => [x.title, x.key, x.items.map((i) => i.id)])).toEqual([
+      ['Dining', 'category:Dining', ['2']],
+      ['OTT', 'category:OTT', ['4']],
+      ['Spa Services', 'category:Spa Services', ['1', '3']],
+    ]);
+  });
+
+  it('falls back to Other if benefitType is empty', () => {
+    const g = groupItemsByCategory([mkCat('1', '')]);
+    expect(g[0]?.title).toBe('Other');
+    expect(g[0]?.key).toBe('category:Other');
+  });
+
+  it('is reachable via groupBenefitItems with mode category', () => {
+    const g = groupBenefitItems([mkCat('1', 'Dining')], 'category');
+    expect(g).toHaveLength(1);
+    expect(g[0]?.title).toBe('Dining');
+  });
+});
+
 describe('sortBenefitItems', () => {
   it('sorts by value descending with stable id tie-break', () => {
     const items = [mk('b', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 100), mk('a', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 500)];
@@ -159,5 +195,15 @@ describe('sortBenefitItems', () => {
     const discount = { ...mk('d', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 500), offerKind: 'discount' as const };
     expect(sortBenefitItems([discount, voucher], 'value-desc').map((i) => i.id)).toEqual(['v', 'd']);
     expect(sortBenefitItems([discount, voucher], 'value-asc').map((i) => i.id)).toEqual(['v', 'd']);
+  });
+
+  it('sorts by category alphabetically, then benefit name, then value descending', () => {
+    const it1 = { ...mk('1', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 100), benefitType: 'Travel', benefitName: 'Flight' };
+    const it2 = { ...mk('2', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 200), benefitType: 'Dining', benefitName: 'Restaurant B' };
+    const it3 = { ...mk('3', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 500), benefitType: 'Dining', benefitName: 'Restaurant A' };
+    const discount = { ...mk('4', 'Monthly', 'Oct', '2026-10-01', '2026-10-31', 1000), benefitType: 'Apparel', benefitName: 'Shop', offerKind: 'discount' as const };
+
+    const sorted = sortBenefitItems([it1, it2, it3, discount], 'category');
+    expect(sorted.map((i) => i.id)).toEqual(['3', '2', '1', '4']);
   });
 });

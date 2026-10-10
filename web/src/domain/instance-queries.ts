@@ -304,6 +304,7 @@ async function query(ctx: Ctx, where: SQL | undefined): Promise<InstanceListItem
     .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), where))
     .orderBy(
       asc(benefitInstances.periodEnd),
+      sql`lower(coalesce(${benefitCatalogVersions.benefitType}, ${cardBenefitOverrides.benefitType}, ''))`,
       sql`lower(coalesce(${benefitCatalogVersions.exactBenefit}, ${cardBenefitOverrides.exactBenefit}))`,
       asc(cardHolders.name),
       asc(cards.displayName),

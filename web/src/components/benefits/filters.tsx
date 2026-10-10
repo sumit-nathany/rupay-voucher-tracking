@@ -86,7 +86,7 @@ export function Filters({
     card ||
     category ||
     status ||
-    sort === 'value-asc' ||
+    (sort && sort !== 'category') ||
     discounts ||
     urlSearch ||
     lapsed ||
@@ -206,13 +206,14 @@ export function Filters({
 
           {/* Sort */}
           <Select
-            value={sort === 'value-asc' ? 'value-asc' : 'value-desc'}
-            onValueChange={(v) => set({ sort: v === 'value-desc' ? '' : v })}
+            value={sort === 'value-desc' || sort === 'value-asc' ? sort : 'category'}
+            onValueChange={(v) => set({ sort: v === 'category' ? '' : v })}
           >
-            <SelectTrigger aria-label="Sort by" className={`${base} ${sort === 'value-asc' ? activeFilter : ''}`}>
+            <SelectTrigger aria-label="Sort by" className={`${base} ${sort && sort !== 'category' ? activeFilter : ''}`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="category">Order: category</SelectItem>
               <SelectItem value="value-desc">Value: high &#x2192; low</SelectItem>
               <SelectItem value="value-asc">Value: low &#x2192; high</SelectItem>
             </SelectContent>
@@ -253,6 +254,7 @@ export function Filters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="period">Group: period</SelectItem>
+              <SelectItem value="category">Group: category</SelectItem>
               <SelectItem value="card">Group: card</SelectItem>
               <SelectItem value="holder">Group: holder</SelectItem>
               <SelectItem value="benefit">Group: benefit</SelectItem>

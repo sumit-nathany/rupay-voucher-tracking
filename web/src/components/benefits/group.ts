@@ -3,9 +3,9 @@ import { formatCardLabel } from '@/domain/card-label';
 import type { InstanceListItem } from '@/domain/instance-queries';
 import { monthName } from '@/components/dashboard/view-params';
 
-export type BenefitGroupMode = 'period' | 'card' | 'holder' | 'benefit';
+export type BenefitGroupMode = 'period' | 'category' | 'card' | 'holder' | 'benefit';
 
-const GROUP_MODES: BenefitGroupMode[] = ['period', 'card', 'holder', 'benefit'];
+const GROUP_MODES: BenefitGroupMode[] = ['period', 'category', 'card', 'holder', 'benefit'];
 
 export function parseBenefitGroupMode(raw: string | null): BenefitGroupMode | null {
   if (raw && (GROUP_MODES as string[]).includes(raw)) return raw as BenefitGroupMode;
@@ -177,10 +177,26 @@ export function groupItemsByBenefit(items: InstanceListItem[]): Group[] {
     .map(({ key, title, items }) => ({ key, title, items }));
 }
 
+/** Group items by their benefit category (benefitType). */
+export function groupItemsByCategory(items: InstanceListItem[]): Group[] {
+  const byKey = new Map<string, Group>();
+  for (const i of items) {
+    const cat = i.benefitType.trim() || 'Other';
+    const g = byKey.get(cat) ?? { key: `category:${cat}`, title: cat, items: [] };
+    g.items.push(i);
+    byKey.set(cat, g);
+  }
+  return [...byKey.values()].sort((x, y) =>
+    x.title.localeCompare(y.title, undefined, { sensitivity: 'base' }),
+  );
+}
+
 export function groupBenefitItems(items: InstanceListItem[], mode: BenefitGroupMode): Group[] {
   switch (mode) {
     case 'period':
       return groupItems(items);
+    case 'category':
+      return groupItemsByCategory(items);
     case 'card':
       return groupItemsByCard(items);
     case 'holder':
@@ -190,19 +206,31 @@ export function groupBenefitItems(items: InstanceListItem[], mode: BenefitGroupM
   }
 }
 
-/** Missing URL `sort` means high → low. Discount coupons stay after gift vouchers. */
-export type BenefitSort = 'value-desc' | 'value-asc';
+/** Missing URL `sort` defaults to category. Discount coupons stay after gift vouchers. */
+export type BenefitSort = 'category' | 'value-desc' | 'value-asc';
 
 function offerKindRank(kind: InstanceListItem['offerKind']) {
   return kind === 'discount' ? 1 : 0;
 }
 
 export function sortBenefitItems(items: InstanceListItem[], sort: BenefitSort): InstanceListItem[] {
+  if (sort === 'category') {
+    return [...items].sort(
+      (a, b) =>
+        offerKindRank(a.offerKind) - offerKindRank(b.offerKind) ||
+        (a.benefitType || '').localeCompare(b.benefitType || '', undefined, { sensitivity: 'base' }) ||
+        (a.benefitName || '').localeCompare(b.benefitName || '', undefined, { sensitivity: 'base' }) ||
+        b.value - a.value ||
+        a.id.localeCompare(b.id),
+    );
+  }
   const dir = sort === 'value-asc' ? 1 : -1;
   return [...items].sort(
     (a, b) =>
       offerKindRank(a.offerKind) - offerKindRank(b.offerKind) ||
       dir * (a.value - b.value) ||
+      (a.benefitType || '').localeCompare(b.benefitType || '', undefined, { sensitivity: 'base' }) ||
+      (a.benefitName || '').localeCompare(b.benefitName || '', undefined, { sensitivity: 'base' }) ||
       a.id.localeCompare(b.id),
   );
 }
