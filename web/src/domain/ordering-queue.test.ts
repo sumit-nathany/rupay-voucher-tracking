@@ -274,6 +274,54 @@ describe('ordering-queue domain', () => {
     expect(found?.enabled).toBe(false);
   });
 
+  it('allows filtering queue by cardId and portalAccountId', async () => {
+    // We have cardA in ctxA
+    const queueAll = await listOrderingQueue(ctxA);
+    expect(queueAll.length).toBeGreaterThan(0);
+
+    const cardId = queueAll[0].cardId;
+    const queueCard = await listOrderingQueue(ctxA, { cardId });
+    expect(queueCard).toHaveLength(queueAll.length);
+
+    // Non-existent card ID returns empty
+    const queueNonExistent = await listOrderingQueue(ctxA, { cardId: '00000000-0000-0000-0000-000000000000' });
+    expect(queueNonExistent).toHaveLength(0);
+
+    // Filter by portal account ID
+    const portalAccountId = queueAll[0].portalAccountId!;
+    expect(portalAccountId).toBeDefined();
+    const queueAccount = await listOrderingQueue(ctxA, { portalAccountId });
+    expect(queueAccount.length).toBeGreaterThan(0);
+  });
+
+  it('allows picking a chosenOptionId for a category benefit and persists it', async () => {
+    const queue = await listOrderingQueue(ctxA);
+    const item = queue[0];
+
+    // Insert a valid option for the instance's version
+    const [opt] = await db.insert(schema.benefitOptions).values({
+      versionId: '11111111-1111-4111-8111-111111111111', // will get from db
+      provider: 'Cult.fit',
+      offerName: 'Cult.fit Pro Pass',
+      cashValue: '999.00',
+    }).returning().catch(async () => {
+      // Find an existing version
+      const [v] = await db.select().from(schema.benefitCatalogVersions).limit(1);
+      return db.insert(schema.benefitOptions).values({
+        versionId: v.id,
+        provider: 'Cult.fit',
+        offerName: 'Cult.fit Pro Pass',
+        cashValue: '999.00',
+      }).returning();
+    });
+
+    await updateQueueItem(ctxA, { instanceId: item.instanceId, chosenOptionId: opt.id });
+
+    const updated = await listOrderingQueue(ctxA);
+    const found = updated.find((q) => q.instanceId === item.instanceId);
+    expect(found?.chosenOptionId).toBe(opt.id);
+  });
+
   it('enforces tenant isolation (workspace B cannot see workspace A items)', async () => {
     const queueB = await listOrderingQueue(ctxB);
     expect(queueB).toHaveLength(0);

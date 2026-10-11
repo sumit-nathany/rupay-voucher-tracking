@@ -1,4 +1,4 @@
-import { eq, and, gte, asc, inArray } from 'drizzle-orm';
+import { eq, and, gte, asc, inArray, isNull } from 'drizzle-orm';
 import type { Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
 import { resolveOfferKind } from '@/domain/benefit-offer-kind';
@@ -12,6 +12,7 @@ export interface QueueItemView {
   holderName: string;
   portalAccountId: string | null;
   portalAccountLabel: string | null;
+  portalAccounts: Array<{ id: string; label: string }>;
   benefitType: string;
   exactBenefit: string;
   benefitProvider: string | null;
@@ -25,6 +26,11 @@ export interface QueueItemView {
   availableOptions: Array<{ id: string; provider: string; offerName: string; cashValue: number | null }>;
 }
 
+export interface QueueFilter {
+  cardId?: string;
+  portalAccountId?: string;
+}
+
 export type QueueSortStrategy = 'nearest_expiring' | 'highest_value';
 
 function computeDaysRemaining(deadline: string, today: string): number {
@@ -34,18 +40,38 @@ function computeDaysRemaining(deadline: string, today: string): number {
 }
 
 /**
- * Lists all pending voucher benefits in the workspace's Order Queue.
+ * Lists pending voucher benefits in the Order Queue.
  *
  * Rules:
- * 1. Only 'Not Ordered' benefit instances whose order deadline >= today.
- * 2. Belong to an active card with payment details.
- * 3. Card is mapped to at least one active, connected RuPay portal account.
- * 4. Strictly EXCLUDES discounts (BookMyShow, MakeMyTrip, Tax, Golf, etc.).
- *    Cab services (Uber, Ola, etc.) are full gift vouchers and ARE included.
+ * 1. Shows 'Not Ordered' benefit instances where order deadline >= today.
+ * 2. Scoped by cardId or portalAccountId if filter is provided.
+ * 3. Strictly EXCLUDES discounts (BookMyShow, MakeMyTrip, Cleartrip, TaxSpanner, Golf, etc.).
+ *    Cab services (Uber, Ola, etc.) are gift vouchers and ARE included.
  */
-export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
-  // 1. Fetch eligible cards in workspace (active + mapped to a connected portal account)
-  const mappedCards = await ctx.db
+export async function listOrderingQueue(
+  ctx: Ctx,
+  filter?: QueueFilter,
+): Promise<QueueItemView[]> {
+  // 1. Fetch active cards in workspace
+  const activeCards = await ctx.db
+    .select({
+      id: schema.cards.id,
+      displayName: schema.cards.displayName,
+      lastDigits: schema.cards.lastDigits,
+      holderId: schema.cards.holderId,
+    })
+    .from(schema.cards)
+    .where(
+      and(
+        eq(schema.cards.workspaceId, ctx.workspaceId),
+        eq(schema.cards.active, true),
+      ),
+    );
+
+  if (activeCards.length === 0) return [];
+
+  // 2. Fetch portal mappings for all cards in workspace
+  const mappings = await ctx.db
     .select({
       cardId: schema.portalCardMappings.cardId,
       portalAccountId: schema.portalAccounts.id,
@@ -56,30 +82,39 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
       schema.portalAccounts,
       eq(schema.portalCardMappings.portalAccountId, schema.portalAccounts.id),
     )
-    .innerJoin(
-      schema.cards,
-      eq(schema.portalCardMappings.cardId, schema.cards.id),
-    )
     .where(
       and(
         eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
         eq(schema.portalCardMappings.active, true),
-        eq(schema.portalAccounts.status, 'connected'),
-        eq(schema.cards.active, true),
       ),
     );
 
-  if (mappedCards.length === 0) return [];
+  const cardToAccountsMap = new Map<string, Array<{ id: string; label: string }>>();
+  const accountToCardIdsMap = new Map<string, Set<string>>();
+  for (const m of mappings) {
+    const list = cardToAccountsMap.get(m.cardId) || [];
+    list.push({ id: m.portalAccountId, label: m.portalAccountLabel });
+    cardToAccountsMap.set(m.cardId, list);
 
-  const eligibleCardIds = Array.from(new Set(mappedCards.map((m) => m.cardId)));
-  const cardToAccountMap = new Map<string, { id: string; label: string }>();
-  for (const m of mappedCards) {
-    if (!cardToAccountMap.has(m.cardId)) {
-      cardToAccountMap.set(m.cardId, { id: m.portalAccountId, label: m.portalAccountLabel });
-    }
+    const cardSet = accountToCardIdsMap.get(m.portalAccountId) || new Set<string>();
+    cardSet.add(m.cardId);
+    accountToCardIdsMap.set(m.portalAccountId, cardSet);
   }
 
-  // 2. Fetch pending benefit instances for these cards
+  // 3. Determine target card IDs based on filter
+  let targetCardIds = activeCards.map((c) => c.id);
+
+  if (filter?.portalAccountId) {
+    const cardSet = accountToCardIdsMap.get(filter.portalAccountId);
+    if (!cardSet || cardSet.size === 0) return [];
+    targetCardIds = targetCardIds.filter((cid) => cardSet.has(cid));
+  } else if (filter?.cardId) {
+    targetCardIds = targetCardIds.filter((cid) => cid === filter.cardId);
+  }
+
+  if (targetCardIds.length === 0) return [];
+
+  // 4. Fetch pending benefit instances for target cards
   const instances = await ctx.db
     .select({
       id: schema.benefitInstances.id,
@@ -128,15 +163,16 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
     .where(
       and(
         eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
-        inArray(schema.benefitInstances.cardId, eligibleCardIds),
+        inArray(schema.benefitInstances.cardId, targetCardIds),
         eq(schema.benefitInstances.orderStatus, 'Not Ordered'),
         gte(schema.benefitInstances.orderDeadline, ctx.today),
+        isNull(schema.benefitInstances.soldFor),
       ),
     );
 
   if (instances.length === 0) return [];
 
-  // 3. Collect version IDs to fetch options for pick-one benefits
+  // 5. Collect version IDs to fetch options for pick-one benefits
   const versionIds = Array.from(
     new Set(instances.map((i) => i.catVersionId).filter((v): v is string => Boolean(v))),
   );
@@ -171,7 +207,7 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
     }
   }
 
-  // 4. Filter strictly for vouchers (exclude discounts) and format candidates
+  // 6. Filter strictly for vouchers (exclude discounts) and format candidates
   const candidates: Array<{
     item: QueueItemView;
     hasStoredPosition: boolean;
@@ -188,11 +224,11 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
 
     const offerKind = resolveOfferKind(storedOfferKind, benefitType, benefitProvider, exactBenefit);
     if (offerKind === 'discount') {
-      // Exclude BookMyShow, MakeMyTrip, Tax, Golf, etc.
+      // Exclude BookMyShow, MakeMyTrip, Cleartrip, TaxSpanner, Golf, etc.
       continue;
     }
 
-    const account = cardToAccountMap.get(row.cardId);
+    const mappedAccounts = cardToAccountsMap.get(row.cardId) || [];
     const availableOpts = (row.catVersionId ? optionsMap.get(row.catVersionId) : []) || [];
     const chosenOptId = row.queueChosenOptionId || row.chosenOptionId || (availableOpts[0]?.id ?? null);
     const chosenOptName = availableOpts.find((o) => o.id === chosenOptId)?.offerName ?? null;
@@ -208,8 +244,9 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
         cardName: row.cardDisplayName,
         cardLast4: row.cardLastDigits,
         holderName: row.holderName,
-        portalAccountId: account?.id ?? null,
-        portalAccountLabel: account?.label ?? null,
+        portalAccountId: mappedAccounts[0]?.id ?? null,
+        portalAccountLabel: mappedAccounts[0]?.label ?? null,
+        portalAccounts: mappedAccounts,
         benefitType,
         exactBenefit,
         benefitProvider,
@@ -225,18 +262,17 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
     });
   }
 
-  // 5. Sort candidates:
-  // - If item has stored position, sort by position ASC.
-  // - If no stored position, sort by nearest deadline first, then highest value first.
+  // 7. Sort items:
+  // If items already have explicit stored position in ordering_queue_items, respect that.
+  // Otherwise, default sort: Nearest Expiring First (order_deadline ASC), then Highest Value First (cash_value DESC).
   candidates.sort((a, b) => {
     if (a.hasStoredPosition && b.hasStoredPosition) {
       if (a.item.position !== b.item.position) {
         return a.item.position - b.item.position;
       }
-    } else if (a.hasStoredPosition && !b.hasStoredPosition) {
-      return -1;
-    } else if (!a.hasStoredPosition && b.hasStoredPosition) {
-      return 1;
+    }
+    if (a.hasStoredPosition !== b.hasStoredPosition) {
+      return a.hasStoredPosition ? -1 : 1;
     }
 
     // Default smart sort: Nearest expiring first, then highest cash value
@@ -249,7 +285,6 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
     return a.item.instanceId.localeCompare(b.item.instanceId);
   });
 
-  // Assign normalized 1-based sequential positions for UI presentation
   return candidates.map((c, idx) => ({
     ...c.item,
     position: idx + 1,
@@ -266,11 +301,11 @@ export async function listOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
 export async function populateAndSortQueue(
   ctx: Ctx,
   strategy: QueueSortStrategy = 'nearest_expiring',
+  filter?: QueueFilter,
 ): Promise<QueueItemView[]> {
-  const current = await listOrderingQueue(ctx);
+  const current = await listOrderingQueue(ctx, filter);
   if (current.length === 0) return [];
 
-  // Sort based on requested strategy
   current.sort((a, b) => {
     if (strategy === 'nearest_expiring') {
       if (a.orderDeadline !== b.orderDeadline) {
@@ -330,7 +365,6 @@ export async function updateQueueItem(
     position?: number;
   },
 ): Promise<void> {
-  // First ensure row exists in orderingQueueItems
   await ctx.db
     .insert(schema.orderingQueueItems)
     .values({
@@ -366,36 +400,42 @@ export async function updateQueueItem(
 }
 
 /**
+ * Reorders a list of instance IDs in explicit order.
+ */
+export async function reorderQueue(
+  ctx: Ctx,
+  orderedInstanceIds: string[],
+): Promise<void> {
+  for (let idx = 0; idx < orderedInstanceIds.length; idx++) {
+    const instId = orderedInstanceIds[idx];
+    await updateQueueItem(ctx, {
+      instanceId: instId,
+      position: idx + 1,
+    });
+  }
+}
+
+/**
  * Moves an item up or down in the Order Queue.
  */
 export async function moveQueueItem(
   ctx: Ctx,
   instanceId: string,
   direction: 'up' | 'down',
+  currentInstanceIds?: string[],
 ): Promise<QueueItemView[]> {
-  const queue = await listOrderingQueue(ctx);
-  const index = queue.findIndex((item) => item.instanceId === instanceId);
-  if (index === -1) return queue;
+  const ids = currentInstanceIds ?? (await listOrderingQueue(ctx)).map((i) => i.instanceId);
+  const index = ids.indexOf(instanceId);
+  if (index === -1) return listOrderingQueue(ctx);
 
   const targetIndex = direction === 'up' ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= queue.length) return queue;
+  if (targetIndex < 0 || targetIndex >= ids.length) return listOrderingQueue(ctx);
 
-  // Swap in array
-  const temp = queue[index];
-  queue[index] = queue[targetIndex];
-  queue[targetIndex] = temp;
+  const nextIds = [...ids];
+  const temp = nextIds[index];
+  nextIds[index] = nextIds[targetIndex];
+  nextIds[targetIndex] = temp;
 
-  // Persist updated positions
-  for (let i = 0; i < queue.length; i++) {
-    const item = queue[i];
-    item.position = i + 1;
-    await updateQueueItem(ctx, {
-      instanceId: item.instanceId,
-      position: item.position,
-      enabled: item.enabled,
-      chosenOptionId: item.chosenOptionId,
-    });
-  }
-
-  return queue;
+  await reorderQueue(ctx, nextIds);
+  return listOrderingQueue(ctx);
 }

@@ -240,19 +240,26 @@ export async function triggerManualOrderAction() {
   return { success: true };
 }
 
-export async function listOrderingQueueAction() {
+const queueFilterSchema = z.object({
+  cardId: z.string().uuid().optional(),
+  portalAccountId: z.string().uuid().optional(),
+}).optional();
+
+export async function listOrderingQueueAction(filter?: z.infer<typeof queueFilterSchema>) {
   const ctx = await getCtx();
-  return queueDomain.listOrderingQueue(ctx);
+  const parsed = filter ? queueFilterSchema.parse(filter) : undefined;
+  return queueDomain.listOrderingQueue(ctx, parsed);
 }
 
 const populateQueueSchema = z.object({
   strategy: z.enum(['nearest_expiring', 'highest_value']).optional(),
+  filter: queueFilterSchema,
 });
 
 export async function populateAndSortQueueAction(input?: z.infer<typeof populateQueueSchema>) {
   const ctx = await getCtx();
   const parsed = input ? populateQueueSchema.parse(input) : undefined;
-  const result = await queueDomain.populateAndSortQueue(ctx, parsed?.strategy);
+  const result = await queueDomain.populateAndSortQueue(ctx, parsed?.strategy, parsed?.filter);
   revalidatePath('/automation');
   return result;
 }
@@ -274,12 +281,24 @@ export async function updateQueueItemAction(input: z.infer<typeof updateQueueIte
 const moveQueueItemSchema = z.object({
   instanceId: z.string().uuid(),
   direction: z.enum(['up', 'down']),
+  currentInstanceIds: z.array(z.string().uuid()).optional(),
 });
 
 export async function moveQueueItemAction(input: z.infer<typeof moveQueueItemSchema>) {
   const ctx = await getCtx();
   const parsed = moveQueueItemSchema.parse(input);
-  await queueDomain.moveQueueItem(ctx, parsed.instanceId, parsed.direction);
+  await queueDomain.moveQueueItem(ctx, parsed.instanceId, parsed.direction, parsed.currentInstanceIds);
+  revalidatePath('/automation');
+}
+
+const reorderQueueSchema = z.object({
+  orderedInstanceIds: z.array(z.string().uuid()),
+});
+
+export async function reorderQueueAction(input: z.infer<typeof reorderQueueSchema>) {
+  const ctx = await getCtx();
+  const parsed = reorderQueueSchema.parse(input);
+  await queueDomain.reorderQueue(ctx, parsed.orderedInstanceIds);
   revalidatePath('/automation');
 }
 
