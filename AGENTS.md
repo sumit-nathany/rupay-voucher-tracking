@@ -79,6 +79,7 @@ Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/
 
 - **Commits:** conventional commits with a scope, lowercase, imperative — `feat(benefits): …`, `fix(catalog): …`, `refactor(domain): …`, `docs: …`. Common scopes: benefits, cards, holders, catalog, instances, domain, ui, filters, migration.
 - **Branches:** `feat/…` / `fix/…` off `main`; PRs target `main`.
+- **Deployments:** Never deploy to production manually (`npx vercel --prod` is not needed). Pushing or merging to `main` automatically triggers Vercel production deployment via git integration.
 - **Spec updates:** product decisions land in REQUIREMENTS.md/PLAN.md. External review rounds produce `Review Feedback vX.md` at the root; once findings are reconciled into the specs, those files are deleted.
 - **Feature docs:** new features get a requirements + implementation-plan pair under `docs/` before building (see `docs/automated-rupay-ordering-*.md`).
 - **In flight:** the `feat/automated-rupay-ordering` branch is building the automated ordering feature (worker, portal client, stored portal credentials) per `docs/automated-rupay-ordering-*.md`.
