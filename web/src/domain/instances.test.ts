@@ -209,4 +209,48 @@ describe('sale and details', () => {
     await expect(inst.updateDetails(A, { instanceId: id, orderDate: '2026-02-30' })).rejects.toThrow();
     await expect(inst.updateDetails(A, { instanceId: id, workspaceId: 'x' } as never)).rejects.toThrow();
   });
+
+  it('populates defaultCashValue and effective value on InstanceView', async () => {
+    // b has catalog version with defaultCashValue
+    const [bRow] = await db.insert(benefits).values({ bankCardTypeId: typeId }).returning();
+    const [vRow] = await db.insert(benefitCatalogVersions).values({
+      benefitId: bRow.id,
+      benefitType: 'Dining',
+      exactBenefit: '₹500 Voucher',
+      frequency: 'Monthly',
+      effectiveFrom: '2026-01-01',
+      defaultCashValue: '500.00',
+    }).returning();
+    const [instRow] = await db.insert(benefitInstances).values({
+      workspaceId: A.workspaceId,
+      cardId: cardA,
+      bankCardTypeId: typeId,
+      benefitId: bRow.id,
+      generatedFromVersion: vRow.id,
+      periodStart: '2026-07-01',
+      periodEnd: '2026-07-31',
+      periodLabel: '2026-07',
+      orderDeadline: '2026-07-31',
+      orderStatus: 'Not Ordered',
+      instanceNumber: 1,
+    }).returning();
+
+    // 1. Unset cashValue should resolve to defaultCashValue and value = 500
+    const view = await inst.getInstance(A, instRow.id);
+    expect(view.cashValue).toBeNull();
+    expect(view.defaultCashValue).toBe(500);
+    expect(view.value).toBe(500);
+
+    // 2. Setting custom cashValue overrides value
+    const updated = await inst.updateDetails(A, { instanceId: instRow.id, cashValue: 400 });
+    expect(updated.cashValue).toBe('400.00');
+    expect(updated.defaultCashValue).toBe(500);
+    expect(updated.value).toBe(400);
+
+    // 3. Clearing custom cashValue reverts value to defaultCashValue
+    const reverted = await inst.updateDetails(A, { instanceId: instRow.id, cashValue: null });
+    expect(reverted.cashValue).toBeNull();
+    expect(reverted.defaultCashValue).toBe(500);
+    expect(reverted.value).toBe(500);
+  });
 });

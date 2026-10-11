@@ -256,7 +256,14 @@ function HeroCard({
       <div className="flex items-center justify-between">
         <div>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Value</span>
-          <p className="text-2xl font-bold tracking-tight text-foreground">{formatMoney(inst.cashValue)}</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold tracking-tight text-foreground">{formatMoney(inst.value ?? inst.cashValue)}</p>
+            {inst.cashValue != null && inst.defaultCashValue != null && Number(inst.cashValue) !== inst.defaultCashValue && (
+              <span className="text-xs text-muted-foreground">
+                (default {formatMoney(inst.defaultCashValue)})
+              </span>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
@@ -797,6 +804,15 @@ function DetailsSection({
             <span className="text-muted-foreground">RuPay Booking ID</span>
             <span className="font-mono text-foreground">{inst.rupayBookingId || '—'}</span>
           </div>
+          <div className="flex items-center justify-between py-1 border-b border-border/40">
+            <span className="text-muted-foreground">Cash Value</span>
+            <span className="font-medium text-foreground">
+              {formatMoney(inst.value ?? inst.cashValue)}
+              {inst.cashValue != null && inst.defaultCashValue != null && Number(inst.cashValue) !== inst.defaultCashValue
+                ? ' (custom)'
+                : ''}
+            </span>
+          </div>
           <div className="py-1">
             <span className="text-muted-foreground block mb-1">Comments / Notes</span>
             <p className="text-foreground/90 whitespace-pre-wrap rounded-lg bg-muted/40 p-2.5 border border-border/40 text-[11px] leading-relaxed">
@@ -810,7 +826,17 @@ function DetailsSection({
             {field('orderDate', 'Order date', <Input type="date" value={form.orderDate} onChange={set('orderDate')} {...common('orderDate')} />)}
             {field('expiryDate', 'Expiry date', <Input type="date" value={form.expiryDate} onChange={set('expiryDate')} {...common('expiryDate')} />)}
           </div>
-          {field('cashValue', 'Cash value (₹)', <Input inputMode="decimal" value={form.cashValue} onChange={set('cashValue')} {...common('cashValue')} />)}
+          {field(
+            'cashValue',
+            'Cash value (₹)',
+            <Input
+              inputMode="decimal"
+              value={form.cashValue}
+              onChange={set('cashValue')}
+              placeholder={inst.defaultCashValue != null ? `Default: ₹${inst.defaultCashValue}` : 'e.g. 500'}
+              {...common('cashValue')}
+            />,
+          )}
           {field('rupayBookingId', 'Booking ID', <Input value={form.rupayBookingId} onChange={set('rupayBookingId')} maxLength={200} {...common('rupayBookingId')} />)}
           {field('comments', 'Comments', <Textarea value={form.comments} onChange={set('comments')} maxLength={5000} {...common('comments', 'min-h-16 text-xs')} />)}
 

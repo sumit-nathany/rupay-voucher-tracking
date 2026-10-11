@@ -1,6 +1,11 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
-import { benefitInstances, benefitOptions } from '@/db/schema';
+import {
+  benefitCatalogVersions,
+  benefitInstances,
+  benefitOptions,
+  cardBenefitOverrides,
+} from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import { decryptCode, encryptCode } from '@/lib/crypto';
 
@@ -40,6 +45,7 @@ const isoDate = z
   }, 'Not a real calendar date');
 const money = z.number().finite().min(0).max(99_999_999.99);
 const toMoney = (n: number) => n.toFixed(2);
+const num = (s: string | number | null | undefined): number | null => (s == null ? null : Number(s));
 
 const statusInput = z.object({ instanceId: uuid, status: z.enum(ORDER_STATUSES) }).strict();
 const idInput = z.object({ instanceId: uuid }).strict();
@@ -63,12 +69,11 @@ const codeInput = z
 
 type Row = typeof benefitInstances.$inferSelect;
 /** Instance as returned to callers: ciphertext is never exposed, only whether a code exists. */
-export type InstanceView = Omit<Row, 'codeEncrypted'> & { hasCode: boolean };
-
-function toView(row: Row): InstanceView {
-  const { codeEncrypted, ...rest } = row;
-  return { ...rest, hasCode: codeEncrypted != null };
-}
+export type InstanceView = Omit<Row, 'codeEncrypted'> & {
+  hasCode: boolean;
+  defaultCashValue: number | null;
+  value: number;
+};
 
 export interface RevealedCode {
   code: string;
@@ -88,6 +93,55 @@ async function load(ctx: Ctx, instanceId: string): Promise<Row> {
   return row;
 }
 
+async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
+  const [row] = await ctx.db
+    .select({
+      instance: benefitInstances,
+      vValue: benefitCatalogVersions.defaultCashValue,
+      oValue: cardBenefitOverrides.defaultCashValue,
+      cValue: benefitOptions.cashValue,
+    })
+    .from(benefitInstances)
+    .leftJoin(
+      benefitCatalogVersions,
+      or(
+        eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
+        and(
+          isNull(benefitInstances.generatedFromVersion),
+          isNull(benefitInstances.overrideId),
+          eq(benefitCatalogVersions.benefitId, benefitInstances.benefitId),
+        ),
+      ),
+    )
+    .leftJoin(benefitOptions, eq(benefitOptions.id, benefitInstances.chosenOptionId))
+    .leftJoin(
+      cardBenefitOverrides,
+      and(
+        eq(cardBenefitOverrides.id, benefitInstances.overrideId),
+        eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .where(scope(ctx, instanceId));
+
+  if (!row) throw new NotFoundError('Instance not found');
+
+  const { codeEncrypted, ...rest } = row.instance;
+  const fromOverride = rest.overrideId != null;
+  const chosen = !fromOverride && rest.chosenOptionId != null;
+  const defaultCashValue = chosen
+    ? (num(row.cValue) ?? num(row.vValue))
+    : num(fromOverride ? row.oValue : row.vValue);
+  const cashValue = num(rest.cashValue);
+  const value = cashValue ?? defaultCashValue ?? 0;
+
+  return {
+    ...rest,
+    hasCode: codeEncrypted != null,
+    defaultCashValue,
+    value,
+  };
+}
+
 function assertNotWithdrawn(row: Row) {
   if (row.orderStatus === 'Withdrawn') {
     throw new InstanceStateError('A Withdrawn instance cannot be changed');
@@ -95,7 +149,7 @@ function assertNotWithdrawn(row: Row) {
 }
 
 /** Optimistic update: only applies if the status is still what we read. */
-async function update(ctx: Ctx, row: Row, patch: Partial<typeof benefitInstances.$inferInsert>) {
+async function update(ctx: Ctx, row: Row, patch: Partial<typeof benefitInstances.$inferInsert>): Promise<InstanceView> {
   const updated = await ctx.db
     .update(benefitInstances)
     .set({ ...patch, updatedAt: new Date() }) // no trigger: set explicitly
@@ -105,14 +159,14 @@ async function update(ctx: Ctx, row: Row, patch: Partial<typeof benefitInstances
     // Lost a race with a concurrent change (or the row vanished).
     throw new InstanceStateError('Instance changed concurrently; reload and retry');
   }
-  return toView(updated[0]);
+  return loadView(ctx, row.id);
 }
 
 // ── reads ───────────────────────────────────────────────────────────────────
 
 export async function getInstance(ctx: Ctx, instanceId: string): Promise<InstanceView> {
   const { instanceId: id } = idInput.parse({ instanceId });
-  return toView(await load(ctx, id));
+  return loadView(ctx, id);
 }
 
 /**
@@ -173,7 +227,7 @@ export async function setStatus(
   const row = await load(ctx, instanceId);
   const from = row.orderStatus as OrderStatus;
   assertTransition(from, status);
-  if (from === status) return toView(row);
+  if (from === status) return loadView(ctx, instanceId);
   return update(ctx, row, { orderStatus: status });
 }
 
