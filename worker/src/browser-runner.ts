@@ -11,10 +11,10 @@ import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
+import { handlePostPaymentTransition } from './llm-gateway-agent';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
 import { humanClick, humanType, humanDelay, humanHesitate, installVisualMouseCursor } from './human-interaction';
-import { autoSolveRecaptcha } from './captcha-solver';
 import { finalizeConfirmedOrder } from '../../web/src/domain/automation-worker';
 
 export interface BrowserRunnerOptions {
@@ -131,7 +131,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log(`Benefit: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue})`);
 
   const [cardRecord] = await db
-    .select({ paymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted })
+    .select({
+      paymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted,
+      lastDigits: schema.cards.lastDigits,
+    })
     .from(schema.cards)
     .where(eq(schema.cards.id, candidate.cardId));
 
@@ -240,19 +243,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     await humanType(passwordInput, creds.password, { minCharDelayMs: 80, maxCharDelayMs: 160 });
     await humanHesitate(800, 1500);
 
-    console.log('[captcha] Attempting automated reCAPTCHA solution...');
-    const solved = await autoSolveRecaptcha(page);
-    if (solved) {
-      console.log('✓ reCAPTCHA passed! Clicking Sign In...');
-      const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
-      if (await submitButton.isVisible({ timeout: 2000 })) {
-        await humanClick(submitButton, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-      }
-    } else {
-      console.log('Standing by for reCAPTCHA solution / login (manual or fallback)...');
-    }
+    console.log('\n======================================================');
+    console.log('🧩 reCAPTCHA verification required on login screen.');
+    console.log('👉 Please complete the CAPTCHA in the open browser.');
+    console.log('   The automation is standing by and will automatically proceed once completed.');
+    console.log('======================================================\n');
 
-    for (let sec = 0; sec < 120; sec++) {
+    for (let sec = 0; sec < 180; sec++) {
       await page.waitForTimeout(1000);
       const updatedCookies = await context.cookies();
       jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
@@ -267,8 +264,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         try {
           const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
           if (await submitButton.isVisible()) {
-            console.log('[captcha] CAPTCHA solved! Clicking Sign In...');
+            console.log('[captcha] CAPTCHA completed! Clicking Sign In...');
             await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+            await page.waitForTimeout(2000);
           }
         } catch {}
       }
@@ -495,9 +493,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await activePaymentPage.screenshot({ path: 'payment-gateway-screen.png' });
   console.log('Saved payment-gateway-screen.png');
 
-  // Step 9: 3D-Secure Bank OTP Prompt
-  console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
-  await activePaymentPage.waitForTimeout(3000); // Allow bank ACS / 3DS page to settle
+  // Step 8b: Handle RBI Tokenization Modal & Post-Payment Gateway Transition with LLM
+  console.log('\n--- Step 8b: Monitoring Post-Payment Gateway Transition with LLM ---');
+  const transitionResult = await handlePostPaymentTransition(activePaymentPage, { maxWaitSec: 40 });
+  const cardLast4 = cardRecord?.lastDigits ?? '1746';
+
+  let otpCompleted = false;
 
   // Resolve notification recipient: Telegram preferred, fallback to WhatsApp phone
   const [settings] = await db
@@ -507,11 +508,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   const telegramChatId = settings?.telegramChatId || null;
   const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
-  if (telegramChatId) {
-    console.log(`[gateway] OTP recipient: Telegram Chat ${telegramChatId}`);
-  } else if (targetPhoneNumber) {
-    console.log(`[gateway] OTP recipient: ${targetPhoneNumber} (${settings?.whatsappPhoneNumber ? 'workspace owner' : 'account default'})`);
-  }
 
   // Create portal order attempt record to track this execution
   const [attempt] = await db
@@ -526,19 +522,35 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     })
     .returning();
 
-  const otpCompleted = await promptForOtpAndSubmit(
-    activePaymentPage,
-    {
-      db,
-      portalAccountId: account.id,
-      attemptId: attempt.id,
-      telegramChatId,
-      phoneNumber: targetPhoneNumber,
-      cardName: cardRow?.cardName ?? 'RuPay Card',
-      benefitName: benefitDetails.exactBenefit,
-    },
-    180000,
-  );
+  if (transitionResult.reachedSuccess) {
+    console.log('✓ Order confirmation screen reached directly!');
+    otpCompleted = true;
+  } else {
+    // Step 9: 3D-Secure Bank OTP Prompt
+    console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
+
+    if (telegramChatId) {
+      console.log(`[gateway] OTP recipient: Telegram Chat ${telegramChatId}`);
+    } else if (targetPhoneNumber) {
+      console.log(`[gateway] OTP recipient: ${targetPhoneNumber} (${settings?.whatsappPhoneNumber ? 'workspace owner' : 'account default'})`);
+    }
+
+    otpCompleted = await promptForOtpAndSubmit(
+      activePaymentPage,
+      {
+        db,
+        portalAccountId: account.id,
+        portalAccountLabel: account.label,
+        attemptId: attempt.id,
+        telegramChatId,
+        phoneNumber: targetPhoneNumber,
+        cardName: cardRow?.cardName ?? 'RuPay Card',
+        cardLast4,
+        benefitName: benefitDetails.exactBenefit,
+      },
+      180000,
+    );
+  }
 
   if (otpCompleted) {
     console.log('Monitoring transaction completion & booking reference...');
@@ -608,6 +620,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
             await tg.sendBookingConfirmation({
               chatId: telegramChatId,
               cardName: cardRow?.cardName ?? 'RuPay Card',
+              cardLast4,
+              portalAccountLabel: account.label,
               benefitName: benefitDetails.exactBenefit,
               bookingRef,
             });

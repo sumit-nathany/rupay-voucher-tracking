@@ -11,10 +11,12 @@ import { resolveAndFillCvv, resolveAndClickPay, resolveOtpInput } from './llm-ga
 export interface OtpPromptContext {
   db?: any;
   portalAccountId?: string;
+  portalAccountLabel?: string;
   attemptId?: string;
   phoneNumber?: string | null;
   telegramChatId?: string | null;
   cardName?: string;
+  cardLast4?: string;
   benefitName?: string;
 }
 
@@ -456,9 +458,11 @@ export async function promptForOtpAndSubmit(
         await tg.sendOtpPrompt({
           chatId: contextOptions.telegramChatId,
           cardName: contextOptions.cardName || 'RuPay Card',
+          cardLast4: contextOptions.cardLast4,
+          portalAccountLabel: contextOptions.portalAccountLabel,
           benefitName: contextOptions.benefitName || 'RuPay Benefit',
-          amount: 2,
-          timeoutMinutes: 2,
+          amount: 1,
+          timeoutMinutes: 3,
         });
         console.log(`[gateway] Telegram OTP challenge initiated (id: ${challengeId}).`);
       }

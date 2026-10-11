@@ -50,6 +50,19 @@ describe('telegram client service', () => {
     expect(body.chat_id).toBe('987654321');
     expect(body.text).toContain('Swiggy One');
     expect(body.text).toContain('₹2');
+
+    const res2 = await tg.sendOtpPrompt({
+      chatId: '987654321',
+      benefitName: 'Cult.fit',
+      cardName: 'PNB Salary Imperial',
+      cardLast4: '1746',
+      portalAccountLabel: 'sumit.nathany@gmail.com',
+    });
+    expect(res2.success).toBe(true);
+    const [, options2] = fetchMock.mock.calls[1];
+    const body2 = JSON.parse(options2.body);
+    expect(body2.text).toContain('sumit.nathany@gmail.com');
+    expect(body2.text).toContain('•••• 1746');
   });
 
   it('getTelegramClient defaults to MockTelegramClient when token is missing', () => {
