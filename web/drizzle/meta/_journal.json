@@ -113,6 +113,13 @@
       "when": 1791710000000,
       "tag": "0015_portal_accounts_whatsapp_otp",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791720000000,
+      "tag": "0016_automation_settings_whatsapp_phone",
+      "breakpoints": true
     }
   ]
 }

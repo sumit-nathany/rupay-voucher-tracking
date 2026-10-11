@@ -111,7 +111,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .from(schema.portalCardMappings)
     .where(eq(schema.portalCardMappings.cardId, candidate.cardId));
 
-  const paymentDetails = mapping ? decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id) : null;
+  const paymentDetails = mapping?.paymentDetailsEncrypted ? decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id) : null;
   console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
 
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');
@@ -247,8 +247,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await page.waitForTimeout(5000);
 
   if (cooldownDetectedUntil) {
+    const cd = cooldownDetectedUntil as Date;
     console.log(`\n======================================================`);
-    console.log(`NOTICE: Account cooldown active until ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+    console.log(`NOTICE: Account cooldown active until ${cd.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
     console.log(`The database has been updated. Next automation run will wait until then.`);
     console.log(`======================================================\n`);
     await context.close();
@@ -263,7 +264,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   // Inspect payment form elements (inputs, iframes)
   const formAnalysis = await activePaymentPage.evaluate(() => {
-    const inputs = Array.from(document.querySelectorAll('input:not([type="hidden"])')).map((el) => ({
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')).map((el) => ({
       type: el.type,
       id: el.id,
       name: el.name,
@@ -305,13 +306,24 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
   await activePaymentPage.waitForTimeout(3000); // Allow bank ACS / 3DS page to settle
 
+  // Resolve notification recipient: workspace owner WhatsApp phone preferred over account phone
+  const [settings] = await db
+    .select()
+    .from(schema.automationSettings)
+    .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
+
+  const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
+  if (targetPhoneNumber) {
+    console.log(`[gateway] OTP recipient: ${targetPhoneNumber} (${settings?.whatsappPhoneNumber ? 'workspace owner' : 'account default'})`);
+  }
+
   const otpCompleted = await promptForOtpAndSubmit(
     activePaymentPage,
     {
       db,
       portalAccountId: account.id,
       attemptId: candidate.instanceId,
-      phoneNumber: account.phoneNumber,
+      phoneNumber: targetPhoneNumber,
       cardName: cardRow?.cardName ?? 'RuPay Card',
       benefitName: benefitDetails.exactBenefit,
     },
@@ -328,15 +340,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
         if (bookingMatch) {
           console.log(`\n🎉 Booking Reference Confirmed: ${bookingMatch[1]}`);
-          if (account.phoneNumber) {
+          if (targetPhoneNumber) {
             const whatsapp = getWhatsAppClient();
             await whatsapp.sendBookingConfirmation({
-              to: account.phoneNumber,
+              to: targetPhoneNumber,
               cardName: cardRow?.cardName ?? 'RuPay Card',
               benefitName: benefitDetails.exactBenefit,
               bookingRef: bookingMatch[1],
             });
-            console.log(`[gateway] Sent booking confirmation via WhatsApp to ${account.phoneNumber}.`);
+            console.log(`[gateway] Sent booking confirmation via WhatsApp to ${targetPhoneNumber}.`);
           }
           break;
         }

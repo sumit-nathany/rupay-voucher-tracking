@@ -34,6 +34,7 @@ export default async function AutomationPage() {
     <ContentStage className="max-w-5xl space-y-8 py-6">
       <AutomationHeader
         enabled={dashboard.settings.enabled}
+        whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}
         updatedAt={dashboard.settings.updatedAt}
         hasAttentionAccounts={hasAttentionAccounts}
         nextRun={dashboard.nextRun}

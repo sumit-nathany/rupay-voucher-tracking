@@ -117,7 +117,13 @@ export interface CandidateNomination {
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
-export async function getAutomationSettings(ctx: Ctx): Promise<{ enabled: boolean; updatedAt: string }> {
+export interface AutomationSettingsView {
+  enabled: boolean;
+  whatsappPhoneNumber: string | null;
+  updatedAt: string;
+}
+
+export async function getAutomationSettings(ctx: Ctx): Promise<AutomationSettingsView> {
   const [row] = await ctx.db
     .select()
     .from(automationSettings)
@@ -128,26 +134,54 @@ export async function getAutomationSettings(ctx: Ctx): Promise<{ enabled: boolea
       .insert(automationSettings)
       .values({ workspaceId: ctx.workspaceId, enabled: false })
       .returning();
-    return { enabled: created.enabled, updatedAt: created.updatedAt.toISOString() };
+    return {
+      enabled: created.enabled,
+      whatsappPhoneNumber: created.whatsappPhoneNumber ?? null,
+      updatedAt: created.updatedAt.toISOString(),
+    };
   }
 
-  return { enabled: row.enabled, updatedAt: row.updatedAt.toISOString() };
+  return {
+    enabled: row.enabled,
+    whatsappPhoneNumber: row.whatsappPhoneNumber ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
 export async function saveAutomationSettings(
   ctx: Ctx,
-  input: { enabled: boolean },
-): Promise<{ enabled: boolean; updatedAt: string }> {
+  input: { enabled?: boolean; whatsappPhoneNumber?: string | null },
+): Promise<AutomationSettingsView> {
+  const [existing] = await ctx.db
+    .select()
+    .from(automationSettings)
+    .where(eq(automationSettings.workspaceId, ctx.workspaceId));
+
+  const enabled = input.enabled !== undefined ? input.enabled : (existing?.enabled ?? false);
+  const whatsappPhoneNumber =
+    input.whatsappPhoneNumber !== undefined
+      ? input.whatsappPhoneNumber?.trim() || null
+      : (existing?.whatsappPhoneNumber ?? null);
+
   const [row] = await ctx.db
     .insert(automationSettings)
-    .values({ workspaceId: ctx.workspaceId, enabled: input.enabled, updatedAt: new Date() })
+    .values({
+      workspaceId: ctx.workspaceId,
+      enabled,
+      whatsappPhoneNumber,
+      updatedAt: new Date(),
+    })
     .onConflictDoUpdate({
       target: automationSettings.workspaceId,
-      set: { enabled: input.enabled, updatedAt: new Date() },
+      set: { enabled, whatsappPhoneNumber, updatedAt: new Date() },
     })
     .returning();
 
-  return { enabled: row.enabled, updatedAt: row.updatedAt.toISOString() };
+  return {
+    enabled: row.enabled,
+    whatsappPhoneNumber: row.whatsappPhoneNumber ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
 // ── Portal Accounts ─────────────────────────────────────────────────────────

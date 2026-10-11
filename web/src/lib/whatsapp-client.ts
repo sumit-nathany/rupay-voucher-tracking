@@ -107,6 +107,97 @@ export class MetaWhatsAppClient implements WhatsAppClient {
   }
 }
 
+export class TwilioWhatsAppClient implements WhatsAppClient {
+  private accountSid: string;
+  private authToken: string;
+  private fromNumber: string;
+
+  constructor(accountSid: string, authToken: string, fromNumber: string) {
+    this.accountSid = accountSid;
+    this.authToken = authToken;
+    this.fromNumber = fromNumber.startsWith('whatsapp:') ? fromNumber : `whatsapp:${fromNumber}`;
+  }
+
+  async sendOtpPrompt(options: WhatsAppSendOtpOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const cleanPhone = options.to.startsWith('+') ? options.to : `+${options.to.replace(/[^\d]/g, '')}`;
+    const to = `whatsapp:${cleanPhone}`;
+    const amount = options.amount ?? 2;
+    const timeout = options.timeoutMinutes ?? 2;
+
+    const messageText =
+      `💳 *RuPay Benefit Verification Required*\n\n` +
+      `Your automated voucher order is ready to finalize:\n` +
+      `• *Benefit:* ${options.benefitName}\n` +
+      `• *Card:* ${options.cardName}\n` +
+      `• *Verification Charge:* ₹${amount} (nominal)\n\n` +
+      `👉 *Please reply with the 6-digit Bank OTP* received on your phone within ${timeout} minutes to complete your order.`;
+
+    try {
+      const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
+      const params = new URLSearchParams({
+        From: this.fromNumber,
+        To: to,
+        Body: messageText,
+      });
+
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      if (!res.ok) {
+        const errorBody = await res.text();
+        console.error('[whatsapp] Twilio API error:', res.status, errorBody);
+        return { success: false, error: errorBody };
+      }
+
+      const json = await res.json();
+      return { success: true, messageId: json.sid };
+    } catch (err) {
+      console.error('[whatsapp] Twilio send error:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async sendBookingConfirmation(options: WhatsAppConfirmationOptions): Promise<{ success: boolean; error?: string }> {
+    const cleanPhone = options.to.startsWith('+') ? options.to : `+${options.to.replace(/[^\d]/g, '')}`;
+    const to = `whatsapp:${cleanPhone}`;
+
+    const messageText =
+      `🎉 *Voucher Order Confirmed!*\n\n` +
+      `• *Benefit:* ${options.benefitName}\n` +
+      `• *Card:* ${options.cardName}\n` +
+      `• *Booking Reference:* \`${options.bookingRef}\`\n\n` +
+      `Your voucher code will be available in your RuPay Tracker dashboard shortly.`;
+
+    try {
+      const auth = Buffer.from(`${this.accountSid}:${this.authToken}`).toString('base64');
+      const params = new URLSearchParams({
+        From: this.fromNumber,
+        To: to,
+        Body: messageText,
+      });
+
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${this.accountSid}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: params.toString(),
+      });
+
+      return { success: res.ok };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+}
+
 export class MockWhatsAppClient implements WhatsAppClient {
   async sendOtpPrompt(options: WhatsAppSendOtpOptions): Promise<{ success: boolean; messageId: string }> {
     console.log(`\n💬 [Mock WhatsApp] Outbound to ${options.to}:`);
@@ -122,11 +213,19 @@ export class MockWhatsAppClient implements WhatsAppClient {
 }
 
 export function getWhatsAppClient(): WhatsAppClient {
-  const token = process.env.WHATSAPP_API_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const metaToken = process.env.WHATSAPP_API_TOKEN;
+  const metaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
-  if (token && phoneId) {
-    return new MetaWhatsAppClient(token, phoneId);
+  if (metaToken && metaPhoneId) {
+    return new MetaWhatsAppClient(metaToken, metaPhoneId);
+  }
+
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioNumber = process.env.TWILIO_WHATSAPP_NUMBER;
+
+  if (twilioSid && twilioToken && twilioNumber) {
+    return new TwilioWhatsAppClient(twilioSid, twilioToken, twilioNumber);
   }
 
   return new MockWhatsAppClient();

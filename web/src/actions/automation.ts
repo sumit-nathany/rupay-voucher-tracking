@@ -33,7 +33,8 @@ export async function getAutomationDashboardAction() {
 }
 
 const saveSettingsSchema = z.object({
-  enabled: z.boolean(),
+  enabled: z.boolean().optional(),
+  whatsappPhoneNumber: z.string().optional().nullable(),
 });
 
 export async function saveAutomationSettingsAction(input: z.infer<typeof saveSettingsSchema>) {

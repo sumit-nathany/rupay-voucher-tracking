@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and, gt, or } from 'drizzle-orm';
+import { eq, and, gt, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { portalOrderOtpChallenges } from '@/db/schema';
 
@@ -23,24 +23,38 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST: Incoming WhatsApp message event
+ * POST: Incoming WhatsApp message event (Meta Cloud API or Twilio WhatsApp webhook)
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    let senderPhone: string | undefined;
+    let textBody: string | undefined;
+    let isTwilio = false;
 
-    // Meta WhatsApp Cloud API envelope
-    const entry = body.entry?.[0];
-    const change = entry?.changes?.[0]?.value;
-    const message = change?.messages?.[0];
+    const contentType = req.headers.get('content-type') || '';
 
-    if (!message) {
-      // Status update or delivery receipt, return 200
-      return NextResponse.json({ status: 'ignored' }, { status: 200 });
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      // Twilio WhatsApp webhook
+      isTwilio = true;
+      const formData = await req.formData();
+      const rawFrom = formData.get('From')?.toString() || '';
+      senderPhone = rawFrom.replace(/^whatsapp:/i, '').replace(/[^\d]/g, '');
+      textBody = formData.get('Body')?.toString()?.trim();
+    } else {
+      // Meta WhatsApp Cloud API envelope
+      const body = await req.json();
+      const entry = body.entry?.[0];
+      const change = entry?.changes?.[0]?.value;
+      const message = change?.messages?.[0];
+
+      if (!message) {
+        // Status update or delivery receipt, return 200
+        return NextResponse.json({ status: 'ignored' }, { status: 200 });
+      }
+
+      senderPhone = message.from ? message.from.replace(/[^\d]/g, '') : undefined;
+      textBody = message.text?.body?.trim();
     }
-
-    const senderPhone = message.from; // e.g. "919876543210"
-    const textBody = message.text?.body?.trim();
 
     if (!senderPhone || !textBody) {
       return NextResponse.json({ status: 'empty' }, { status: 200 });
@@ -53,6 +67,12 @@ export async function POST(req: NextRequest) {
 
     if (!otpMatch) {
       console.log('[whatsapp-webhook] No digit OTP pattern found in text.');
+      if (isTwilio) {
+        return new Response('<Response></Response>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/xml' },
+        });
+      }
       return NextResponse.json({ status: 'no_otp' }, { status: 200 });
     }
 
@@ -61,8 +81,9 @@ export async function POST(req: NextRequest) {
 
     // Match against active pending challenges for this phone number
     const now = new Date();
-    const cleanWithPlus = `+${senderPhone.replace(/^\+/, '')}`;
-    const cleanNoPlus = senderPhone.replace(/^\+/, '');
+    const cleanWithPlus = `+${senderPhone}`;
+    const cleanNoPlus = senderPhone;
+    const last10 = senderPhone.slice(-10);
 
     const [challenge] = await db
       .select()
@@ -74,6 +95,7 @@ export async function POST(req: NextRequest) {
           or(
             eq(portalOrderOtpChallenges.phoneNumber, cleanWithPlus),
             eq(portalOrderOtpChallenges.phoneNumber, cleanNoPlus),
+            sql`${portalOrderOtpChallenges.phoneNumber} LIKE ${`%${last10}`}`,
           ),
         ),
       )
@@ -81,6 +103,12 @@ export async function POST(req: NextRequest) {
 
     if (!challenge) {
       console.log(`[whatsapp-webhook] No active pending challenge found for phone ${senderPhone}.`);
+      if (isTwilio) {
+        return new Response('<Response></Response>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/xml' },
+        });
+      }
       return NextResponse.json({ status: 'no_active_challenge' }, { status: 200 });
     }
 
@@ -97,7 +125,19 @@ export async function POST(req: NextRequest) {
     console.log(`[whatsapp-webhook] ✓ Challenge ${challenge.id} updated with OTP ${otpCode}!`);
 
     // Send immediate acknowledgment
-    if (process.env.WHATSAPP_API_TOKEN) {
+    const ackMessage = `✅ Received OTP \`${otpCode}\`! Submitting to your bank verification now...`;
+
+    if (isTwilio) {
+      return new Response(
+        `<Response><Message>${ackMessage.replace(/`/g, '')}</Message></Response>`,
+        {
+          status: 200,
+          headers: { 'Content-Type': 'text/xml' },
+        },
+      );
+    }
+
+    if (process.env.WHATSAPP_API_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) {
       try {
         await fetch(`https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
           method: 'POST',
@@ -109,7 +149,7 @@ export async function POST(req: NextRequest) {
             messaging_product: 'whatsapp',
             to: senderPhone,
             type: 'text',
-            text: { body: `✅ Received OTP \`${otpCode}\`! Submitting to your bank verification now...` },
+            text: { body: ackMessage },
           }),
         });
       } catch (err) {

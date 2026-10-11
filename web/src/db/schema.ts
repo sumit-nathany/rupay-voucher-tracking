@@ -452,6 +452,7 @@ export const automationSettings = app.table("automation_settings", {
     .primaryKey()
     .references(() => workspaces.id, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull().default(false),
+  whatsappPhoneNumber: text("whatsapp_phone_number"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

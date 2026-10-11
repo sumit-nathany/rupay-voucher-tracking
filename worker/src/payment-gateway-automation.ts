@@ -1,7 +1,7 @@
 import readline from 'readline';
 import type { Page, Frame, Locator } from 'playwright';
 import { eq } from 'drizzle-orm';
-import type { DecryptedPaymentDetails } from '../../web/src/lib/card-payment-details';
+import type { PaymentDetails } from '../../web/src/lib/card-payment-details';
 import * as schema from '../../web/src/db/schema';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 
@@ -32,6 +32,10 @@ export function detectGateway(url: string): string {
   return 'Generic';
 }
 
+function resolvePage(target: Page | Frame): Page {
+  return 'page' in target ? (target as Frame).page() : (target as Page);
+}
+
 /**
  * Ensures the "Card" payment method tab is selected if the gateway presents multiple payment options.
  */
@@ -54,7 +58,7 @@ export async function ensureCardTabSelected(target: Page | Frame): Promise<void>
       if (await tab.isVisible({ timeout: 1000 })) {
         console.log(`[gateway] Selecting Cards tab via "${sel}"...`);
         await tab.click();
-        await target.page().waitForTimeout(500);
+        await resolvePage(target).waitForTimeout(500);
         return;
       }
     } catch {}
@@ -66,9 +70,9 @@ export async function ensureCardTabSelected(target: Page | Frame): Promise<void>
  */
 export async function fillCardDetailsOnGateway(
   target: Page | Frame,
-  details: DecryptedPaymentDetails,
+  details: PaymentDetails,
 ): Promise<boolean> {
-  const page = target.page();
+  const page = resolvePage(target);
   const gateway = detectGateway(page.url());
   console.log(`[gateway] Detected gateway: ${gateway} (${page.url()})`);
 
@@ -161,9 +165,10 @@ export async function fillCardDetailsOnGateway(
             const tagName = await el.evaluate((e) => e.tagName.toLowerCase());
             if (tagName === 'select') {
               // Try full 4-digit year or 2-digit year
-              await el.selectOption(details.expiryYear).catch(() => el.selectOption(details.expiryYear.slice(-2)));
+              const expYr = details.expiryYear ?? '';
+              await el.selectOption(expYr).catch(() => el.selectOption(expYr.slice(-2)));
             } else {
-              await el.fill(details.expiryYear);
+              await el.fill(details.expiryYear ?? '');
             }
             console.log(`[gateway] Expiry year entered via "${sel}"`);
             filledCount++;
