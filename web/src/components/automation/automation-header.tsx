@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone, Send, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -253,13 +253,19 @@ export function AutomationHeader({
                 <div className="space-y-3 py-2 text-xs">
                   <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
                     <p className="font-semibold text-foreground">How to connect:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
                       <li>
-                        Send{' '}
-                        <code className="bg-muted px-1 py-0.5 rounded text-foreground font-mono select-all">
-                          {workspaceId ? `/start ${workspaceId}` : '/start'}
-                        </code>{' '}
-                        to your Telegram Bot to auto-link your workspace.
+                        Open{' '}
+                        <a
+                          href={workspaceId ? `https://t.me/rupay_tracker_bot?start=${workspaceId}` : 'https://t.me/rupay_tracker_bot'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1"
+                        >
+                          @rupay_tracker_bot
+                          <ExternalLink className="h-3 w-3 inline" />
+                        </a>{' '}
+                        and tap <span className="font-medium text-foreground">Start</span> to auto-link your workspace.
                       </li>
                       <li>Or find your Telegram Chat ID (e.g. from <span className="text-foreground font-medium">@userinfobot</span>)</li>
                       <li>Paste your Chat ID below and click Save.</li>
