@@ -35,6 +35,8 @@ export default async function AutomationPage() {
       <AutomationHeader
         enabled={dashboard.settings.enabled}
         whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}
+        telegramChatId={dashboard.settings.telegramChatId}
+        workspaceId={dashboard.settings.workspaceId}
         updatedAt={dashboard.settings.updatedAt}
         hasAttentionAccounts={hasAttentionAccounts}
         nextRun={dashboard.nextRun}

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { getCtx } from '@/lib/session';
 import * as auto from '@/domain/automation';
 import * as worker from '@/domain/automation-worker';
+import { getTelegramClient } from '@/lib/telegram-client';
 
 export async function getAutomationDashboardAction() {
   const ctx = await getCtx();
@@ -18,7 +19,10 @@ export async function getAutomationDashboardAction() {
   ]);
 
   return {
-    settings,
+    settings: {
+      ...settings,
+      workspaceId: ctx.workspaceId,
+    },
     accounts,
     mappings,
     rules,
@@ -35,6 +39,7 @@ export async function getAutomationDashboardAction() {
 const saveSettingsSchema = z.object({
   enabled: z.boolean().optional(),
   whatsappPhoneNumber: z.string().optional().nullable(),
+  telegramChatId: z.string().optional().nullable(),
 });
 
 export async function saveAutomationSettingsAction(input: z.infer<typeof saveSettingsSchema>) {
@@ -190,3 +195,26 @@ export async function resolveUncertainAttemptAction(input: z.infer<typeof resolv
   revalidatePath('/automation');
   revalidatePath('/benefits');
 }
+
+export async function sendTestTelegramMessageAction(input?: { chatId?: string }) {
+  const ctx = await getCtx();
+  let chatId = input?.chatId?.trim();
+  if (!chatId) {
+    const settings = await auto.getAutomationSettings(ctx);
+    chatId = settings.telegramChatId || undefined;
+  }
+
+  if (!chatId) {
+    return { success: false, error: 'No Telegram Chat ID found. Please save your Telegram Chat ID or connect via the Telegram bot link first.' };
+  }
+
+  const tg = getTelegramClient();
+  const res = await tg.sendMessage(
+    chatId,
+    `🎉 *RuPay Voucher Tracker*: Connection successful!\n\n` +
+      `Your Telegram account is connected to your workspace. When an automated voucher order requires an OTP from your bank, you will receive the prompt directly in this chat. Just reply with the OTP to complete the booking.`,
+  );
+
+  return res;
+}
+

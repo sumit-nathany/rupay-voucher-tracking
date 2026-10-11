@@ -453,6 +453,7 @@ export const automationSettings = app.table("automation_settings", {
     .references(() => workspaces.id, { onDelete: "cascade" }),
   enabled: boolean("enabled").notNull().default(false),
   whatsappPhoneNumber: text("whatsapp_phone_number"),
+  telegramChatId: text("telegram_chat_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -650,7 +651,9 @@ export const portalOrderOtpChallenges = app.table(
     portalAccountId: uuid("portal_account_id")
       .notNull()
       .references(() => portalAccounts.id, { onDelete: "cascade" }),
-    phoneNumber: text("phone_number").notNull(),
+    phoneNumber: text("phone_number"),
+    telegramChatId: text("telegram_chat_id"),
+    channel: text("channel").notNull().default("whatsapp"),
     status: text("status").notNull().default("pending"),
     otpCode: text("otp_code"),
     messageId: text("message_id"),
@@ -664,6 +667,7 @@ export const portalOrderOtpChallenges = app.table(
       sql`${t.status} IN ('pending', 'received', 'expired', 'failed')`,
     ),
     index("portal_order_otp_challenges_phone_pending_idx").on(t.phoneNumber, t.status),
+    index("portal_order_otp_challenges_telegram_pending_idx").on(t.telegramChatId, t.status),
   ],
 );
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone } from 'lucide-react';
+import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone, Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { saveAutomationSettingsAction } from '@/actions/automation';
+import { saveAutomationSettingsAction, sendTestTelegramMessageAction } from '@/actions/automation';
 
 export interface NextRunView {
   eligibleNow: boolean;
@@ -26,12 +26,16 @@ export interface NextRunView {
 export function AutomationHeader({
   enabled,
   whatsappPhoneNumber,
+  telegramChatId,
+  workspaceId,
   updatedAt,
   hasAttentionAccounts,
   nextRun,
 }: {
   enabled: boolean;
   whatsappPhoneNumber?: string | null;
+  telegramChatId?: string | null;
+  workspaceId?: string;
   updatedAt: string;
   hasAttentionAccounts: boolean;
   nextRun?: NextRunView;
@@ -41,6 +45,15 @@ export function AutomationHeader({
   const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
   const [phoneInput, setPhoneInput] = useState(whatsappPhoneNumber ?? '');
   const [savingPhone, setSavingPhone] = useState(false);
+
+  const [telegramDialogOpen, setTelegramDialogOpen] = useState(false);
+  const [telegramInput, setTelegramInput] = useState(telegramChatId ?? '');
+  const [savingTelegram, setSavingTelegram] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
+  const [telegramTestFeedback, setTelegramTestFeedback] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   async function handleToggle(next: boolean) {
     setBusy(true);
@@ -65,6 +78,46 @@ export function AutomationHeader({
       setError(e instanceof Error ? e.message : 'Failed to save WhatsApp number');
     } finally {
       setSavingPhone(false);
+    }
+  }
+
+  async function handleSaveTelegram(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingTelegram(true);
+    setError(null);
+    try {
+      await saveAutomationSettingsAction({ telegramChatId: telegramInput });
+      setTelegramDialogOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save Telegram Chat ID');
+    } finally {
+      setSavingTelegram(false);
+    }
+  }
+
+  async function handleSendTestTelegram() {
+    setTestingTelegram(true);
+    setTelegramTestFeedback(null);
+    try {
+      const res = await sendTestTelegramMessageAction({ chatId: telegramInput || undefined });
+      if (res.success) {
+        setTelegramTestFeedback({
+          success: true,
+          message: 'Test message sent! Check your Telegram chat.',
+        });
+      } else {
+        setTelegramTestFeedback({
+          success: false,
+          message: res.error || 'Failed to send Telegram test message.',
+        });
+      }
+    } catch (e) {
+      setTelegramTestFeedback({
+        success: false,
+        message: e instanceof Error ? e.message : 'Error sending test message.',
+      });
+    } finally {
+      setTestingTelegram(false);
     }
   }
 
@@ -145,15 +198,21 @@ export function AutomationHeader({
                   {enabled ? 'Active' : 'Paused'}
                 </Badge>
                 {scheduleBadge}
-                {whatsappPhoneNumber ? (
+                {telegramChatId ? (
+                  <Badge variant="outline" className="border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[10px] font-semibold gap-1">
+                    <Send className="h-3 w-3" />
+                    Telegram OTP: {telegramChatId}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="border-slate-500/40 bg-slate-500/10 text-slate-700 dark:text-slate-300 text-[10px] font-semibold gap-1">
+                    <Send className="h-3 w-3" />
+                    No Telegram OTP
+                  </Badge>
+                )}
+                {whatsappPhoneNumber && (
                   <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
                     <Phone className="h-3 w-3" />
                     WhatsApp OTP: {whatsappPhoneNumber}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
-                    <AlertTriangle className="h-3 w-3" />
-                    No WhatsApp OTP Phone
                   </Badge>
                 )}
               </div>
@@ -167,6 +226,123 @@ export function AutomationHeader({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Telegram Setup & Test Dialog */}
+          <Dialog open={telegramDialogOpen} onOpenChange={setTelegramDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs font-semibold gap-1.5 border-border/80"
+              >
+                <Send className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                {telegramChatId ? 'Telegram Bot (Connected)' : 'Set Up Telegram OTP'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <form onSubmit={handleSaveTelegram} className="space-y-4">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Send className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                    Telegram Bot OTP Integration
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                    100% free, unlimited, and instant. When an automated voucher booking triggers a 3D-Secure bank OTP, the prompt is delivered to your Telegram chat. Replying with the 6-digit OTP completes the purchase automatically.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3 py-2 text-xs">
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <p className="font-semibold text-foreground">How to connect:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                      <li>
+                        Send{' '}
+                        <code className="bg-muted px-1 py-0.5 rounded text-foreground font-mono select-all">
+                          {workspaceId ? `/start ${workspaceId}` : '/start'}
+                        </code>{' '}
+                        to your Telegram Bot to auto-link your workspace.
+                      </li>
+                      <li>Or find your Telegram Chat ID (e.g. from <span className="text-foreground font-medium">@userinfobot</span>)</li>
+                      <li>Paste your Chat ID below and click Save.</li>
+                    </ol>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="telegram-chat-id" className="text-xs font-medium">
+                      Your Telegram Chat ID
+                    </Label>
+                    <Input
+                      id="telegram-chat-id"
+                      type="text"
+                      placeholder="e.g. 123456789"
+                      value={telegramInput}
+                      onChange={(e) => {
+                        setTelegramInput(e.target.value);
+                        setTelegramTestFeedback(null);
+                      }}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+
+                  {telegramTestFeedback && (
+                    <div
+                      className={`p-2.5 rounded-lg text-xs flex items-start gap-2 ${
+                        telegramTestFeedback.success
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                          : 'bg-destructive/10 text-destructive border border-destructive/30'
+                      }`}
+                    >
+                      {telegramTestFeedback.success ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      )}
+                      <span>{telegramTestFeedback.message}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center gap-2 pt-2 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSendTestTelegram}
+                    disabled={testingTelegram || !telegramInput.trim()}
+                    className="gap-1.5 text-xs"
+                  >
+                    {testingTelegram ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    Send Test Message
+                  </Button>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTelegramDialogOpen(false)}
+                      disabled={savingTelegram}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="default"
+                      size="sm"
+                      disabled={savingTelegram}
+                      className="gap-1.5"
+                    >
+                      {savingTelegram ? 'Saving...' : 'Save Chat ID'}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={phoneDialogOpen} onOpenChange={setPhoneDialogOpen}>
             <DialogTrigger asChild>
               <Button

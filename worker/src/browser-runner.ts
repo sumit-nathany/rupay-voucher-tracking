@@ -12,6 +12,7 @@ import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
+import { getTelegramClient } from '../../web/src/lib/telegram-client';
 
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
@@ -306,14 +307,17 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
   await activePaymentPage.waitForTimeout(3000); // Allow bank ACS / 3DS page to settle
 
-  // Resolve notification recipient: workspace owner WhatsApp phone preferred over account phone
+  // Resolve notification recipient: Telegram preferred, fallback to WhatsApp phone
   const [settings] = await db
     .select()
     .from(schema.automationSettings)
     .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
 
+  const telegramChatId = settings?.telegramChatId || null;
   const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
-  if (targetPhoneNumber) {
+  if (telegramChatId) {
+    console.log(`[gateway] OTP recipient: Telegram Chat ${telegramChatId}`);
+  } else if (targetPhoneNumber) {
     console.log(`[gateway] OTP recipient: ${targetPhoneNumber} (${settings?.whatsappPhoneNumber ? 'workspace owner' : 'account default'})`);
   }
 
@@ -323,6 +327,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       db,
       portalAccountId: account.id,
       attemptId: candidate.instanceId,
+      telegramChatId,
       phoneNumber: targetPhoneNumber,
       cardName: cardRow?.cardName ?? 'RuPay Card',
       benefitName: benefitDetails.exactBenefit,
@@ -340,7 +345,16 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
         if (bookingMatch) {
           console.log(`\n🎉 Booking Reference Confirmed: ${bookingMatch[1]}`);
-          if (targetPhoneNumber) {
+          if (telegramChatId) {
+            const tg = getTelegramClient();
+            await tg.sendBookingConfirmation({
+              chatId: telegramChatId,
+              cardName: cardRow?.cardName ?? 'RuPay Card',
+              benefitName: benefitDetails.exactBenefit,
+              bookingRef: bookingMatch[1],
+            });
+            console.log(`[gateway] Sent booking confirmation via Telegram to ${telegramChatId}.`);
+          } else if (targetPhoneNumber) {
             const whatsapp = getWhatsAppClient();
             await whatsapp.sendBookingConfirmation({
               to: targetPhoneNumber,

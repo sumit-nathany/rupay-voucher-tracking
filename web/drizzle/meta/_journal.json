@@ -120,6 +120,13 @@
       "when": 1791720000000,
       "tag": "0016_automation_settings_whatsapp_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791730000000,
+      "tag": "0017_telegram_otp",
+      "breakpoints": true
     }
   ]
 }

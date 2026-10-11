@@ -4,12 +4,14 @@ import { eq } from 'drizzle-orm';
 import type { PaymentDetails } from '../../web/src/lib/card-payment-details';
 import * as schema from '../../web/src/db/schema';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
+import { getTelegramClient } from '../../web/src/lib/telegram-client';
 
 export interface OtpPromptContext {
   db?: any;
   portalAccountId?: string;
   attemptId?: string;
   phoneNumber?: string | null;
+  telegramChatId?: string | null;
   cardName?: string;
   benefitName?: string;
 }
@@ -319,16 +321,18 @@ export async function promptForOtpAndSubmit(
   console.log(`\n======================================================`);
   console.log(`📲 3D-SECURE BANK OTP VERIFICATION REQUIRED`);
   console.log(`Current URL: ${page.url()}`);
-  if (contextOptions?.phoneNumber) {
+  if (contextOptions?.telegramChatId) {
+    console.log(`💬 Telegram OTP Prompt dispatched to Chat ID: ${contextOptions.telegramChatId}`);
+  } else if (contextOptions?.phoneNumber) {
     console.log(`💬 WhatsApp Notification dispatched to: ${contextOptions.phoneNumber}`);
   }
-  console.log(`👉 Enter OTP in terminal, reply on WhatsApp, or type in browser.`);
+  console.log(`👉 Enter OTP in terminal, reply on Telegram/WhatsApp, or type in browser.`);
   console.log(`======================================================\n`);
 
   let challengeId: string | null = null;
 
-  // 1. If WhatsApp number and DB are provided, create challenge and send prompt
-  if (contextOptions?.db && contextOptions?.phoneNumber && contextOptions?.portalAccountId) {
+  // 1. If Telegram Chat ID and DB are provided, prioritize Telegram
+  if (contextOptions?.db && contextOptions?.telegramChatId && contextOptions?.portalAccountId) {
     try {
       const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
       const [challenge] = await contextOptions.db
@@ -336,6 +340,39 @@ export async function promptForOtpAndSubmit(
         .values({
           attemptId: contextOptions.attemptId,
           portalAccountId: contextOptions.portalAccountId,
+          channel: 'telegram',
+          telegramChatId: contextOptions.telegramChatId,
+          phoneNumber: contextOptions.phoneNumber || null,
+          status: 'pending',
+          expiresAt,
+        })
+        .returning();
+
+      if (challenge) {
+        challengeId = challenge.id;
+        const tg = getTelegramClient();
+        await tg.sendOtpPrompt({
+          chatId: contextOptions.telegramChatId,
+          cardName: contextOptions.cardName || 'RuPay Card',
+          benefitName: contextOptions.benefitName || 'RuPay Benefit',
+          amount: 2,
+          timeoutMinutes: 2,
+        });
+        console.log(`[gateway] Telegram OTP challenge initiated (id: ${challengeId}).`);
+      }
+    } catch (e) {
+      console.error('[gateway] Failed to dispatch Telegram prompt:', e);
+    }
+  } else if (contextOptions?.db && contextOptions?.phoneNumber && contextOptions?.portalAccountId) {
+    // 2. Otherwise fall back to WhatsApp if phone number is provided
+    try {
+      const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+      const [challenge] = await contextOptions.db
+        .insert(schema.portalOrderOtpChallenges)
+        .values({
+          attemptId: contextOptions.attemptId,
+          portalAccountId: contextOptions.portalAccountId,
+          channel: 'whatsapp',
           phoneNumber: contextOptions.phoneNumber,
           status: 'pending',
           expiresAt,
@@ -432,10 +469,11 @@ export async function promptForOtpAndSubmit(
             .where(eq(schema.portalOrderOtpChallenges.id, challengeId));
 
           if (ch && ch.status === 'received' && ch.otpCode) {
-            console.log(`\n🎉 Received OTP "${ch.otpCode}" via WhatsApp Webhook!`);
+            const channelName = ch.channel === 'telegram' ? 'Telegram' : ch.channel === 'whatsapp' ? 'WhatsApp' : 'Webhook';
+            console.log(`\n🎉 Received OTP "${ch.otpCode}" via ${channelName}!`);
             clearInterval(pollInterval);
             cleanup();
-            await injectOtp(ch.otpCode, 'WhatsApp');
+            await injectOtp(ch.otpCode, channelName);
             resolve(true);
             return;
           }

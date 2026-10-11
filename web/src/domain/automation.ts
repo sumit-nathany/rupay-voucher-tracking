@@ -120,6 +120,7 @@ export interface CandidateNomination {
 export interface AutomationSettingsView {
   enabled: boolean;
   whatsappPhoneNumber: string | null;
+  telegramChatId: string | null;
   updatedAt: string;
 }
 
@@ -137,6 +138,7 @@ export async function getAutomationSettings(ctx: Ctx): Promise<AutomationSetting
     return {
       enabled: created.enabled,
       whatsappPhoneNumber: created.whatsappPhoneNumber ?? null,
+      telegramChatId: created.telegramChatId ?? null,
       updatedAt: created.updatedAt.toISOString(),
     };
   }
@@ -144,13 +146,14 @@ export async function getAutomationSettings(ctx: Ctx): Promise<AutomationSetting
   return {
     enabled: row.enabled,
     whatsappPhoneNumber: row.whatsappPhoneNumber ?? null,
+    telegramChatId: row.telegramChatId ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 export async function saveAutomationSettings(
   ctx: Ctx,
-  input: { enabled?: boolean; whatsappPhoneNumber?: string | null },
+  input: { enabled?: boolean; whatsappPhoneNumber?: string | null; telegramChatId?: string | null },
 ): Promise<AutomationSettingsView> {
   const [existing] = await ctx.db
     .select()
@@ -162,6 +165,10 @@ export async function saveAutomationSettings(
     input.whatsappPhoneNumber !== undefined
       ? input.whatsappPhoneNumber?.trim() || null
       : (existing?.whatsappPhoneNumber ?? null);
+  const telegramChatId =
+    input.telegramChatId !== undefined
+      ? input.telegramChatId?.trim() || null
+      : (existing?.telegramChatId ?? null);
 
   const [row] = await ctx.db
     .insert(automationSettings)
@@ -169,17 +176,19 @@ export async function saveAutomationSettings(
       workspaceId: ctx.workspaceId,
       enabled,
       whatsappPhoneNumber,
+      telegramChatId,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: automationSettings.workspaceId,
-      set: { enabled, whatsappPhoneNumber, updatedAt: new Date() },
+      set: { enabled, whatsappPhoneNumber, telegramChatId, updatedAt: new Date() },
     })
     .returning();
 
   return {
     enabled: row.enabled,
     whatsappPhoneNumber: row.whatsappPhoneNumber ?? null,
+    telegramChatId: row.telegramChatId ?? null,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
