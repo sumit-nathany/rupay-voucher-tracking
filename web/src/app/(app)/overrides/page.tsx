@@ -53,7 +53,7 @@ export default async function OverridesPage() {
   );
 
   return (
-    <ContentStage className="max-w-5xl space-y-6">
+    <ContentStage className="max-w-5xl space-y-6 [.nav-unpinned_&]:max-w-6xl [.nav-unpinned_&]:2xl:max-w-7xl">
       <PageHeader
         eyebrow="Personal catalog"
         title="Overrides & Valuations"

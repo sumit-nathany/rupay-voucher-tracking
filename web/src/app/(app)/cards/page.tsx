@@ -30,7 +30,7 @@ export default async function CardsPage() {
   const holderOptions = holders.map((h) => ({ id: h.id, name: h.name }));
 
   return (
-    <ContentStage className="max-w-3xl">
+    <ContentStage className="max-w-3xl [.nav-unpinned_&]:max-w-4xl">
       <PageHeader
         eyebrow="Portfolio"
         title="Cards"

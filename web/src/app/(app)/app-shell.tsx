@@ -174,7 +174,15 @@ export function AppShell({
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:pb-10">{children}</main>
+        <main
+          data-nav-pinned={pinned ? 'true' : 'false'}
+          className={cn(
+            'flex-1 px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:pb-10 w-full',
+            !pinned && 'nav-unpinned',
+          )}
+        >
+          {children}
+        </main>
       </div>
 
       {/* Mobile Drawer (Sheet) */}

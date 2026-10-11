@@ -40,7 +40,7 @@ export default async function HoldersPage() {
   }
 
   return (
-    <ContentStage className="max-w-3xl">
+    <ContentStage className="max-w-3xl [.nav-unpinned_&]:max-w-4xl">
       <PageHeader
         eyebrow="People"
         title="Holders"

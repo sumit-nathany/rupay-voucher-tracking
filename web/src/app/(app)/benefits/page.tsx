@@ -98,7 +98,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
 
   return (
     <BenefitsLoadingProvider>
-      <ContentStage className="max-w-7xl">
+      <ContentStage className="max-w-7xl [.nav-unpinned_&]:max-w-full [.nav-unpinned_&]:2xl:max-w-[1680px]">
         <PageHeader
           eyebrow="Work queue"
           title={lifetime ? 'Lifetime' : viewLabel(view)}

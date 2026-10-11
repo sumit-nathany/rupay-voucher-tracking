@@ -13,7 +13,7 @@ export default async function CatalogEditPage() {
   if (denied) notFound();
 
   return (
-    <ContentStage className="max-w-4xl">
+    <ContentStage className="max-w-4xl [.nav-unpinned_&]:max-w-5xl">
       <PageHeader
         eyebrow="System admin"
         title="Edit card catalog"

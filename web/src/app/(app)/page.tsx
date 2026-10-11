@@ -18,7 +18,7 @@ export default async function DashboardPage({
   const today = istToday();
   const view = parseView(sp, today);
   return (
-    <ContentStage className="max-w-6xl">
+    <ContentStage className="max-w-6xl [.nav-unpinned_&]:max-w-7xl [.nav-unpinned_&]:2xl:max-w-[1536px]">
       <PageHeader
         eyebrow="Overview"
         title={viewLabel(view)}

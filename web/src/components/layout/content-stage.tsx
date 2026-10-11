@@ -6,7 +6,7 @@ export function ContentStage({ children, className }: { children: ReactNode; cla
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-5 shadow-sm page-enter sm:p-8',
+        'w-full mx-auto rounded-xl border border-border bg-card p-5 shadow-sm page-enter transition-all duration-200 ease-in-out sm:p-8',
         className,
       )}
     >

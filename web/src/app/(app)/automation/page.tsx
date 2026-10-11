@@ -31,7 +31,7 @@ export default async function AutomationPage() {
     ) || dashboard.attempts.some((att) => att.state === 'uncertain');
 
   return (
-    <ContentStage className="max-w-5xl space-y-8 sm:space-y-10 p-6 sm:p-10">
+    <ContentStage className="max-w-5xl space-y-8 sm:space-y-10 p-6 sm:p-10 [.nav-unpinned_&]:max-w-6xl [.nav-unpinned_&]:2xl:max-w-7xl">
       <AutomationHeader
         enabled={dashboard.settings.enabled}
         hasAttentionAccounts={hasAttentionAccounts}
