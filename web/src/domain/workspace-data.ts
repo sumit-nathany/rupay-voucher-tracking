@@ -20,6 +20,11 @@ import {
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import { inferOfferKind } from '@/domain/benefit-offer-kind';
+import {
+  decryptPaymentDetails,
+  encryptPaymentDetails,
+  maskPaymentSummary,
+} from '@/lib/card-payment-details';
 
 export class ValidationError extends Error {}
 export class ConflictError extends Error {}
@@ -191,12 +196,26 @@ async function resolveCardDisplayName(
 
 const cardDigits = z.string().trim().regex(/^\d{4}$/, 'expected exactly 4 digits');
 
+const paymentDetailsInput = z
+  .object({
+    version: z.literal(1).default(1),
+    mode: z.enum(['full', 'saved_card']).default('full'),
+    cardNumber: z.string().optional(),
+    expiryMonth: z.string().optional(),
+    expiryYear: z.string().optional(),
+    cvv: z.string().optional(),
+    nameOnCard: z.string().optional(),
+  })
+  .nullable()
+  .optional();
+
 const cardCreate = z.strictObject({
   holderId: uuid,
   bankCardTypeId: uuid,
   displayName: cardNickname,
-  lastDigits: cardDigits,
+  lastDigits: cardDigits.optional(),
   trackingFrom: dateStr.optional(),
+  paymentDetails: paymentDetailsInput,
 });
 const cardUpdate = z.strictObject({
   id: uuid,
@@ -208,18 +227,33 @@ const cardUpdate = z.strictObject({
   trackingFrom: dateStr.optional(),
   active: z.boolean().optional(),
   inactiveFrom: dateStr.nullable().optional(),
+  paymentDetails: paymentDetailsInput,
 });
 const cardList = z.strictObject({ holderId: uuid.optional() }).optional();
 
 export async function listCards(ctx: Ctx, input?: unknown) {
   const f = parse(cardList, input);
-  return ctx.db
+  const rows = await ctx.db
     .select()
     .from(cards)
     .where(
       and(eq(cards.workspaceId, ctx.workspaceId), f?.holderId ? eq(cards.holderId, f.holderId) : undefined),
     )
     .orderBy(asc(cards.displayName));
+
+  return rows.map((r) => {
+    let paymentSummary = null;
+    if (r.paymentDetailsEncrypted) {
+      try {
+        const decrypted = decryptPaymentDetails(r.paymentDetailsEncrypted, r.id);
+        paymentSummary = maskPaymentSummary(decrypted);
+      } catch {}
+    }
+    return {
+      ...r,
+      paymentSummary,
+    };
+  });
 }
 
 export async function getCard(ctx: Ctx, input: unknown) {
@@ -229,7 +263,17 @@ export async function getCard(ctx: Ctx, input: unknown) {
     .from(cards)
     .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)));
   if (!row) throw new NotFoundError('Card not found');
-  return row;
+  let paymentSummary = null;
+  if (row.paymentDetailsEncrypted) {
+    try {
+      const decrypted = decryptPaymentDetails(row.paymentDetailsEncrypted, row.id);
+      paymentSummary = maskPaymentSummary(decrypted);
+    } catch {}
+  }
+  return {
+    ...row,
+    paymentSummary,
+  };
 }
 
 export async function createCard(ctx: Ctx, input: unknown) {
@@ -242,15 +286,46 @@ export async function createCard(ctx: Ctx, input: unknown) {
   if (!type) throw new ValidationError('Unknown card type');
   if (type.active === false) throw new ValidationError('This card type is no longer available');
   const displayName = await resolveCardDisplayName(ctx, v.bankCardTypeId, v.displayName);
+
+  let lastDigits = v.lastDigits;
+  if (!lastDigits && v.paymentDetails?.cardNumber) {
+    const cleanNum = v.paymentDetails.cardNumber.replace(/\D/g, '');
+    if (cleanNum.length >= 4) {
+      lastDigits = cleanNum.slice(-4);
+    }
+  }
+  if (!lastDigits) {
+    throw new ValidationError('Card digits required (last 4 digits)');
+  }
+
+  const cardId = crypto.randomUUID();
+  let paymentDetailsEncrypted = null;
+  if (v.paymentDetails) {
+    paymentDetailsEncrypted = encryptPaymentDetails(
+      {
+        version: 1,
+        mode: v.paymentDetails.mode ?? 'full',
+        cardNumber: v.paymentDetails.cardNumber?.replace(/\s+/g, '') || undefined,
+        expiryMonth: v.paymentDetails.expiryMonth?.trim() || undefined,
+        expiryYear: v.paymentDetails.expiryYear?.trim() || undefined,
+        cvv: v.paymentDetails.cvv?.trim() || undefined,
+        nameOnCard: v.paymentDetails.nameOnCard?.trim() || undefined,
+      },
+      cardId,
+    );
+  }
+
   const [row] = await ctx.db
     .insert(cards)
     .values({
+      id: cardId,
       workspaceId: ctx.workspaceId,
       holderId: v.holderId,
       bankCardTypeId: v.bankCardTypeId,
       displayName,
-      lastDigits: v.lastDigits,
+      lastDigits,
       trackingFrom: v.trackingFrom ?? ctx.today, // Asia/Kolkata today; backdating allowed
+      paymentDetailsEncrypted,
     })
     .returning();
   return row;
@@ -270,6 +345,31 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   }
   if (patch.lastDigits !== undefined) set.lastDigits = patch.lastDigits;
   if (patch.trackingFrom !== undefined) set.trackingFrom = patch.trackingFrom;
+
+  if (patch.paymentDetails !== undefined) {
+    if (patch.paymentDetails) {
+      set.paymentDetailsEncrypted = encryptPaymentDetails(
+        {
+          version: 1,
+          mode: patch.paymentDetails.mode ?? 'full',
+          cardNumber: patch.paymentDetails.cardNumber?.replace(/\s+/g, '') || undefined,
+          expiryMonth: patch.paymentDetails.expiryMonth?.trim() || undefined,
+          expiryYear: patch.paymentDetails.expiryYear?.trim() || undefined,
+          cvv: patch.paymentDetails.cvv?.trim() || undefined,
+          nameOnCard: patch.paymentDetails.nameOnCard?.trim() || undefined,
+        },
+        existing.id,
+      );
+      if (!patch.lastDigits && patch.paymentDetails.cardNumber) {
+        const clean = patch.paymentDetails.cardNumber.replace(/\D/g, '');
+        if (clean.length >= 4) {
+          set.lastDigits = clean.slice(-4);
+        }
+      }
+    } else {
+      set.paymentDetailsEncrypted = null;
+    }
+  }
 
   let inactiveDateForPruning: string | null = null;
   if (patch.active !== undefined) {

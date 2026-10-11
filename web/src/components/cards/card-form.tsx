@@ -1,9 +1,10 @@
 'use client';
 import * as React from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Lock } from 'lucide-react';
 import { createCard, updateCard } from '@/actions/cards';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetFooter } from '@/components/ui/sheet';
 import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
@@ -19,6 +20,13 @@ export interface CardRow {
   trackingFrom: string;
   active: boolean;
   inactiveFrom?: string | null;
+  paymentSummary?: {
+    mode: 'full' | 'saved_card';
+    maskedCardNumber: string | null;
+    expirySummary: string | null;
+    hasCvv: boolean;
+    nameOnCard: string | null;
+  } | null;
 }
 export interface VariantOption {
   id: string;
@@ -66,6 +74,22 @@ function CardFormBody({
     card?.inactiveFrom ?? (card?.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)),
   );
 
+  // Full card checkout details
+  const [cardNumber, setCardNumber] = React.useState('');
+  const [expiryMonth, setExpiryMonth] = React.useState('');
+  const [expiryYear, setExpiryYear] = React.useState('');
+  const [cvv, setCvv] = React.useState('');
+  const [nameOnCard, setNameOnCard] = React.useState('');
+
+  function handleCardNumberChange(val: string) {
+    const raw = val.replace(/\D/g, '').slice(0, 16);
+    const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
+    setCardNumber(formatted);
+    if (raw.length >= 4) {
+      setLastDigits(raw.slice(-4));
+    }
+  }
+
   function pickType(t: CardTypeOption) {
     setType(t);
   }
@@ -82,6 +106,21 @@ function CardFormBody({
       return;
     }
     const cleanDisplayName = displayName.trim() === '' ? null : displayName.trim();
+
+    let paymentDetails = undefined;
+    const cleanCardNumber = cardNumber.replace(/\s+/g, '');
+    if (cleanCardNumber || cvv || expiryMonth || expiryYear || nameOnCard) {
+      paymentDetails = {
+        version: 1 as const,
+        mode: 'full' as const,
+        cardNumber: cleanCardNumber || undefined,
+        expiryMonth: expiryMonth.trim() || undefined,
+        expiryYear: expiryYear.trim() || undefined,
+        cvv: cvv.trim() || undefined,
+        nameOnCard: nameOnCard.trim() || undefined,
+      };
+    }
+
     const ok = await run(
       () =>
         card
@@ -93,6 +132,7 @@ function CardFormBody({
               trackingFrom: trackingFrom || undefined,
               active,
               inactiveFrom: active ? null : (inactiveFrom || undefined),
+              paymentDetails,
             })
           : createCard({
               holderId,
@@ -100,6 +140,7 @@ function CardFormBody({
               displayName: cleanDisplayName,
               lastDigits: cleanDigits,
               trackingFrom: trackingFrom || undefined,
+              paymentDetails,
             }),
       'Could not save card. Check the card details and try again.',
     );
@@ -202,6 +243,81 @@ function CardFormBody({
           )}
         </div>
       </Field>
+
+      <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Lock className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            Full Card Details (Optional, for Automation)
+          </div>
+          <span className="text-[10px] text-muted-foreground font-mono">AES-256-GCM Encrypted</span>
+        </div>
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Stored securely for automated RuPay voucher checkout. Never exposed in plain text.
+        </p>
+
+        <div className="space-y-2.5 pt-1">
+          <div className="space-y-1">
+            <Label htmlFor="full-card-number" className="text-[11px]">16-Digit Card Number</Label>
+            <Input
+              id="full-card-number"
+              placeholder="•••• •••• •••• ••••"
+              maxLength={19}
+              className="h-8 text-xs font-mono"
+              value={cardNumber}
+              onChange={(e) => handleCardNumberChange(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="card-exp-month" className="text-[11px]">Exp Month</Label>
+              <Input
+                id="card-exp-month"
+                placeholder="MM"
+                maxLength={2}
+                className="h-8 text-xs font-mono"
+                value={expiryMonth}
+                onChange={(e) => setExpiryMonth(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="card-exp-year" className="text-[11px]">Exp Year</Label>
+              <Input
+                id="card-exp-year"
+                placeholder="YYYY"
+                maxLength={4}
+                className="h-8 text-xs font-mono"
+                value={expiryYear}
+                onChange={(e) => setExpiryYear(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="card-cvv" className="text-[11px]">CVV</Label>
+              <Input
+                id="card-cvv"
+                placeholder="•••"
+                type="password"
+                maxLength={4}
+                className="h-8 text-xs font-mono"
+                value={cvv}
+                onChange={(e) => setCvv(e.target.value.replace(/\D/g, ''))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="card-name-on-card" className="text-[11px]">Name on Card</Label>
+            <Input
+              id="card-name-on-card"
+              placeholder="As printed on card"
+              className="h-8 text-xs"
+              value={nameOnCard}
+              onChange={(e) => setNameOnCard(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
 
       <Field id="card-digits" label="Last 4 digits" hint="Enter the last 4 digits of the card number.">
         <Input
