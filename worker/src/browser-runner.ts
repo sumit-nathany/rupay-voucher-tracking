@@ -10,6 +10,7 @@ import { decryptPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
+import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
 
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
@@ -284,64 +285,38 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   console.log('Payment Gateway Elements Detected:', JSON.stringify(formAnalysis, null, 2));
 
-  // If card payment details exist, try filling them
+  // Step 8: Static Payment Gateway Automation
   if (paymentDetails && paymentDetails.mode === 'full') {
-    console.log('\n--- Step 8: Attempting Card Details Auto-Fill ---');
-    try {
-      const cardNumSelector = 'input[name*="card" i], input[id*="card" i], input[placeholder*="Card Number" i], input[autocomplete*="cc-number" i]';
-      const expMonthSelector = 'input[name*="exp" i], input[id*="exp" i], input[placeholder*="MM" i], input[name*="month" i]';
-      const cvvSelector = 'input[name*="cvv" i], input[id*="cvv" i], input[placeholder*="CVV" i], input[name*="cvc" i], input[autocomplete*="cc-csc" i]';
-      const nameSelector = 'input[name*="name" i], input[id*="name" i], input[placeholder*="Name" i]';
-
-      if (paymentDetails.cardNumber) {
-        const numInput = activePaymentPage.locator(cardNumSelector).first();
-        if (await numInput.isVisible({ timeout: 3000 })) {
-          await numInput.fill(paymentDetails.cardNumber);
-          console.log('Filled Card Number');
-        }
-      }
-
-      if (paymentDetails.cvv) {
-        const cvvInput = activePaymentPage.locator(cvvSelector).first();
-        if (await cvvInput.isVisible({ timeout: 2000 })) {
-          await cvvInput.fill(paymentDetails.cvv);
-          console.log('Filled CVV');
-        }
-      }
-
-      if (paymentDetails.expiryMonth && paymentDetails.expiryYear) {
-        const expInput = activePaymentPage.locator(expMonthSelector).first();
-        if (await expInput.isVisible({ timeout: 2000 })) {
-          await expInput.fill(`${paymentDetails.expiryMonth}/${paymentDetails.expiryYear.slice(-2)}`);
-          console.log('Filled Expiry');
-        }
-      }
-
-      if (paymentDetails.nameOnCard) {
-        const nameInput = activePaymentPage.locator(nameSelector).first();
-        if (await nameInput.isVisible({ timeout: 2000 })) {
-          await nameInput.fill(paymentDetails.nameOnCard);
-          console.log('Filled Name on Card');
-        }
-      }
-    } catch (e) {
-      console.log('Auto-fill note:', e instanceof Error ? e.message : e);
+    console.log('\n--- Step 8: Executing Static Gateway Automation ---');
+    const filled = await fillCardDetailsOnGateway(activePaymentPage, paymentDetails);
+    if (filled) {
+      console.log('✓ Card details filled! Clicking primary Make Payment / Proceed button...');
+      await clickPayButton(activePaymentPage);
+    } else {
+      console.log('⚠️ Could not fill all card fields automatically. Please verify in the open browser.');
     }
   }
 
   await activePaymentPage.screenshot({ path: 'payment-gateway-screen.png' });
   console.log('Saved payment-gateway-screen.png');
 
-  console.log('\n>>> ACTION: Payment screen is open on your display! <<<');
-  for (let sec = 0; sec < 60; sec++) {
-    await activePaymentPage.waitForTimeout(1000);
-    const currUrl = activePaymentPage.url();
-    if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com')) {
-      const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
-      const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
-      if (bookingMatch) {
-        console.log(`\n🎉 Booking Reference Found: ${bookingMatch[1]}`);
-        break;
+  // Step 9: 3D-Secure Bank OTP Prompt
+  console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
+  await activePaymentPage.waitForTimeout(3000); // Allow bank ACS / 3DS page to settle
+
+  const otpCompleted = await promptForOtpAndSubmit(activePaymentPage, 180000);
+  if (otpCompleted) {
+    console.log('Monitoring transaction completion & booking reference...');
+    for (let sec = 0; sec < 30; sec++) {
+      await activePaymentPage.waitForTimeout(1000);
+      const currUrl = activePaymentPage.url();
+      if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com')) {
+        const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
+        const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
+        if (bookingMatch) {
+          console.log(`\n🎉 Booking Reference Confirmed: ${bookingMatch[1]}`);
+          break;
+        }
       }
     }
   }
