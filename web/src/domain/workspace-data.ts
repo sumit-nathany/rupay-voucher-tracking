@@ -18,7 +18,7 @@ import {
   cardVariants,
   cards,
 } from '@/db/schema';
-import { NotFoundError, type Ctx, type Database } from '@/lib/context';
+import { NotFoundError, type Ctx } from '@/lib/context';
 import { inferOfferKind } from '@/domain/benefit-offer-kind';
 
 export class ValidationError extends Error {}
@@ -171,29 +171,6 @@ export async function listBankCardTypes(ctx: Ctx) {
 
 // ── cards ───────────────────────────────────────────────────────────────────
 
-let cardsSchemaHealed = false;
-
-export async function ensureCardsSchemaHealed(db: Database): Promise<void> {
-  if (cardsSchemaHealed) return;
-  try {
-    await db.execute(sql`
-      ALTER TABLE "app"."cards" DROP CONSTRAINT IF EXISTS "cards_workspace_id_display_name_key";
-    `);
-    await db.execute(sql`
-      UPDATE "app"."cards" SET "last_digits" = '0000' WHERE "last_digits" IS NULL;
-    `);
-    await db.execute(sql`
-      ALTER TABLE "app"."cards" ALTER COLUMN "last_digits" SET DEFAULT '0000';
-    `);
-    await db.execute(sql`
-      ALTER TABLE "app"."cards" ADD COLUMN IF NOT EXISTS "inactive_from" date;
-    `);
-    cardsSchemaHealed = true;
-  } catch {
-    // If running in restricted or mock environments where DDL fails, ignore
-  }
-}
-
 /** Optional nickname; empty/missing falls back to the bank card type name at write time. */
 const cardNickname = optText(100);
 
@@ -235,7 +212,6 @@ const cardUpdate = z.strictObject({
 const cardList = z.strictObject({ holderId: uuid.optional() }).optional();
 
 export async function listCards(ctx: Ctx, input?: unknown) {
-  await ensureCardsSchemaHealed(ctx.db);
   const f = parse(cardList, input);
   return ctx.db
     .select()
@@ -257,7 +233,6 @@ export async function getCard(ctx: Ctx, input: unknown) {
 }
 
 export async function createCard(ctx: Ctx, input: unknown) {
-  await ensureCardsSchemaHealed(ctx.db);
   const v = parse(cardCreate, input);
   await getHolder(ctx, { id: v.holderId }); // same-workspace check (DB composite FK is the backstop)
   const [type] = await ctx.db
@@ -282,7 +257,6 @@ export async function createCard(ctx: Ctx, input: unknown) {
 }
 
 export async function updateCard(ctx: Ctx, input: unknown) {
-  await ensureCardsSchemaHealed(ctx.db);
   const { id, bankCardTypeId, holderId, ...patch } = parse(cardUpdate, input);
   const existing = await getCard(ctx, { id });
   if (bankCardTypeId !== undefined && bankCardTypeId !== existing.bankCardTypeId) {
