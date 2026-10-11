@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import {
-  Bot,
   PauseCircle,
   PlayCircle,
   Clock,
@@ -19,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/layout/page-header';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -158,10 +158,15 @@ export function AutomationHeader({
     }
   }
 
-  // Format dynamic schedule description and status pill
-  let scheduleDescription: React.ReactNode = null;
-  let schedulePill: React.ReactNode = null;
 
+
+  const hasAnyOtpChannel = Boolean(telegramChatId || whatsappPhoneNumber);
+
+  const isCooldownActive = Boolean(
+    nextRun?.nextRunAt && new Date(nextRun.nextRunAt) > new Date(),
+  );
+
+  let formattedUnlockLabel: string | null = null;
   if (nextRun?.nextRunAt) {
     const nextRunDate = new Date(nextRun.nextRunAt);
     const now = new Date();
@@ -177,91 +182,51 @@ export function AutomationHeader({
       month: 'short',
       timeZone: 'Asia/Kolkata',
     });
-    const scheduleLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
-
-    if (nextRunDate > now) {
-      schedulePill = (
-        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
-          <Clock className="h-3 w-3" />
-          Next unlock: {scheduleLabel}
-        </Badge>
-      );
-
-      scheduleDescription = (
-        <>
-          Orders run unattended. Next eligible run triggers <span className="font-semibold text-foreground">{scheduleLabel}</span> when {nextRun.accountLabel} unlocks.
-        </>
-      );
-    }
+    formattedUnlockLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
   }
-
-  if (!scheduleDescription) {
-    if (!enabled) {
-      scheduleDescription = (
-        <>Automation is paused. Toggle on to resume scheduled automatic voucher ordering.</>
-      );
-    } else if (nextRun?.reason === 'ready_now') {
-      schedulePill = (
-        <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
-          <Clock className="h-3 w-3" />
-          Eligible now
-        </Badge>
-      );
-      scheduleDescription = (
-        <>
-          Ready to run now (<span className="font-semibold text-foreground">{nextRun.accountLabel}</span> eligible). Default daily schedule: 02:00 AM IST.
-        </>
-      );
-    } else {
-      scheduleDescription = (
-        <>Scheduled daily at 02:00 AM IST. Max 1 order per portal account per 24 hours.</>
-      );
-    }
-  }
-
-  const hasAnyOtpChannel = Boolean(telegramChatId || whatsappPhoneNumber);
 
   return (
-    <div className="space-y-4">
-      {/* Header Box */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs">
-            <Bot className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-lg font-bold tracking-tight text-foreground">Automated RuPay Ordering</h1>
-              <Badge variant={enabled ? 'default' : 'secondary'} className="text-[10px] font-semibold">
-                {enabled ? 'Active' : 'Paused'}
-              </Badge>
-              {schedulePill}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {scheduleDescription}
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Automation"
+        title="Automated Ordering"
+        description="Daily unattended voucher ordering across portal accounts, cards, and priority rules."
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Run Order Now Action */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={triggeringOrder || busy || !enabled}
+              onClick={() => void handleRunOrderNow()}
+              className="h-9 text-xs font-semibold gap-1.5 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
+              title="Trigger an automated order run immediately"
+            >
+              {triggeringOrder ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5 fill-current" />
+              )}
+              Run Order Now
+            </Button>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2.5 flex-wrap md:flex-nowrap shrink-0">
-          {/* Unified OTP Channels Dialog */}
-          <Dialog open={channelsDialogOpen} onOpenChange={setChannelsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 text-xs font-semibold gap-1.5 border-border/80"
-              >
-                <BellRing className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-                OTP Channels
-                {hasAnyOtpChannel ? (
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="Channel connected" />
-                ) : (
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No channel configured" />
-                )}
-              </Button>
-            </DialogTrigger>
+            {/* Unified OTP Channels Dialog */}
+            <Dialog open={channelsDialogOpen} onOpenChange={setChannelsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 text-xs font-semibold gap-1.5 border-border/80"
+                >
+                  <BellRing className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+                  OTP Channels
+                  {hasAnyOtpChannel ? (
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="Channel connected" />
+                  ) : (
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No channel configured" />
+                  )}
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-base">
@@ -454,49 +419,78 @@ export function AutomationHeader({
             </DialogContent>
           </Dialog>
 
-          {/* Run Order Now Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={triggeringOrder || busy}
-            onClick={() => void handleRunOrderNow()}
-            className="h-9 text-xs font-semibold gap-1.5 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
-            title="Trigger an automated order run immediately"
-          >
-            {triggeringOrder ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {/* Toggle Automation Button */}
+            {enabled ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => void handleToggle(false)}
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive h-9 text-xs font-semibold gap-1.5"
+              >
+                <PauseCircle className="h-4 w-4" />
+                Pause Automation
+              </Button>
             ) : (
-              <Play className="h-3.5 w-3.5 fill-current" />
+              <Button
+                variant="default"
+                size="sm"
+                disabled={busy}
+                onClick={() => void handleToggle(true)}
+                className="h-9 text-xs font-semibold gap-1.5"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Enable Automation
+              </Button>
             )}
-            Run Order Now
-          </Button>
+          </div>
+        }
+      />
 
-          {/* Toggle Automation Button */}
-          {enabled ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => void handleToggle(false)}
-              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive h-9 text-xs font-semibold gap-1.5"
-            >
-              <PauseCircle className="h-4 w-4" />
-              Pause Automation
-            </Button>
-          ) : (
-            <Button
-              variant="default"
-              size="sm"
-              disabled={busy}
-              onClick={() => void handleToggle(true)}
-              className="h-9 text-xs font-semibold gap-1.5"
-            >
-              <PlayCircle className="h-4 w-4" />
-              Enable Automation
-            </Button>
-          )}
+      {/* Schedule / Cooldown Status Strip */}
+      {isCooldownActive && formattedUnlockLabel ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+              <Clock className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-semibold text-foreground">
+                Next eligible run: {formattedUnlockLabel}
+              </span>
+              <span className="text-muted-foreground ml-1.5 hidden sm:inline">
+                (Waiting for {nextRun?.accountLabel} 24h portal cooldown)
+              </span>
+            </div>
+          </div>
+          <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200 text-[10px] font-semibold self-start sm:self-auto">
+            Cooldown active
+          </Badge>
         </div>
-      </div>
+      ) : !enabled ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <PauseCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span>Automation is currently paused. Scheduled orders are suspended until resumed.</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void handleToggle(true)} className="h-7 text-xs bg-background">
+            Resume
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+            <span>
+              Automation active •{' '}
+              {nextRun?.reason === 'ready_now'
+                ? `Ready to order (${nextRun.accountLabel} eligible)`
+                : 'Scheduled daily at 02:00 AM IST'}
+            </span>
+          </div>
+          <span className="text-[11px] text-muted-foreground/80">Max 1 order / account / 24h</span>
+        </div>
+      )}
 
       {/* Instant Feedback / Notification Banners */}
       {triggerFeedback && (

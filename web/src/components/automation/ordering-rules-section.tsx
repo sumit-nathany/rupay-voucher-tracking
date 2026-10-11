@@ -35,8 +35,8 @@ export function OrderingRulesSection({
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-foreground">Ordering Rules & Priorities</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">Ordering Rules & Priorities</h2>
+          <p className="text-sm text-muted-foreground">
             Rules determine which unclaimed benefit runs first each day. Lower priority numbers run first.
           </p>
         </div>

@@ -24,8 +24,8 @@ export function AttemptsHistorySection({ attempts }: { attempts: AttemptView[] }
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-foreground">Recent Automation Activity</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">Recent Automation Activity</h2>
+          <p className="text-sm text-muted-foreground">
             Audit history of daily automated benefit attempts and portal booking references.
           </p>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus,
   KeyRound,
@@ -13,9 +13,11 @@ import {
   CheckCircle2,
   Loader2,
   ShieldCheck,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -50,11 +52,11 @@ export function PortalAccountsSection({ accounts }: { accounts: PortalAccountVie
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null;
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-foreground">RuPay Portal Accounts</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">RuPay Portal Accounts</h2>
+          <p className="text-sm text-muted-foreground">
             Sign-in credentials used by the automated worker. Encrypted with AES-256-GCM.
           </p>
         </div>
@@ -123,114 +125,112 @@ function AccountCard({
   }[account.status];
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="group flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-5 shadow-xs hover:border-primary/50 hover:shadow-md transition-all cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring select-none"
+      className="group w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+      aria-label={`View details for ${account.label}`}
     >
-      <div className="space-y-3.5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-              <KeyRound className="h-4 w-4" />
+      <Card className="h-full overflow-hidden border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
+        <CardContent className="flex flex-col justify-between gap-3.5 p-4 sm:p-5 h-full">
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors" title={account.label}>
+                    {account.label}
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount}{' '}
+                    {account.rulesCount === 1 ? 'rule' : 'rules'}
+                  </p>
+                </div>
+              </div>
+
+              {isCooldown ? (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1 shrink-0"
+                >
+                  <Clock className="h-3 w-3" />
+                  Cooldown
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={`text-[10px] font-medium tracking-wider shrink-0 capitalize ${statusTone}`}
+                >
+                  {account.status.replace('_', ' ')}
+                </Badge>
+              )}
             </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-bold text-foreground truncate" title={account.label}>
-                {account.label}
-              </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount}{' '}
-                {account.rulesCount === 1 ? 'rule' : 'rules'}
-              </p>
+
+            {/* 24h Portal Limit Cooldown Callout */}
+            {isCooldown && account.cooldownUntil && (
+              <div className="flex items-center justify-between rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    Unlocks{' '}
+                    {new Date(account.cooldownUntil).toLocaleString('en-IN', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      timeZone: 'Asia/Kolkata',
+                    })}{' '}
+                    IST
+                  </span>
+                </div>
+                <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">24h limit</span>
+              </div>
+            )}
+
+            {/* Real Error Callout */}
+            {account.status !== 'connected' &&
+              account.statusDetailCode &&
+              account.statusDetailCode !== 'daily_limit_reached' && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  Action needed: {account.statusDetailCode.replace(/_/g, ' ')}
+                </div>
+              )}
+
+            {/* Metadata Grid */}
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50 text-xs">
+              <div>
+                <span className="text-[11px] text-muted-foreground block">Last confirmed order</span>
+                <span className="font-medium text-foreground text-xs mt-0.5 block">
+                  {account.lastConfirmedOrderAt
+                    ? new Date(account.lastConfirmedOrderAt).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                    : 'None yet'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[11px] text-muted-foreground block">WhatsApp OTP</span>
+                <span className="font-medium text-foreground text-xs font-mono mt-0.5 block">
+                  {account.phoneNumber || 'Workspace default'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {isCooldown ? (
-            <Badge
-              variant="outline"
-              className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1 shrink-0"
-            >
-              <Clock className="h-3 w-3" />
-              Cooldown
-            </Badge>
-          ) : (
-            <Badge
-              variant="outline"
-              className={`text-[10px] font-semibold tracking-wider shrink-0 capitalize ${statusTone}`}
-            >
-              {account.status.replace('_', ' ')}
-            </Badge>
-          )}
-        </div>
-
-        {/* 24h Portal Limit Cooldown Callout */}
-        {isCooldown && account.cooldownUntil && (
-          <div className="flex items-center justify-between rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-            <div className="flex items-center gap-1.5 font-medium">
-              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>
-                Unlocks{' '}
-                {new Date(account.cooldownUntil).toLocaleString('en-IN', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  timeZone: 'Asia/Kolkata',
-                })}{' '}
-                IST
-              </span>
-            </div>
-            <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">24h limit</span>
-          </div>
-        )}
-
-        {/* Real Error Callout */}
-        {account.status !== 'connected' &&
-          account.statusDetailCode &&
-          account.statusDetailCode !== 'daily_limit_reached' && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              Action needed: {account.statusDetailCode.replace(/_/g, ' ')}
-            </div>
-          )}
-
-        {/* Metadata Grid */}
-        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50 text-xs">
-          <div>
-            <span className="text-[11px] text-muted-foreground block">Last confirmed order</span>
-            <span className="font-medium text-foreground text-xs mt-0.5 block">
-              {account.lastConfirmedOrderAt
-                ? new Date(account.lastConfirmedOrderAt).toLocaleDateString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })
-                : 'None yet'}
+          {/* Card Footer Click Hint */}
+          <div className="flex items-center justify-between pt-3 border-t border-border/40 text-xs text-muted-foreground">
+            <span className="text-xs font-medium group-hover:text-primary transition-colors">
+              View details & credentials
             </span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
           </div>
-          <div>
-            <span className="text-[11px] text-muted-foreground block">WhatsApp OTP</span>
-            <span className="font-medium text-foreground text-xs font-mono mt-0.5 block">
-              {account.phoneNumber || 'Workspace default'}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Card Footer Click Hint */}
-      <div className="flex items-center justify-between pt-3 border-t border-border/40 mt-3 text-xs text-muted-foreground">
-        <span className="text-[11px] font-medium group-hover:text-primary transition-colors">
-          Manage credentials & settings
-        </span>
-        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
-      </div>
-    </div>
+        </CardContent>
+      </Card>
+    </button>
   );
 }
 
@@ -243,9 +243,19 @@ function PortalAccountDetailSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [mode, setMode] = useState<'view' | 'edit' | 'delete'>('view');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Sync mode and clear feedback whenever open or account changes
+  useEffect(() => {
+    if (open) {
+      setMode('view');
+      setError(null);
+      setFeedback(null);
+    }
+  }, [open, account?.id]);
 
   if (!account) return null;
 
@@ -271,9 +281,6 @@ function PortalAccountDetailSheet({
 
   async function handleDelete() {
     if (!account) return;
-    if (!confirm(`Are you sure you want to disconnect "${account.label}"? All linked card mappings will be removed.`)) {
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -314,6 +321,7 @@ function PortalAccountDetailSheet({
             : undefined,
       });
       setFeedback('Account details and credentials updated successfully!');
+      setMode('view');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update credentials');
     } finally {
@@ -337,245 +345,356 @@ function PortalAccountDetailSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md w-full flex flex-col justify-between overflow-y-auto">
-        <div className="space-y-6">
-          <SheetHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
-                <KeyRound className="h-5 w-5" />
-              </div>
-              <div>
-                <SheetTitle className="text-base font-bold text-foreground leading-tight">
-                  {account.label}
-                </SheetTitle>
-                <SheetDescription className="text-xs text-muted-foreground mt-0.5">
-                  RuPay Benefits portal credentials & automated checkout configuration
-                </SheetDescription>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pt-2">
-              {isCooldown ? (
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1"
-                >
-                  <Clock className="h-3 w-3" />
-                  Cooldown Active
-                </Badge>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] font-semibold tracking-wider capitalize ${statusTone}`}
-                >
-                  {account.status.replace('_', ' ')}
-                </Badge>
+        {mode === 'view' && (
+          <div className="flex flex-1 flex-col justify-between">
+            <div className="space-y-6">
+              <SheetHeader>
+                <div className="flex items-center gap-3.5">
+                  <div
+                    aria-hidden
+                    className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/25 text-primary shadow-xs"
+                  >
+                    <KeyRound className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SheetTitle className="text-xl font-bold leading-tight truncate">
+                        {account.label}
+                      </SheetTitle>
+                      {isCooldown ? (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1"
+                        >
+                          <Clock className="h-3 w-3" />
+                          Cooldown
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs font-medium tracking-wider capitalize ${statusTone}`}
+                        >
+                          {account.status.replace('_', ' ')}
+                        </Badge>
+                      )}
+                    </div>
+                    <SheetDescription className="truncate">
+                      RuPay Benefits portal credentials & automated checkout configuration
+                    </SheetDescription>
+                  </div>
+                </div>
+              </SheetHeader>
+
+              {/* Feedback Alerts */}
+              {feedback && (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span>{feedback}</span>
+                </div>
               )}
-              <span className="text-xs text-muted-foreground">
-                {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount}{' '}
-                {account.rulesCount === 1 ? 'rule' : 'rules'}
-              </span>
-            </div>
-          </SheetHeader>
 
-          {/* Feedback & Error alerts */}
-          {feedback && (
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <span>{feedback}</span>
-            </div>
-          )}
+              {error && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-          {error && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
-              <span>{error}</span>
-            </div>
-          )}
+              {/* 24h Cooldown Alert Banner */}
+              {isCooldown && account.cooldownUntil && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      24-Hour Portal Limit Active
+                    </span>
+                    <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Cooldown</span>
+                  </div>
+                  <p className="text-muted-foreground/90 text-xs leading-relaxed">
+                    RuPay limits each portal login to 1 booking per 24 hours. This account unlocks{' '}
+                    <strong>
+                      {new Date(account.cooldownUntil).toLocaleString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        timeZone: 'Asia/Kolkata',
+                      })}{' '}
+                      IST
+                    </strong>
+                    . Automated runs will safely wait until then.
+                  </p>
+                </div>
+              )}
 
-          {/* 24h Cooldown Alert Banner */}
-          {isCooldown && account.cooldownUntil && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
-              <div className="flex items-center justify-between font-semibold">
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  24-Hour Portal Limit Active
-                </span>
-                <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Cooldown</span>
-              </div>
-              <p className="text-muted-foreground/90 text-[11px] leading-relaxed">
-                RuPay limits each portal login to 1 booking per 24 hours. This account unlocks{' '}
-                <strong>
-                  {new Date(account.cooldownUntil).toLocaleString('en-IN', {
-                    day: 'numeric',
-                    month: 'short',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    timeZone: 'Asia/Kolkata',
-                  })}{' '}
-                  IST
-                </strong>
-                . Automated runs will safely wait until then.
-              </p>
-            </div>
-          )}
-
-          {/* Edit Credentials Form */}
-          <form onSubmit={(e) => void handleUpdateCredentials(e)} className="space-y-4 pt-1 border-t border-border/50">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Credentials & Details</h4>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="sheet-label" className="text-xs font-medium">
-                Account Label
-              </Label>
-              <Input
-                id="sheet-label"
-                name="label"
-                defaultValue={account.label}
-                required
-                className="h-9 text-sm"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
-                WhatsApp Phone for OTP (optional)
-              </Label>
-              <Input
-                id="sheet-phoneNumber"
-                name="phoneNumber"
-                defaultValue={account.phoneNumber ?? ''}
-                placeholder="e.g. +919876543210"
-                className="h-9 text-sm font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Override workspace default phone for 3D-Secure bank OTP prompts.
-              </p>
-            </div>
-
-            <div className="space-y-3 pt-2 rounded-xl border border-border/70 bg-muted/20 p-3">
-              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Update Portal Password (optional)
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                Leave blank to keep existing encrypted credentials. Fill in both fields only to replace your stored login.
-              </p>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="sheet-loginId" className="text-xs font-medium">
-                  New Login ID / Email
-                </Label>
-                <Input
-                  id="sheet-loginId"
-                  name="loginId"
-                  placeholder="Leave blank to keep existing"
-                  className="h-9 text-sm bg-background"
-                />
+              {/* Account Properties List */}
+              <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Account Properties
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                    <span className="text-muted-foreground">Account Label</span>
+                    <span className="font-medium text-foreground">{account.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                    <span className="text-muted-foreground">Mapped Cards</span>
+                    <span className="font-medium text-foreground">
+                      {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                    <span className="text-muted-foreground">Ordering Rules</span>
+                    <span className="font-medium text-foreground">
+                      {account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                    <span className="text-muted-foreground">WhatsApp OTP Phone</span>
+                    <span className="font-mono font-medium text-foreground">
+                      {account.phoneNumber || 'Workspace default'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                    <span className="text-muted-foreground">Last Confirmed Order</span>
+                    <span className="font-medium text-foreground">
+                      {account.lastConfirmedOrderAt
+                        ? new Date(account.lastConfirmedOrderAt).toLocaleDateString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })
+                        : 'None yet'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="text-muted-foreground flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                      Stored Credentials
+                    </span>
+                    <span className="text-xs font-mono text-muted-foreground">
+                      ●●●●●●●● (AES-256-GCM encrypted)
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="sheet-password" className="text-xs font-medium">
-                  New Portal Password
-                </Label>
-                <Input
-                  id="sheet-password"
-                  name="password"
-                  type="password"
-                  placeholder="Leave blank to keep existing"
-                  className="h-9 text-sm bg-background"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="sheet-pin" className="text-xs font-medium">
-                  New Portal PIN (optional)
-                </Label>
-                <Input
-                  id="sheet-pin"
-                  name="pin"
-                  placeholder="Optional portal PIN"
-                  className="h-9 text-sm bg-background"
-                />
+              {/* Quick Pause / Resume Action Card */}
+              <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 p-3.5">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-foreground">
+                    {account.status === 'paused' ? 'Account Paused' : 'Automation Active'}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {account.status === 'paused'
+                      ? 'Resume to include this account in automated ordering.'
+                      : 'Pause to skip this account during scheduled daily runs.'}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={account.status === 'paused' ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void handleTogglePause()}
+                  className="h-8 text-xs font-semibold gap-1.5 shrink-0"
+                >
+                  {busy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : account.status === 'paused' ? (
+                    <>
+                      <Play className="h-3.5 w-3.5" /> Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-3.5 w-3.5" /> Pause
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
 
-            <div className="pt-2">
-              <Button type="submit" disabled={busy} className="w-full h-9 text-xs font-semibold gap-1.5">
+            <SheetFooter className="mt-8 pt-4 border-t border-border/50 flex flex-row items-center justify-between gap-2 sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive border-border/70 gap-1.5"
+                onClick={() => setMode('delete')}
+              >
+                <Trash2 className="h-4 w-4" />
+                Disconnect
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+                <Button type="button" className="gap-1.5" onClick={() => setMode('edit')}>
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              </div>
+            </SheetFooter>
+          </div>
+        )}
+
+        {mode === 'edit' && (
+          <form onSubmit={(e) => void handleUpdateCredentials(e)} className="flex flex-1 flex-col justify-between">
+            <div className="space-y-5">
+              <SheetHeader>
+                <SheetTitle>Edit RuPay Account</SheetTitle>
+                <SheetDescription>
+                  Update account label, OTP phone number, or replace stored credentials.
+                </SheetDescription>
+              </SheetHeader>
+
+              {error && (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="sheet-label" className="text-xs font-medium">
+                    Account Label
+                  </Label>
+                  <Input
+                    id="sheet-label"
+                    name="label"
+                    defaultValue={account.label}
+                    required
+                    className="h-9 text-sm"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
+                    WhatsApp Phone for OTP (optional)
+                  </Label>
+                  <Input
+                    id="sheet-phoneNumber"
+                    name="phoneNumber"
+                    defaultValue={account.phoneNumber ?? ''}
+                    placeholder="e.g. +919876543210"
+                    className="h-9 text-sm font-mono"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Override workspace default phone for 3D-Secure bank OTP prompts.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-2 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+                  <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    Replace Portal Credentials (optional)
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Leave blank to keep current encrypted credentials. Enter new credentials only to replace your stored login.
+                  </p>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sheet-loginId" className="text-xs font-medium">
+                      New Login ID / Email
+                    </Label>
+                    <Input
+                      id="sheet-loginId"
+                      name="loginId"
+                      placeholder="Leave blank to keep existing"
+                      className="h-9 text-sm bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sheet-password" className="text-xs font-medium">
+                      New Portal Password
+                    </Label>
+                    <Input
+                      id="sheet-password"
+                      name="password"
+                      type="password"
+                      placeholder="Leave blank to keep existing"
+                      className="h-9 text-sm bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sheet-pin" className="text-xs font-medium">
+                      New Portal PIN (optional)
+                    </Label>
+                    <Input
+                      id="sheet-pin"
+                      name="pin"
+                      placeholder="Optional portal PIN"
+                      className="h-9 text-sm bg-background"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <SheetFooter className="mt-8 pt-4 border-t border-border/50 flex flex-row items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  setMode('view');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy} className="gap-1.5">
                 {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Save Changes
               </Button>
-            </div>
+            </SheetFooter>
           </form>
+        )}
 
-          {/* Account Status & Danger Zone */}
-          <div className="space-y-3 pt-4 border-t border-border/50">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Account Controls</h4>
+        {mode === 'delete' && (
+          <div className="flex flex-1 flex-col justify-between">
+            <div className="space-y-5">
+              <SheetHeader>
+                <SheetTitle className="text-destructive">Disconnect Account</SheetTitle>
+                <SheetDescription>
+                  Are you sure you want to disconnect &ldquo;{account.label}&rdquo;?
+                </SheetDescription>
+              </SheetHeader>
 
-            {/* Pause / Resume Action Card */}
-            <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 p-3.5">
-              <div className="space-y-0.5">
-                <p className="text-xs font-bold text-foreground">
-                  {account.status === 'paused' ? 'Account Paused' : 'Automation Active'}
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive space-y-2">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle className="h-4 w-4" />
+                  This action cannot be undone
                 </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {account.status === 'paused'
-                    ? 'Resume to include this account in automated ordering.'
-                    : 'Pause to skip this account during scheduled daily runs.'}
+                <p className="leading-relaxed">
+                  Disconnecting this account will remove stored credentials and unlink all{' '}
+                  <strong>{account.mappingsCount} mapped card(s)</strong>.
                 </p>
               </div>
+            </div>
+
+            <SheetFooter className="mt-8 pt-4 border-t border-border/50 flex flex-row items-center justify-end gap-2">
               <Button
                 type="button"
-                variant={account.status === 'paused' ? 'default' : 'outline'}
-                size="sm"
-                disabled={busy}
-                onClick={() => void handleTogglePause()}
-                className="h-8 text-xs font-semibold gap-1.5 shrink-0"
+                variant="outline"
+                onClick={() => setMode('view')}
               >
-                {account.status === 'paused' ? (
-                  <>
-                    <Play className="h-3.5 w-3.5" /> Resume
-                  </>
-                ) : (
-                  <>
-                    <Pause className="h-3.5 w-3.5" /> Pause
-                  </>
-                )}
+                Cancel
               </Button>
-            </div>
-
-            {/* Disconnect Action Card */}
-            <div className="flex items-center justify-between rounded-xl border border-destructive/20 bg-destructive/5 p-3.5">
-              <div className="space-y-0.5">
-                <p className="text-xs font-bold text-destructive">Disconnect Account</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Permanently remove this account and unmap all linked cards.
-                </p>
-              </div>
               <Button
                 type="button"
                 variant="destructive"
-                size="sm"
                 disabled={busy}
                 onClick={() => void handleDelete()}
-                className="h-8 text-xs font-semibold gap-1.5 shrink-0"
+                className="gap-1.5"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-                Disconnect
+                {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Confirm Disconnect
               </Button>
-            </div>
+            </SheetFooter>
           </div>
-        </div>
-
-        <SheetFooter className="pt-6 border-t border-border/50">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="w-full text-xs font-semibold"
-          >
-            Close Panel
-          </Button>
-        </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -27,12 +27,12 @@ export function AutomationDashboard({
   return (
     <Tabs defaultValue="accounts" className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <TabsList className="bg-muted/60 p-1 h-10 border border-border/70 rounded-xl gap-1 shadow-2xs">
+        <TabsList className="bg-muted/60 p-1 h-9 rounded-lg gap-1 border border-border/60">
           <TabsTrigger
             value="accounts"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
+            className="gap-2 px-3 py-1 text-xs font-medium"
           >
-            <KeyRound className="h-3.5 w-3.5 text-primary" />
+            <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
             <span>Accounts & Cards</span>
             <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
               {accounts.length}
@@ -40,9 +40,9 @@ export function AutomationDashboard({
           </TabsTrigger>
           <TabsTrigger
             value="rules"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
+            className="gap-2 px-3 py-1 text-xs font-medium"
           >
-            <Sliders className="h-3.5 w-3.5 text-primary" />
+            <Sliders className="h-3.5 w-3.5 text-muted-foreground" />
             <span>Ordering Rules</span>
             <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
               {rules.length}
@@ -50,9 +50,9 @@ export function AutomationDashboard({
           </TabsTrigger>
           <TabsTrigger
             value="activity"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
+            className="gap-2 px-3 py-1 text-xs font-medium"
           >
-            <History className="h-3.5 w-3.5 text-primary" />
+            <History className="h-3.5 w-3.5 text-muted-foreground" />
             <span>Activity Log</span>
             <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
               {attempts.length}

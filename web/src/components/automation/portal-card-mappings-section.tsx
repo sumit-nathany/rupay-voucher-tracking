@@ -44,8 +44,8 @@ export function PortalCardMappingsSection({
     <div className="space-y-3.5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-foreground">Card to Portal Mappings</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
+          <p className="text-sm text-muted-foreground">
             Connect cards in your workspace to their RuPay portal login and optional payment gateway checkout details.
           </p>
         </div>
