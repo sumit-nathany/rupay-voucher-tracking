@@ -454,6 +454,7 @@ export const automationSettings = app.table("automation_settings", {
   enabled: boolean("enabled").notNull().default(false),
   whatsappPhoneNumber: text("whatsapp_phone_number"),
   telegramChatId: text("telegram_chat_id"),
+  triggerRequestedAt: timestamp("trigger_requested_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

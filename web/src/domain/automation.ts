@@ -1055,13 +1055,14 @@ export async function getNextEligibleRunTime(
 ): Promise<NextEligibleRunInfo> {
   const now = new Date();
 
+  let isPaused = false;
   if (workspaceId) {
     const [settings] = await db
       .select()
       .from(automationSettings)
       .where(eq(automationSettings.workspaceId, workspaceId));
     if (!settings || !settings.enabled) {
-      return { eligibleNow: false, nextRunAt: null, accountLabel: null, reason: 'automation_paused' };
+      isPaused = true;
     }
   }
 
@@ -1080,11 +1081,35 @@ export async function getNextEligibleRunTime(
     return { eligibleNow: false, nextRunAt: null, accountLabel: null, reason: 'no_accounts' };
   }
 
-  const readyAccounts = accounts.filter(
+  // Filter to actionable accounts with active card mappings
+  const accountIds = accounts.map((a) => a.id);
+  const activeMappings = await db
+    .select({ portalAccountId: portalCardMappings.portalAccountId })
+    .from(portalCardMappings)
+    .where(
+      and(
+        inArray(portalCardMappings.portalAccountId, accountIds),
+        eq(portalCardMappings.active, true),
+      ),
+    );
+
+  const mappedAccountIds = new Set(activeMappings.map((m) => m.portalAccountId));
+  const actionableAccounts = accounts.filter((a) => mappedAccountIds.has(a.id));
+  const candidateAccounts = actionableAccounts.length > 0 ? actionableAccounts : accounts;
+
+  const readyAccounts = candidateAccounts.filter(
     (a) => !a.cooldownUntil || new Date(a.cooldownUntil) <= now,
   );
 
   if (readyAccounts.length > 0) {
+    if (isPaused) {
+      return {
+        eligibleNow: false,
+        nextRunAt: null,
+        accountLabel: readyAccounts[0].label,
+        reason: 'automation_paused',
+      };
+    }
     return {
       eligibleNow: true,
       nextRunAt: now,
@@ -1093,8 +1118,8 @@ export async function getNextEligibleRunTime(
     };
   }
 
-  // All connected accounts are in cooldown; find the earliest one to unlock
-  const sorted = [...accounts].sort((a, b) => {
+  // All actionable accounts are in cooldown; find the earliest one to unlock
+  const sorted = [...candidateAccounts].sort((a, b) => {
     const tA = a.cooldownUntil ? new Date(a.cooldownUntil).getTime() : 0;
     const tB = b.cooldownUntil ? new Date(b.cooldownUntil).getTime() : 0;
     return tA - tB;
@@ -1105,7 +1130,17 @@ export async function getNextEligibleRunTime(
     eligibleNow: false,
     nextRunAt: earliest.cooldownUntil ? new Date(earliest.cooldownUntil) : null,
     accountLabel: earliest.label,
-    reason: 'waiting_for_cooldown',
+    reason: isPaused ? 'automation_paused' : 'waiting_for_cooldown',
   };
+}
+
+export async function requestManualAutomationRun(ctx: Ctx): Promise<void> {
+  await ctx.db
+    .update(automationSettings)
+    .set({
+      triggerRequestedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(automationSettings.workspaceId, ctx.workspaceId));
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone, Send, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { Bot, PauseCircle, PlayCircle, Clock, AlertTriangle, MessageSquare, Phone, Send, Loader2, CheckCircle2, ExternalLink, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { saveAutomationSettingsAction, sendTestTelegramMessageAction } from '@/actions/automation';
+import { saveAutomationSettingsAction, sendTestTelegramMessageAction, triggerManualOrderAction } from '@/actions/automation';
 
 export interface NextRunView {
   eligibleNow: boolean;
@@ -121,6 +121,22 @@ export function AutomationHeader({
     }
   }
 
+  const [triggeringOrder, setTriggeringOrder] = useState(false);
+  const [triggerFeedback, setTriggerFeedback] = useState<string | null>(null);
+
+  async function handleRunOrderNow() {
+    setTriggeringOrder(true);
+    setTriggerFeedback(null);
+    try {
+      await triggerManualOrderAction();
+      setTriggerFeedback('⚡ Order run requested! The worker will execute immediately. Watch your Telegram for the bank OTP prompt.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to trigger automated order');
+    } finally {
+      setTriggeringOrder(false);
+    }
+  }
+
   const updatedDateStr = new Date(updatedAt).toLocaleDateString('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -133,11 +149,7 @@ export function AutomationHeader({
   let scheduleDescription: React.ReactNode = null;
   let scheduleBadge: React.ReactNode = null;
 
-  if (!enabled) {
-    scheduleDescription = (
-      <>Automation is paused. Toggle on to enable scheduled automatic ordering.</>
-    );
-  } else if (nextRun?.reason === 'waiting_for_cooldown' && nextRun.nextRunAt) {
+  if (nextRun?.nextRunAt) {
     const nextRunDate = new Date(nextRun.nextRunAt);
     const now = new Date();
     const isToday = nextRunDate.toDateString() === now.toDateString();
@@ -153,34 +165,44 @@ export function AutomationHeader({
     });
     const scheduleLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
 
-    scheduleBadge = (
-      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
-        <Clock className="h-3 w-3" />
-        Next run: {scheduleLabel}
-      </Badge>
-    );
+    if (nextRunDate > now) {
+      scheduleBadge = (
+        <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
+          <Clock className="h-3 w-3" />
+          Next unlock: {scheduleLabel}
+        </Badge>
+      );
 
-    scheduleDescription = (
-      <>
-        Next run scheduled: <span className="font-semibold text-foreground">{scheduleLabel}</span> (when {nextRun.accountLabel} unlocks). Max 1 order per account per 24 hours.
-      </>
-    );
-  } else if (nextRun?.reason === 'ready_now') {
-    scheduleBadge = (
-      <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
-        <Clock className="h-3 w-3" />
-        Eligible to run now
-      </Badge>
-    );
-    scheduleDescription = (
-      <>
-        Ready to run now (<span className="font-semibold text-foreground">{nextRun.accountLabel}</span> eligible). Default daily schedule: 02:00 AM IST.
-      </>
-    );
-  } else {
-    scheduleDescription = (
-      <>Scheduled daily at 02:00 AM IST (Asia/Kolkata). Max 1 order per portal account per 24 hours.</>
-    );
+      scheduleDescription = (
+        <>
+          Next run scheduled: <span className="font-semibold text-foreground">{scheduleLabel}</span> (when {nextRun.accountLabel} unlocks). Max 1 order per account per 24 hours.
+        </>
+      );
+    }
+  }
+
+  if (!scheduleDescription) {
+    if (!enabled) {
+      scheduleDescription = (
+        <>Automation is paused. Toggle on to enable scheduled automatic ordering.</>
+      );
+    } else if (nextRun?.reason === 'ready_now') {
+      scheduleBadge = (
+        <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
+          <Clock className="h-3 w-3" />
+          Eligible to run now
+        </Badge>
+      );
+      scheduleDescription = (
+        <>
+          Ready to run now (<span className="font-semibold text-foreground">{nextRun.accountLabel}</span> eligible). Default daily schedule: 02:00 AM IST.
+        </>
+      );
+    } else {
+      scheduleDescription = (
+        <>Scheduled daily at 02:00 AM IST (Asia/Kolkata). Max 1 order per portal account per 24 hours.</>
+      );
+    }
   }
 
   return (
@@ -413,6 +435,22 @@ export function AutomationHeader({
             </DialogContent>
           </Dialog>
 
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={triggeringOrder || busy}
+            onClick={() => void handleRunOrderNow()}
+            className="h-9 text-xs font-semibold gap-1.5 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
+            title="Trigger an automated order run immediately"
+          >
+            {triggeringOrder ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5 fill-current" />
+            )}
+            Run Order Now
+          </Button>
+
           {enabled ? (
             <Button
               variant="outline"
@@ -436,6 +474,16 @@ export function AutomationHeader({
           )}
         </div>
       </div>
+
+      {triggerFeedback && (
+        <div className="flex items-start gap-3 rounded-xl border border-sky-500/40 bg-sky-500/10 p-4 text-sky-900 dark:text-sky-200">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-sky-600 dark:text-sky-400 mt-0.5" />
+          <div className="space-y-1 text-xs">
+            <p className="font-semibold text-sm">Order Run Triggered</p>
+            <p className="text-muted-foreground/90">{triggerFeedback}</p>
+          </div>
+        </div>
+      )}
 
       {hasAttentionAccounts && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200">

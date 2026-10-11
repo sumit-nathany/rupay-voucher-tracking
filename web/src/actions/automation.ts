@@ -218,3 +218,10 @@ export async function sendTestTelegramMessageAction(input?: { chatId?: string })
   return res;
 }
 
+export async function triggerManualOrderAction() {
+  const ctx = await getCtx();
+  await auto.requestManualAutomationRun(ctx);
+  revalidatePath('/automation');
+  return { success: true };
+}
+

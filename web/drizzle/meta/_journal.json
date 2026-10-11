@@ -127,6 +127,13 @@
       "when": 1791730000000,
       "tag": "0017_telegram_otp",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791740000000,
+      "tag": "0018_trigger_requested_at",
+      "breakpoints": true
     }
   ]
 }

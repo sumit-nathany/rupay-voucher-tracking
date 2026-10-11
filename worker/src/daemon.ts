@@ -1,10 +1,61 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { eq, isNotNull } from 'drizzle-orm';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { FakePortalOrderClient } from '../../web/src/lib/portal-client';
 import { runAutomationJob } from '../../web/src/domain/automation-worker';
 import { getNextEligibleRunTime } from '../../web/src/domain/automation';
+import { runBrowserTest } from './browser-runner';
+
+async function checkPendingManualTrigger(db: Database): Promise<boolean> {
+  const [triggerRow] = await db
+    .select({
+      workspaceId: schema.automationSettings.workspaceId,
+      triggerRequestedAt: schema.automationSettings.triggerRequestedAt,
+    })
+    .from(schema.automationSettings)
+    .where(isNotNull(schema.automationSettings.triggerRequestedAt))
+    .limit(1);
+
+  if (!triggerRow?.triggerRequestedAt) {
+    return false;
+  }
+
+  console.log(`\n⚡ [daemon] Manual order run requested at ${triggerRow.triggerRequestedAt.toISOString()}!`);
+  // Clear trigger request flag in DB so it doesn't re-run repeatedly
+  await db
+    .update(schema.automationSettings)
+    .set({ triggerRequestedAt: null, updatedAt: new Date() })
+    .where(eq(schema.automationSettings.workspaceId, triggerRow.workspaceId));
+
+  try {
+    console.log('[daemon] >>> Starting manual browser ordering run <<<');
+    if (process.env.USE_BROWSER_RUNNER !== 'false') {
+      await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
+    } else {
+      const portalClient = new FakePortalOrderClient();
+      const stats = await runAutomationJob({ db, client: portalClient });
+      console.log(`[daemon] Simulated run finished: ${stats.ordersConfirmed} confirmed, ${stats.ordersFailed} failed.`);
+    }
+  } catch (err) {
+    console.error('[daemon] Error running manual order:', err instanceof Error ? err.message : err);
+  }
+
+  return true;
+}
+
+async function responsiveWait(db: Database, maxDurationMs: number): Promise<void> {
+  const deadline = Date.now() + maxDurationMs;
+  while (Date.now() < deadline) {
+    const triggered = await checkPendingManualTrigger(db);
+    if (triggered) {
+      return;
+    }
+    const remaining = deadline - Date.now();
+    await new Promise((r) => setTimeout(r, Math.min(remaining, 5000)));
+  }
+}
 
 async function startDaemon() {
   const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
@@ -21,17 +72,25 @@ async function startDaemon() {
 
   while (true) {
     try {
+      // 1. First, check if a manual run was requested from the UI
+      const manualRan = await checkPendingManualTrigger(db);
+      if (manualRan) {
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+
+      // 2. Compute next scheduled run time
       const nextRun = await getNextEligibleRunTime(db);
 
       if (nextRun.reason === 'automation_paused') {
-        console.log('[daemon] Automation is paused. Checking again in 5 minutes...');
-        await new Promise((r) => setTimeout(r, 5 * 60 * 1000));
+        console.log('[daemon] Automation is paused. Monitoring for UI trigger or unpause...');
+        await responsiveWait(db, 60 * 1000);
         continue;
       }
 
       if (nextRun.reason === 'no_accounts') {
-        console.log('[daemon] No connected accounts. Checking again in 5 minutes...');
-        await new Promise((r) => setTimeout(r, 5 * 60 * 1000));
+        console.log('[daemon] No connected accounts. Checking again in 1 minute...');
+        await responsiveWait(db, 60 * 1000);
         continue;
       }
 
@@ -40,27 +99,31 @@ async function startDaemon() {
         if (delayMs > 0) {
           const istTime = nextRun.nextRunAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
           console.log(`[daemon] Next eligible account (${nextRun.accountLabel}) unlocks at ${istTime} IST.`);
-          console.log(`[daemon] Sleeping for ${Math.round(delayMs / 60000)} minutes until then...`);
+          console.log(`[daemon] Sleeping for ${Math.round(delayMs / 60000)} minutes until then (responsive to manual triggers)...`);
 
-          // Sleep until the exact unlock time (capped at 30 min per tick to stay responsive to UI toggles)
-          const sleepMs = Math.min(delayMs + 1000, 30 * 60 * 1000);
-          await new Promise((r) => setTimeout(r, sleepMs));
+          // Sleep until unlock time (capped at 15 minutes per slice), checking for manual triggers every 5s
+          const sleepMs = Math.min(delayMs + 1000, 15 * 60 * 1000);
+          await responsiveWait(db, sleepMs);
           continue;
         }
       }
 
-      // At least one account is eligible now! Execute ordering run.
+      // 3. At least one account is eligible now! Execute ordering run.
       console.log(`\n[daemon] >>> Account eligible! Triggering automation run at ${new Date().toISOString()} <<<`);
-      const portalClient = new FakePortalOrderClient();
-      const stats = await runAutomationJob({ db, client: portalClient });
-      console.log(`[daemon] Run finished: ${stats.ordersConfirmed} confirmed, ${stats.ordersFailed} failed.`);
+      if (process.env.USE_BROWSER_RUNNER !== 'false') {
+        await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
+      } else {
+        const portalClient = new FakePortalOrderClient();
+        const stats = await runAutomationJob({ db, client: portalClient });
+        console.log(`[daemon] Run finished: ${stats.ordersConfirmed} confirmed, ${stats.ordersFailed} failed.`);
+      }
       console.log('[daemon] Re-evaluating schedule for remaining accounts...\n');
 
       // Small pause before checking the next account in queue
-      await new Promise((r) => setTimeout(r, 5000));
+      await responsiveWait(db, 5000);
     } catch (err) {
       console.error('[daemon] Error in loop:', err instanceof Error ? err.message : err);
-      await new Promise((r) => setTimeout(r, 30000));
+      await responsiveWait(db, 30000);
     }
   }
 }
