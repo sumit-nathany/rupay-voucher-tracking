@@ -57,27 +57,45 @@ From `worker/`: `npm run dev` (tsx) / `npm run build` (tsc) + `npm start`.
 - Domain/DB tests use `createTestDb()` (`web/src/test/db.ts`): a fresh PGlite in-memory Postgres per test file with **every migration in `web/drizzle/` replayed** — no `DATABASE_URL` or Supabase needed. New migration files are picked up automatically and must be valid, replayable SQL.
 - Per PLAN.md's security model, every server action gets a tenant-isolation test proving workspace A cannot read, write, or reference workspace B's rows by ID — reads included; the reveal-code action is the highest priority.
 
-## Migrations (CRITICAL: Database Migrations Precede UI Deployment)
+## Migrations
 
-> **MANDATORY RULE:** Whenever you create or modify migrations or schema: **YOU MUST RUN `npm run db:migrate:prod` BEFORE COMMITTING/PUSHING TO `main`**.
+### 1. Mandatory Invariant: Strict Backward Compatibility
+
+> **CORE PRINCIPLE:** Every database migration MUST be 100% backward compatible with the currently running application code.
 >
-> **Why this matters:**
-> - Pushing or merging to `main` triggers an automatic Vercel production deployment.
-> - Vercel builds (`next build`) compile and deploy application code, but **do NOT execute database migrations**.
-> - Local vitest tests run on an ephemeral in-memory PGlite database which automatically replays `drizzle/` files; passing unit tests do **NOT** mean the live production database has the updated tables or columns!
-> - If code touching new tables or columns is deployed before the production DB is migrated, live queries crash with `relation "app.<table_name>" does not exist` or `column "<col>" does not exist`.
+> If a migration is applied to production and the new UI code is **never deployed** (or is delayed, fails build, or gets rolled back), the currently live application **MUST continue to function normally without any errors or degraded behavior**.
 
-### Migration Step-by-Step Checklist
+#### Backward Compatibility Rules:
+- **Additive changes only:**
+  - Adding new tables, indexes, or views is always safe.
+  - Adding columns: **MUST be nullable (`NULL`) or have an explicit, safe `DEFAULT`**. Never add a `NOT NULL` column without a `DEFAULT`.
+- **Never make breaking changes in a single migration:**
+  - **Do NOT drop** tables or columns that the currently running app queries or mutates.
+  - **Do NOT rename** columns or tables directly (a rename drops the old identifier, immediately breaking running queries).
+  - **Do NOT alter existing column types** in incompatible ways.
+  - **Do NOT remove or rename enum values** still referenced in existing code.
+  - **Do NOT add restrictive constraints** (`CHECK`, `UNIQUE`, foreign keys) that current running code paths might violate.
+- **Expand-and-Contract Pattern for Schema Refactoring:**
+  When renaming or deprecating columns/tables, split the work across separate releases:
+  1. *Expand (Migration 1):* Add the new column/table as nullable/with default. Apply migration. (Live UI continues running unaffected).
+  2. *Deploy Code (Release 1):* Deploy app code that writes to both columns and reads from new with fallback to old.
+  3. *Backfill:* Backfill historical data from old column to new column.
+  4. *Deploy Code (Release 2):* Deploy app code that reads and writes exclusively to the new column.
+  5. *Contract (Migration 2):* In a later release after the old column is entirely unused, create a cleanup migration dropping the old column.
 
-1. **Edit schema:** Modify `web/src/db/schema.ts`.
+### 2. Migration Execution Workflow
+
+Because all migrations are strictly backward compatible, applying them to the database does not affect the live site. However, new UI code depends on the migration having been executed in the database before querying it.
+
+1. **Edit schema:** Modify `web/src/db/schema.ts` ensuring all changes are backward compatible.
 2. **Generate migration:** Run `npm run db:generate` from `web/`.
-3. **Review SQL:** Inspect the newly generated migration file in `web/drizzle/` and verify `web/drizzle/meta/_journal.json`. Hand-written data-fix migrations also live here (e.g. `0005`, `0007`, `0008`).
-4. **Run tests:** Run `npm test` from `web/` to verify that PGlite replays all migrations cleanly and unit/tenant tests pass.
-5. **APPLY TO PRODUCTION:** Run `npm run db:migrate:prod` from `web/`.
+3. **Review SQL:** Inspect the generated migration in `web/drizzle/` and verify `web/drizzle/meta/_journal.json`. Hand-written data-fix migrations also live here (e.g. `0005`, `0007`, `0008`).
+4. **Run tests:** Run `npm test` from `web/` to verify that PGlite replays all migrations cleanly and all unit/tenant tests pass.
+5. **Verify build:** Run `npm run build` from `web/` to guarantee no compile-time or static analysis errors.
+6. **Apply to production:** Run `npm run db:migrate:prod` from `web/`.
    - Verify console output confirms `All migrations applied successfully!`.
-   - If there is any migration hash discrepancy or error, resolve it immediately before proceeding.
-6. **Verify build:** Run `npm run build` from `web/` to ensure no compile-time or static analysis errors.
-7. **Commit and push:** Only after steps 4, 5, and 6 succeed, commit and push changes to git.
+   - Because the migration is backward compatible, the live application is completely safe even if deployment takes time.
+7. **Commit and push:** Push to `main` to trigger the Vercel production deployment of the new application code.
 
 ## Environment variables
 
