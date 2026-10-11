@@ -134,9 +134,11 @@ describe('automation worker', () => {
     expect(updatedInst.orderDate).toBe(today);
     expect(updatedInst.rupayBookingId).toBe('BK-CONFIRMED-999');
 
-    // Verify account updated
+    // Verify account updated with 24h cooldown
     const [updatedAcc] = await db.select().from(portalAccounts).where(eq(portalAccounts.id, acc.id));
     expect(updatedAcc.lastConfirmedOrderAt).not.toBeNull();
+    expect(updatedAcc.cooldownUntil).not.toBeNull();
+    expect(new Date(updatedAcc.cooldownUntil!).getTime()).toBeGreaterThan(Date.now());
 
     // Verify attempt recorded as confirmed
     const attempts = await db.select().from(portalOrderAttempts).where(eq(portalOrderAttempts.portalAccountId, acc.id));

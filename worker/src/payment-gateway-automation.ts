@@ -5,6 +5,8 @@ import type { PaymentDetails } from '../../web/src/lib/card-payment-details';
 import * as schema from '../../web/src/db/schema';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
+import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
+import { resolveAndFillCvv, resolveAndClickPay, resolveOtpInput } from './llm-gateway-agent';
 
 export interface OtpPromptContext {
   db?: any;
@@ -67,6 +69,11 @@ export async function ensureCardTabSelected(target: Page | Frame): Promise<void>
   }
 }
 
+function getAllTargets(target: Page | Frame): (Page | Frame)[] {
+  const page = resolvePage(target);
+  return [page, ...page.frames()];
+}
+
 /**
  * Fills card details using gateway-specific or generic heuristic rules.
  */
@@ -82,9 +89,43 @@ export async function fillCardDetailsOnGateway(
   await ensureCardTabSelected(target);
 
   let filledCount = 0;
+  const targets = getAllTargets(target);
+  const last4 = details.cardNumber ? details.cardNumber.slice(-4) : undefined;
 
-  // 1. Fill Card Number
-  if (details.cardNumber) {
+  // Step 1.5: Check if there is a saved card matching the last 4 digits (e.g. Juspay / Truztee)
+  let savedCardClicked = false;
+  if (last4) {
+    for (let wait = 0; wait < 6; wait++) {
+      const freshTargets = getAllTargets(target);
+      for (const t of freshTargets) {
+        try {
+          const locators = [
+            t.getByText(last4).first(),
+            t.locator(`:has-text("${last4}")`).last(),
+            t.locator(`text=${last4}`).first(),
+            t.locator('text=PNB Debit').first(),
+            t.locator(':has-text("PNB Debit")').last(),
+          ];
+          for (const loc of locators) {
+            if (await loc.isVisible({ timeout: 400 })) {
+              console.log(`[gateway] Found saved card matching ••${last4}. Gliding cursor and clicking naturally...`);
+              await humanClick(loc, { hesitateBeforeMs: 600, pauseAfterMs: 1200 });
+              await loc.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+              savedCardClicked = true;
+              filledCount++;
+              break;
+            }
+          }
+        } catch {}
+        if (savedCardClicked) break;
+      }
+      if (savedCardClicked) break;
+      await page.waitForTimeout(800);
+    }
+  }
+
+  // 1. Fill Card Number (if not already using a saved card)
+  if (!savedCardClicked && details.cardNumber) {
     const cardSelectors = [
       '#cno', // CCAvenue
       'input[name="card_number"]',
@@ -98,21 +139,24 @@ export async function fillCardDetailsOnGateway(
       '#card_number',
     ];
 
-    for (const sel of cardSelectors) {
-      try {
-        const input = target.locator(sel).first();
-        if (await input.isVisible({ timeout: 1000 })) {
-          await input.fill(details.cardNumber);
-          console.log(`[gateway] Card number entered via "${sel}"`);
-          filledCount++;
-          break;
-        }
-      } catch {}
+    for (const t of targets) {
+      for (const sel of cardSelectors) {
+        try {
+          const input = t.locator(sel).first();
+          if (await input.isVisible({ timeout: 800 })) {
+            await input.fill(details.cardNumber);
+            console.log(`[gateway] Card number entered via "${sel}"`);
+            filledCount++;
+            break;
+          }
+        } catch {}
+      }
+      if (filledCount > 0) break;
     }
   }
 
-  // 2. Fill Expiry (Month & Year)
-  if (details.expiryMonth && details.expiryYear) {
+  // 2. Fill Expiry (Month & Year) (if not using saved card)
+  if (!savedCardClicked && details.expiryMonth && details.expiryYear) {
     const expCombined = `${details.expiryMonth}/${details.expiryYear.slice(-2)}`;
 
     // Try single combined MM/YY input first
@@ -126,17 +170,20 @@ export async function fillCardDetailsOnGateway(
     ];
 
     let combinedFilled = false;
-    for (const sel of combinedSelectors) {
-      try {
-        const input = target.locator(sel).first();
-        if (await input.isVisible({ timeout: 1000 })) {
-          await input.fill(expCombined);
-          console.log(`[gateway] Expiry (${expCombined}) entered via "${sel}"`);
-          combinedFilled = true;
-          filledCount++;
-          break;
-        }
-      } catch {}
+    for (const t of targets) {
+      for (const sel of combinedSelectors) {
+        try {
+          const input = t.locator(sel).first();
+          if (await input.isVisible({ timeout: 800 })) {
+            await input.fill(expCombined);
+            console.log(`[gateway] Expiry (${expCombined}) entered via "${sel}"`);
+            combinedFilled = true;
+            filledCount++;
+            break;
+          }
+        } catch {}
+      }
+      if (combinedFilled) break;
     }
 
     // Otherwise, try separate Month and Year fields (common in CCAvenue & BillDesk)
@@ -144,72 +191,100 @@ export async function fillCardDetailsOnGateway(
       const monthSelectors = ['#exp_month', 'select[name="exp_month"]', 'select[name*="month" i]', 'input[name="exp_month"]'];
       const yearSelectors = ['#exp_year', 'select[name="exp_year"]', 'select[name*="year" i]', 'input[name="exp_year"]'];
 
-      for (const sel of monthSelectors) {
-        try {
-          const el = target.locator(sel).first();
-          if (await el.isVisible({ timeout: 800 })) {
-            const tagName = await el.evaluate((e) => e.tagName.toLowerCase());
-            if (tagName === 'select') {
-              await el.selectOption({ value: details.expiryMonth });
-            } else {
-              await el.fill(details.expiryMonth);
+      for (const t of targets) {
+        for (const sel of monthSelectors) {
+          try {
+            const el = t.locator(sel).first();
+            if (await el.isVisible({ timeout: 800 })) {
+              const tagName = await el.evaluate((e) => e.tagName.toLowerCase());
+              if (tagName === 'select') {
+                await el.selectOption({ value: details.expiryMonth });
+              } else {
+                await el.fill(details.expiryMonth);
+              }
+              console.log(`[gateway] Expiry month entered via "${sel}"`);
+              break;
             }
-            console.log(`[gateway] Expiry month entered via "${sel}"`);
-            break;
-          }
-        } catch {}
-      }
+          } catch {}
+        }
 
-      for (const sel of yearSelectors) {
-        try {
-          const el = target.locator(sel).first();
-          if (await el.isVisible({ timeout: 800 })) {
-            const tagName = await el.evaluate((e) => e.tagName.toLowerCase());
-            if (tagName === 'select') {
-              // Try full 4-digit year or 2-digit year
-              const expYr = details.expiryYear ?? '';
-              await el.selectOption(expYr).catch(() => el.selectOption(expYr.slice(-2)));
-            } else {
-              await el.fill(details.expiryYear ?? '');
+        for (const sel of yearSelectors) {
+          try {
+            const el = t.locator(sel).first();
+            if (await el.isVisible({ timeout: 800 })) {
+              const tagName = await el.evaluate((e) => e.tagName.toLowerCase());
+              if (tagName === 'select') {
+                const expYr = details.expiryYear ?? '';
+                await el.selectOption(expYr).catch(() => el.selectOption(expYr.slice(-2)));
+              } else {
+                await el.fill(details.expiryYear ?? '');
+              }
+              console.log(`[gateway] Expiry year entered via "${sel}"`);
+              filledCount++;
+              break;
             }
-            console.log(`[gateway] Expiry year entered via "${sel}"`);
-            filledCount++;
-            break;
-          }
-        } catch {}
+          } catch {}
+        }
       }
     }
   }
 
-  // 3. Fill CVV
+  // 3. Fill CVV (always fill across all fresh frames, especially after clicking a saved card)
   if (details.cvv) {
     const cvvSelectors = [
-      '#cvv2', // CCAvenue
-      'input[name="cvv"]',
-      'input[name="cvv2"]',
+      'input[name*="cvv" i]',
       'input[name*="cvc" i]',
-      'input[autocomplete*="cc-csc" i]',
       'input[placeholder*="CVV" i]',
       'input[placeholder*="CVC" i]',
+      'input[placeholder*="Security" i]',
+      'input[aria-label*="cvv" i]',
+      'input[aria-label*="security" i]',
+      'input[autocomplete*="cc-csc" i]',
+      'input[maxlength="3"]',
+      'input[maxlength="4"]',
+      'input[type="password"]',
       '#cvv',
+      '#cvv2',
       '#card_cvv',
+      '.cvv-input',
     ];
 
-    for (const sel of cvvSelectors) {
-      try {
-        const input = target.locator(sel).first();
-        if (await input.isVisible({ timeout: 1000 })) {
-          await input.fill(details.cvv);
-          console.log(`[gateway] CVV entered via "${sel}"`);
-          filledCount++;
-          break;
+    let cvvFilled = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const freshTargets = getAllTargets(target);
+      for (const t of freshTargets) {
+        for (const sel of cvvSelectors) {
+          try {
+            const input = t.locator(sel).first();
+            if (await input.isVisible({ timeout: 400 })) {
+              console.log(`[gateway] Found CVV field via "${sel}". Typing CVV with human keystroke delays...`);
+              await humanType(input, details.cvv, { minCharDelayMs: 120, maxCharDelayMs: 240 });
+              console.log(`[gateway] CVV entered successfully.`);
+              filledCount++;
+              cvvFilled = true;
+              await humanHesitate(800, 1500);
+              break;
+            }
+          } catch {}
         }
-      } catch {}
+        if (cvvFilled) break;
+      }
+      if (cvvFilled) break;
+      await page.waitForTimeout(600);
+    }
+
+    if (!cvvFilled && details.cvv) {
+      console.log('[gateway] Standard CVV selectors did not match. Consulting Adaptive Gateway Agent (learned cache + DOM / LLM)...');
+      const resolved = await resolveAndFillCvv(page, details.cvv);
+      if (resolved) {
+        filledCount++;
+        cvvFilled = true;
+      }
     }
   }
 
-  // 4. Fill Name on Card
-  if (details.nameOnCard) {
+  // 4. Fill Name on Card (if not using saved card)
+  if (!savedCardClicked && details.nameOnCard) {
     const nameSelectors = [
       '#card_name', // CCAvenue
       'input[name="card_name"]',
@@ -219,50 +294,70 @@ export async function fillCardDetailsOnGateway(
       'input[placeholder*="Cardholder" i]',
     ];
 
-    for (const sel of nameSelectors) {
-      try {
-        const input = target.locator(sel).first();
-        if (await input.isVisible({ timeout: 1000 })) {
-          await input.fill(details.nameOnCard);
-          console.log(`[gateway] Name on card entered via "${sel}"`);
-          break;
-        }
-      } catch {}
+    for (const t of targets) {
+      for (const sel of nameSelectors) {
+        try {
+          const input = t.locator(sel).first();
+          if (await input.isVisible({ timeout: 800 })) {
+            await input.fill(details.nameOnCard);
+            console.log(`[gateway] Name on card entered via "${sel}"`);
+            break;
+          }
+        } catch {}
+      }
     }
   }
 
-  return filledCount >= 2;
+  return filledCount >= (savedCardClicked ? 1 : 2);
 }
 
 /**
- * Clicks the primary payment/submit button on the gateway.
+ * Clicks the primary payment/submit button on the gateway across all frames.
  */
 export async function clickPayButton(target: Page | Frame): Promise<boolean> {
   const payBtnSelectors = [
-    '#pay_button', // CCAvenue
-    'button#pay_button',
-    'input#pay_button',
-    'button:has-text("Make Payment")',
+    'button:has-text("Pay ₹1")',
     'button:has-text("Pay ₹2")',
+    'button:has-text("Pay Rs. 1")',
     'button:has-text("Pay Rs. 2")',
     'button:has-text("Pay ₹")',
     'button:has-text("Pay Now")',
+    'button:has-text("Make Payment")',
     'button:has-text("Proceed")',
+    'button:has-text("Pay")',
+    'button:has-text("Continue")',
+    ':is(button, [role="button"], a):has-text("Pay")',
+    ':is(button, [role="button"], a):has-text("Proceed")',
+    '#pay_button',
+    'button#pay_button',
+    'input#pay_button',
     'input[value*="Pay" i]',
     'input[value*="Make Payment" i]',
     'button.btn-pay',
   ];
 
-  for (const sel of payBtnSelectors) {
-    try {
-      const btn = target.locator(sel).first();
-      if (await btn.isVisible({ timeout: 1500 })) {
-        console.log(`[gateway] Clicking pay button via "${sel}"...`);
-        await btn.click();
-        return true;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const targets = getAllTargets(target);
+    for (const t of targets) {
+      for (const sel of payBtnSelectors) {
+        try {
+          const btn = t.locator(sel).first();
+          if (await btn.isVisible({ timeout: 500 })) {
+            console.log(`[gateway] Gliding cursor and clicking pay button via "${sel}"...`);
+            await humanClick(btn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
+            await btn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+            return true;
+          }
+        } catch {}
       }
-    } catch {}
+    }
+    await resolvePage(target).waitForTimeout(800);
   }
+
+  // Fallback to Adaptive Gateway Agent
+  console.log('[gateway] Standard Pay button selectors did not match. Consulting Adaptive Gateway Agent (learned cache + DOM / LLM)...');
+  const payClicked = await resolveAndClickPay(resolvePage(target));
+  if (payClicked) return true;
 
   return false;
 }
@@ -304,6 +399,13 @@ export async function findOtpInput(page: Page): Promise<{ target: Page | Frame; 
         }
       } catch {}
     }
+  }
+
+  // Fallback to Adaptive Gateway Agent
+  console.log('[gateway] Standard OTP input selectors did not match. Consulting Adaptive Gateway Agent (learned cache + DOM / LLM)...');
+  const adaptiveOtp = await resolveOtpInput(page);
+  if (adaptiveOtp) {
+    return adaptiveOtp;
   }
 
   return null;

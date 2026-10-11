@@ -537,7 +537,6 @@ export const portalCardMappings = app.table(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [
-    unique("portal_card_mappings_workspace_card_key").on(t.workspaceId, t.cardId),
     unique("portal_card_mappings_account_card_key").on(t.portalAccountId, t.cardId),
     foreignKey({
       name: "portal_card_mappings_account_fkey",

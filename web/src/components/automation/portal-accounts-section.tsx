@@ -799,6 +799,7 @@ function PortalAccountDetailSheet({
       cards={availableCards}
       existing={editingMapping}
       defaultAccountId={account.id}
+      mappings={mappings}
     />
   </>
   );

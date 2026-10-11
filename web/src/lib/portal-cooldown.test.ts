@@ -8,7 +8,23 @@ describe('portal cooldown parsing', () => {
         'Booking Limit Reached: An account is limited to one booking every 24 hours. Try again after 11 Oct 2026 18:40 hrs.',
       ),
     ).toBe(true);
+    expect(
+      isPortalCooldownMessage(
+        'You have already initiated a transaction, please wait 20 minutes before initiating another one. Thank you.',
+      ),
+    ).toBe(true);
     expect(isPortalCooldownMessage('Invalid OTP')).toBe(false);
+  });
+
+  it('parses portal 20-minute initiated transaction lock into future date', () => {
+    const before = Date.now();
+    const msg =
+      'You have already initiated a transaction, please wait 20 minutes before initiating another one. Thank you.';
+    const date = parsePortalCooldownDate(msg);
+    const after = Date.now();
+    expect(date).not.toBeNull();
+    expect(date!.getTime()).toBeGreaterThanOrEqual(before + 20 * 60 * 1000);
+    expect(date!.getTime()).toBeLessThanOrEqual(after + 20 * 60 * 1000);
   });
 
   it('parses portal IST date into correct UTC date', () => {

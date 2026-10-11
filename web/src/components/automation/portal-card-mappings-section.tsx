@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, CreditCard, Trash2, ShieldCheck, Lock, Edit2 } from 'lucide-react';
+import { Plus, CreditCard, Trash2, ShieldCheck, Lock, Edit2, X, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,14 +29,24 @@ export function PortalCardMappingsSection({
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMapping, setEditingMapping] = useState<PortalCardMappingView | null>(null);
+  const [presetCardId, setPresetCardId] = useState<string | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<'by_card' | 'by_mapping'>('by_card');
 
   function handleOpenAdd() {
     setEditingMapping(null);
+    setPresetCardId(undefined);
+    setDialogOpen(true);
+  }
+
+  function handleOpenAddForCard(cardId: string) {
+    setEditingMapping(null);
+    setPresetCardId(cardId);
     setDialogOpen(true);
   }
 
   function handleOpenEdit(m: PortalCardMappingView) {
     setEditingMapping(m);
+    setPresetCardId(m.cardId);
     setDialogOpen(true);
   }
 
@@ -44,9 +54,37 @@ export function PortalCardMappingsSection({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">RuPay Card Assignments</h2>
+            <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border/60 text-xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('by_card')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-all ${
+                  viewMode === 'by_card'
+                    ? 'bg-background shadow-xs text-foreground font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <CreditCard className="h-3.5 w-3.5" />
+                Central Card List ({availableCards.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('by_mapping')}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-medium transition-all ${
+                  viewMode === 'by_mapping'
+                    ? 'bg-background shadow-xs text-foreground font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                All Mappings ({mappings.length})
+              </button>
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Connect cards in your workspace to their RuPay portal login and optional payment gateway checkout details.
+            Maintain your RuPay cards centrally, configure payment checkout details once, and assign each card to one or more RuPay portal accounts.
           </p>
         </div>
         <Button
@@ -55,23 +93,108 @@ export function PortalCardMappingsSection({
           className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto shrink-0"
         >
           <Plus className="h-4 w-4" />
-          Map Card
+          Assign Card
         </Button>
       </div>
 
-      {mappings.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
-          <CreditCard className="h-10 w-10 text-muted-foreground/60 mb-3" />
-          <p className="text-base font-semibold text-foreground">No Cards Mapped</p>
-          <p className="text-sm text-muted-foreground max-w-sm mt-1.5">
-            Map your RuPay cards to a portal account so browser automation knows which account to log into and which card details to use at checkout.
-          </p>
-          {accounts.length > 0 && availableCards.length > 0 && (
-            <Button onClick={handleOpenAdd} className="mt-6 gap-2 text-sm font-medium h-10 px-4 rounded-xl">
-              <Plus className="h-4 w-4" />
-              Map a Card
-            </Button>
-          )}
+      {viewMode === 'by_card' ? (
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs mt-6">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
+                <tr>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Tracker RuPay Card</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Assigned Portal Accounts</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Payment Details (Shared)</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {availableCards.map((card) => {
+                  const cardMappings = mappings.filter((m) => m.cardId === card.id);
+                  const sharedPayment = cardMappings.find((m) => m.paymentDetails)?.paymentDetails;
+
+                  return (
+                    <tr key={card.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="py-4 sm:py-5 px-5 sm:px-6">
+                        <div className="font-semibold text-sm sm:text-base text-foreground">{card.name}</div>
+                        <div className="text-xs sm:text-sm text-muted-foreground mt-1">
+                          {card.holderName} {card.lastDigits ? `(••${card.lastDigits})` : ''}
+                        </div>
+                      </td>
+
+                      <td className="py-4 sm:py-5 px-5 sm:px-6">
+                        {cardMappings.length === 0 ? (
+                          <span className="text-xs sm:text-sm text-muted-foreground italic">
+                            Not assigned to any account
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {cardMappings.map((m) => {
+                              const acc = accounts.find((a) => a.id === m.portalAccountId);
+                              return (
+                                <Badge
+                                  key={m.id}
+                                  variant="secondary"
+                                  className="gap-1.5 text-xs py-1 px-2.5 font-medium border border-border/60"
+                                >
+                                  <span>{acc?.label ?? 'Account'}</span>
+                                  <UnmapMiniButton id={m.id} cardName={card.name} />
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-4 sm:py-5 px-5 sm:px-6">
+                        {sharedPayment ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1.5 font-mono text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 py-1 px-2.5 font-medium"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            {sharedPayment.mode === 'full'
+                              ? `${sharedPayment.maskedCardNumber || 'Full Card'} · Exp ${sharedPayment.expirySummary || '••/••'} · CVV ✓`
+                              : 'Saved Card · CVV ✓'}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs sm:text-sm text-muted-foreground italic">
+                            No payment details set
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-4 sm:py-5 px-5 sm:px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenAddForCard(card.id)}
+                            className="h-8 gap-1 text-xs rounded-lg"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Assign
+                          </Button>
+                          {cardMappings.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenEdit(cardMappings[0])}
+                              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                              title="Edit payment details / mapping"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs mt-6">
@@ -147,8 +270,37 @@ export function PortalCardMappingsSection({
         accounts={accounts}
         cards={availableCards}
         existing={editingMapping}
+        defaultCardId={presetCardId}
+        mappings={mappings}
       />
     </div>
+  );
+}
+
+function UnmapMiniButton({ id, cardName }: { id: string; cardName: string }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleRemove(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`Unassign "${cardName}" from this account?`)) return;
+    setBusy(true);
+    try {
+      await deletePortalCardMappingAction({ id });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => void handleRemove(e)}
+      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+      title="Unassign from this account"
+    >
+      <X className="h-3 w-3" />
+    </button>
   );
 }
 
@@ -186,6 +338,8 @@ export function MappingDialog({
   cards,
   existing,
   defaultAccountId,
+  defaultCardId,
+  mappings,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -193,6 +347,8 @@ export function MappingDialog({
   cards: CardOption[];
   existing: PortalCardMappingView | null;
   defaultAccountId?: string;
+  defaultCardId?: string;
+  mappings?: PortalCardMappingView[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +356,7 @@ export function MappingDialog({
     existing?.portalAccountId ?? defaultAccountId ?? accounts[0]?.id ?? '',
   );
   const [selectedCard, setSelectedCard] = useState<string>(
-    existing?.cardId ?? cards[0]?.id ?? '',
+    existing?.cardId ?? defaultCardId ?? cards[0]?.id ?? '',
   );
 
   // Payment details mode: 'full' | 'saved_card' | 'none'
@@ -210,12 +366,19 @@ export function MappingDialog({
 
   useEffect(() => {
     if (open) {
+      const activeCardId = existing?.cardId ?? defaultCardId ?? cards[0]?.id ?? '';
       setSelectedAccount(existing?.portalAccountId ?? defaultAccountId ?? accounts[0]?.id ?? '');
-      setSelectedCard(existing?.cardId ?? cards[0]?.id ?? '');
-      setPaymentMode(existing?.paymentDetails?.mode ?? 'none');
+      setSelectedCard(activeCardId);
+      const sharedDetails = existing?.paymentDetails ?? mappings?.find((m) => m.cardId === activeCardId && m.paymentDetails)?.paymentDetails;
+      setPaymentMode(sharedDetails?.mode ?? 'none');
       setError(null);
     }
-  }, [open, existing, defaultAccountId, accounts, cards]);
+  }, [open, existing, defaultAccountId, defaultCardId, accounts, cards, mappings]);
+
+  // Check if current card already has shared details
+  const cardMappings = mappings?.filter((m) => m.cardId === selectedCard) ?? [];
+  const existingSharedPayment = existing?.paymentDetails ?? cardMappings.find((m) => m.paymentDetails)?.paymentDetails;
+  const isAlreadyMappedToSelectedAccount = cardMappings.some((m) => m.portalAccountId === selectedAccount);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -255,6 +418,9 @@ export function MappingDialog({
         mode: 'saved_card' as const,
         cvv: cvv || undefined,
       };
+    } else if (existingSharedPayment) {
+      // Re-use existing shared payment details without modification
+      paymentDetails = undefined;
     }
 
     setBusy(true);
@@ -278,32 +444,20 @@ export function MappingDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{existing ? 'Edit Card Mapping' : 'Map Tracker Card to RuPay Portal'}</DialogTitle>
+          <DialogTitle>{existing ? 'Edit Card Assignment' : 'Assign RuPay Card to Portal Account'}</DialogTitle>
           <DialogDescription>
-            The RuPay portal limits benefits by account and card type. The actual card verification happens on the payment gateway during checkout.
+            The same RuPay card can be assigned to multiple accounts. Its payment gateway credentials are automatically shared across accounts.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 pt-2">
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">RuPay Portal Account</Label>
-            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Select portal account" />
-              </SelectTrigger>
-              <SelectContent>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Tracker Card</Label>
-            <Select value={selectedCard} onValueChange={setSelectedCard}>
+            <Label className="text-xs font-semibold">Tracker RuPay Card</Label>
+            <Select value={selectedCard} onValueChange={(val) => {
+              setSelectedCard(val);
+              const shared = mappings?.find((m) => m.cardId === val && m.paymentDetails)?.paymentDetails;
+              if (shared) setPaymentMode(shared.mode);
+            }}>
               <SelectTrigger className="h-9 text-sm">
                 <SelectValue placeholder="Select card" />
               </SelectTrigger>
@@ -315,6 +469,39 @@ export function MappingDialog({
                 ))}
               </SelectContent>
             </Select>
+
+            {cardMappings.length > 0 && (
+              <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1">
+                <span>Already assigned to:</span>
+                <span className="font-medium text-foreground">
+                  {cardMappings.map((cm) => accounts.find((a) => a.id === cm.portalAccountId)?.label ?? 'Account').join(', ')}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold">Assign to RuPay Portal Account</Label>
+            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue placeholder="Select portal account" />
+              </SelectTrigger>
+              <SelectContent>
+                {accounts.map((a) => {
+                  const already = cardMappings.some((cm) => cm.portalAccountId === a.id);
+                  return (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.label} {already ? '(Assigned)' : ''}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+            {isAlreadyMappedToSelectedAccount && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                This card is already assigned to this account. Saving will update its configuration.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-border/80 bg-muted/20 p-3 space-y-3">
@@ -325,6 +512,15 @@ export function MappingDialog({
               </div>
               <span className="text-[10px] text-muted-foreground">AES-256-GCM Encrypted</span>
             </div>
+
+            {existingSharedPayment && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20">
+                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Card details already configured ({existingSharedPayment.mode === 'full' ? 'Full Card' : 'Saved Card · CVV ✓'}). Reused automatically across assigned accounts.
+                </span>
+              </div>
+            )}
 
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               When ordering benefits requiring nominal auth or charges, browser automation fills in card details on the gateway.
@@ -369,106 +565,70 @@ export function MappingDialog({
             {paymentMode === 'full' && (
               <div className="space-y-2.5 pt-1">
                 <div className="space-y-1">
-                  <Label htmlFor="cardNumber" className="text-[11px] font-semibold">
-                    16-Digit Card Number
-                  </Label>
+                  <Label className="text-[11px]">16-Digit Card Number</Label>
                   <Input
-                    id="cardNumber"
                     name="cardNumber"
-                    placeholder="1234 5678 9012 3456"
+                    placeholder="•••• •••• •••• ••••"
                     maxLength={19}
                     className="h-8 text-xs font-mono"
+                    defaultValue={existing?.paymentDetails?.maskedCardNumber ? '' : undefined}
                   />
+                  {existingSharedPayment?.maskedCardNumber && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Current: {existingSharedPayment.maskedCardNumber} (leave blank to keep unchanged)
+                    </p>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-semibold">Expiry (MM / YY)</Label>
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        name="expiryMonth"
-                        placeholder="MM"
-                        maxLength={2}
-                        className="h-8 text-xs font-mono text-center"
-                      />
-                      <span className="text-muted-foreground">/</span>
-                      <Input
-                        name="expiryYear"
-                        placeholder="YY"
-                        maxLength={4}
-                        className="h-8 text-xs font-mono text-center"
-                      />
-                    </div>
+                    <Label className="text-[11px]">Exp Month</Label>
+                    <Input name="expiryMonth" placeholder="MM" maxLength={2} className="h-8 text-xs font-mono" />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="cvv" className="text-[11px] font-semibold">
-                      CVV
-                    </Label>
-                    <Input
-                      id="cvv"
-                      name="cvv"
-                      placeholder="123"
-                      maxLength={4}
-                      type="password"
-                      className="h-8 text-xs font-mono text-center"
-                    />
+                    <Label className="text-[11px]">Exp Year</Label>
+                    <Input name="expiryYear" placeholder="YYYY" maxLength={4} className="h-8 text-xs font-mono" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">CVV</Label>
+                    <Input name="cvv" placeholder="•••" type="password" maxLength={4} className="h-8 text-xs font-mono" />
                   </div>
                 </div>
+
                 <div className="space-y-1">
-                  <Label htmlFor="nameOnCard" className="text-[11px] font-semibold">
-                    Name on Card (Optional)
-                  </Label>
-                  <Input
-                    id="nameOnCard"
-                    name="nameOnCard"
-                    placeholder="Full name as printed on card"
-                    className="h-8 text-xs"
-                  />
+                  <Label className="text-[11px]">Name on Card</Label>
+                  <Input name="nameOnCard" placeholder="As printed on card" className="h-8 text-xs" />
                 </div>
               </div>
             )}
 
             {paymentMode === 'saved_card' && (
-              <div className="space-y-2.5 pt-1">
-                <p className="text-[11px] text-muted-foreground">
-                  Card is already saved/tokenized on the gateway. Only CVV is required to authorize the transaction.
-                </p>
-                <div className="w-24 space-y-1">
-                  <Label htmlFor="savedCvv" className="text-[11px] font-semibold">
-                    CVV
-                  </Label>
+              <div className="space-y-2 pt-1">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">CVV / Security Code</Label>
                   <Input
-                    id="savedCvv"
                     name="savedCvv"
-                    placeholder="123"
-                    maxLength={4}
+                    placeholder="•••"
                     type="password"
-                    className="h-8 text-xs font-mono text-center"
+                    maxLength={4}
+                    className="h-8 text-xs font-mono w-28"
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    Assumes card is pre-saved on the merchant gateway (Juspay / Truztee). Only CVV will be entered.
+                  </p>
                 </div>
               </div>
             )}
-
-            {paymentMode === 'none' && (
-              <p className="text-[11px] text-muted-foreground italic">
-                No payment details configured. If payment is required during automated run, the attempt will pause for manual input.
-              </p>
-            )}
           </div>
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && <p className="text-xs text-destructive font-medium">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={busy}
-              className="h-8 text-xs font-semibold"
-            >
+            <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy} className="h-8 text-xs font-semibold">
-              Save Mapping
+            <Button type="submit" size="sm" disabled={busy}>
+              {busy ? 'Saving...' : existing ? 'Update Assignment' : 'Assign to Account'}
             </Button>
           </div>
         </form>

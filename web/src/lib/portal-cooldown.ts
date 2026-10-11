@@ -9,10 +9,25 @@
 
 export function isPortalCooldownMessage(message: string): boolean {
   const lower = message.toLowerCase();
-  return lower.includes('booking limit reached') || lower.includes('one booking every 24 hours');
+  return (
+    lower.includes('booking limit reached') ||
+    lower.includes('one booking every 24 hours') ||
+    lower.includes('already initiated a transaction') ||
+    lower.includes('wait 20 minutes')
+  );
 }
 
 export function parsePortalCooldownDate(message: string): Date | null {
+  // Check for "wait X minutes" or "already initiated a transaction"
+  const minMatch = message.match(/wait\s+(\d+)\s+minutes/i);
+  if (minMatch) {
+    const mins = parseInt(minMatch[1], 10);
+    return new Date(Date.now() + mins * 60 * 1000);
+  }
+  if (message.toLowerCase().includes('already initiated a transaction')) {
+    return new Date(Date.now() + 20 * 60 * 1000);
+  }
+
   // Matches "11 Oct 2026 18:40" or "11 Oct 2026 18:40 hrs"
   const match = message.match(/(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(\d{1,2}):(\d{2})/i);
   if (!match) return null;

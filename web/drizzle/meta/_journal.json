@@ -141,6 +141,13 @@
       "when": 1791745000000,
       "tag": "0019_benefit_value_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791743176856,
+      "tag": "0020_exotic_puck",
+      "breakpoints": true
     }
   ]
 }

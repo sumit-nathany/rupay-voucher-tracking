@@ -24,6 +24,7 @@ import {
   resumePortalAccount,
   deletePortalAccount,
   savePortalCardMapping,
+  listPortalCardMappings,
   createOrderingRule,
   findCandidatesForAccount,
 } from './automation';
@@ -227,5 +228,75 @@ describe('automation domain', () => {
 
     cand = await findCandidatesForAccount(db, acc.id, today);
     expect(cand).toBeNull();
+  });
+
+  it('allows mapping the same card to multiple portal accounts and inherits/syncs payment details', async () => {
+    // 1. Create two portal accounts
+    const acc1 = await createPortalAccount(ctx, {
+      label: 'Account 1',
+      credentials: {
+        loginId: 'user1@test.com',
+        password: 'password123',
+      },
+    });
+
+    const acc2 = await createPortalAccount(ctx, {
+      label: 'Account 2',
+      credentials: {
+        loginId: 'user2@test.com',
+        password: 'password123',
+      },
+    });
+
+    // 2. Create card holder and card
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Amit' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'PNB Select Card', bankName: 'PNB' }).returning();
+    const [card] = await db.insert(cards).values({ workspaceId, holderId: holder.id, bankCardTypeId: cardType.id, displayName: 'My RuPay Card', lastDigits: '1746' }).returning();
+
+    // 3. Map card to Account 1 WITH payment details (CVV 254)
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc1.id,
+      cardId: card.id,
+      paymentDetails: {
+        version: 1,
+        mode: 'saved_card',
+        cvv: '254',
+      },
+    });
+
+    // 4. Map the SAME card to Account 2 WITHOUT providing payment details
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc2.id,
+      cardId: card.id,
+    });
+
+    // 5. Verify both mappings exist
+    const mappingsAcc1 = await listPortalCardMappings(ctx, acc1.id);
+    const mappingsAcc2 = await listPortalCardMappings(ctx, acc2.id);
+
+    expect(mappingsAcc1.length).toBe(1);
+    expect(mappingsAcc2.length).toBe(1);
+    expect(mappingsAcc1[0].cardId).toBe(card.id);
+    expect(mappingsAcc2[0].cardId).toBe(card.id);
+
+    // 6. Verify payment details are automatically inherited on Account 2!
+    expect(mappingsAcc2[0].paymentDetails).not.toBeNull();
+    expect(mappingsAcc2[0].paymentDetails?.mode).toBe('saved_card');
+    expect(mappingsAcc2[0].paymentDetails?.hasCvv).toBe(true);
+
+    // 7. Verify updating payment details on Account 1 synchronizes to Account 2
+    await savePortalCardMapping(ctx, {
+      id: mappingsAcc1[0].id,
+      portalAccountId: acc1.id,
+      cardId: card.id,
+      paymentDetails: {
+        version: 1,
+        mode: 'saved_card',
+        cvv: '999',
+      },
+    });
+
+    const refreshedAcc2 = await listPortalCardMappings(ctx, acc2.id);
+    expect(refreshedAcc2[0].paymentDetails?.hasCvv).toBe(true);
   });
 });

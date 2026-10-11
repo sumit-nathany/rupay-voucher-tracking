@@ -13,6 +13,9 @@ import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
+import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
+import { autoSolveRecaptcha } from './captcha-solver';
+import { finalizeConfirmedOrder } from '../../web/src/domain/automation-worker';
 
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
@@ -125,26 +128,36 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   });
 
   // Track any new tabs / popups that might open (e.g. payment gateway tab)
-  let paymentPage: Page | null = null;
+  const popupTracker = { page: null as Page | null };
   context.on('page', (newPage) => {
     console.log(`[Popup/New Tab detected]: ${newPage.url()}`);
-    paymentPage = newPage;
+    popupTracker.page = newPage;
   });
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
 
+  // Log console and requests to see errors and APIs
+  page.on('console', (msg) => console.log(`[console ${msg.type()}]`, msg.text()));
+  page.on('request', (req) => {
+    if (req.url().includes('truztee') || req.url().includes('juspay')) {
+      console.log(`[request] ${req.method()} ${req.url()}`);
+    }
+  });
+
   // Listen for portal transaction responses
   let cooldownDetectedUntil: Date | null = null;
   page.on('response', async (res) => {
-    if (res.url().includes('addUserTransaction')) {
+    const url = res.url();
+    if (url.includes('addUserTransaction') || url.includes('createOrder') || url.includes('payment') || url.includes('juspay')) {
       try {
         const text = await res.text();
+        console.log(`[response ${res.status()}] ${url.slice(0, 100)}: ${text.slice(0, 300)}`);
         const json = JSON.parse(text);
         const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
-        if (inner.code === 1 && inner.message && isPortalCooldownMessage(inner.message)) {
-          console.log('\n⚠️ Portal 24-Hour Limit Detected:', inner.message);
+        if (inner && inner.code === 1 && inner.message && isPortalCooldownMessage(inner.message)) {
+          console.log('\n⚠️ Portal Cooldown / Limit Detected:', inner.message);
           const parsedDate = parsePortalCooldownDate(inner.message);
-          cooldownDetectedUntil = parsedDate ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+          cooldownDetectedUntil = parsedDate ?? new Date(Date.now() + 20 * 60 * 1000);
           console.log(`Locked until (IST): ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
 
           // Record cooldown in database
@@ -152,7 +165,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
           console.log('✓ Recorded cooldown in database! No future run will be attempted before this time.');
         }
       } catch (e) {
-        console.error('Error parsing addUserTransaction response:', e);
+        // ignore parse errors for non-json
       }
     }
   });
@@ -168,16 +181,30 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log('Not signed in yet. Starting login sequence...');
     const loginButton = page.locator('button:has-text("Login")').first();
     if (await loginButton.isVisible()) {
-      await loginButton.click();
-      await page.waitForTimeout(500);
+      await humanClick(loginButton, { hesitateBeforeMs: 400, pauseAfterMs: 600 });
     }
 
     const emailInput = page.locator('input[type="email"]:visible').first();
     const passwordInput = page.locator('input[type="password"]:visible').first();
-    await emailInput.fill(creds.loginId);
-    await passwordInput.fill(creds.password);
+    console.log('Typing login ID naturally...');
+    await humanType(emailInput, creds.loginId, { minCharDelayMs: 90, maxCharDelayMs: 170 });
+    await humanHesitate(500, 1000);
+    console.log('Typing password naturally...');
+    await humanType(passwordInput, creds.password, { minCharDelayMs: 80, maxCharDelayMs: 160 });
+    await humanHesitate(800, 1500);
 
-    console.log('Waiting for reCAPTCHA solution / login...');
+    console.log('[captcha] Attempting automated reCAPTCHA solution...');
+    const solved = await autoSolveRecaptcha(page);
+    if (solved) {
+      console.log('✓ reCAPTCHA passed! Clicking Sign In...');
+      const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
+      if (await submitButton.isVisible({ timeout: 2000 })) {
+        await humanClick(submitButton, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+      }
+    } else {
+      console.log('Standing by for reCAPTCHA solution / login (manual or fallback)...');
+    }
+
     for (let sec = 0; sec < 120; sec++) {
       await page.waitForTimeout(1000);
       const updatedCookies = await context.cookies();
@@ -193,7 +220,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         try {
           const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
           if (await submitButton.isVisible()) {
-            await submitButton.click({ timeout: 3000 });
+            await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
           }
         } catch {}
         break;
@@ -206,36 +233,35 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log(`✓ Active session exists in profile for "${account.label}". Login & CAPTCHA bypassed!`);
   }
 
-  await page.waitForTimeout(1500);
+  await humanHesitate(1200, 2000);
 
   console.log('\n--- Step 3: Selecting PNB Card ---');
   const activeCardText = await page.locator('button.nav-dropdown-trigger').first().textContent().catch(() => '');
   if (!activeCardText?.includes('PNB')) {
     console.log('Selecting PNB card in dropdown...');
-    await page.locator('button.nav-dropdown-trigger').first().click();
-    await page.waitForTimeout(400);
-    await page.locator('a.dropdown-item:has-text("PNB Salary Imperial")').first().click();
-    await page.waitForTimeout(1500);
+    await humanClick(page.locator('button.nav-dropdown-trigger').first(), { hesitateBeforeMs: 500, pauseAfterMs: 800 });
+    const cardItem = page.locator('a.dropdown-item:has-text("PNB Salary Imperial")').first();
+    await humanClick(cardItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
   } else {
     console.log('✓ PNB Salary Imperial card already selected.');
   }
 
   const targetCategory = benefitDetails.benefitType || 'Gym Access';
   console.log(`\n--- Step 4: Navigating to ${targetCategory} ---`);
-  await page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")').click();
-  await page.waitForTimeout(400);
+  await humanHesitate(1000, 1800);
+  await humanClick(page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")'), { hesitateBeforeMs: 500, pauseAfterMs: 700 });
 
   const categoryItem = page.locator(`a.dropdown-item:has-text("${targetCategory}")`).first();
   if (await categoryItem.isVisible({ timeout: 2000 })) {
-    await categoryItem.click();
+    await humanClick(categoryItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
   } else {
     console.log(`Dropdown item for "${targetCategory}" not found directly. Checking first available item...`);
     const fallbackItem = page.locator(`a.dropdown-item`).first();
-    await fallbackItem.click();
+    await humanClick(fallbackItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
   }
-  await page.waitForTimeout(2000);
 
   console.log(`\n--- Step 5: Clicking Redeem on Category Page (${benefitDetails.exactBenefit}) ---`);
+  await humanHesitate(1500, 2500);
   let redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
   if (benefitDetails.benefitProvider) {
     const providerCardBtn = page
@@ -247,23 +273,68 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     }
   }
   await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
-  await redeemBtn.click();
-  await page.waitForTimeout(1500);
+  await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
 
   console.log('\n--- Step 6: Clicking Redeem Now on Benefit Page ---');
+  await humanHesitate(1800, 2800);
   const redeemNowBtn = page.locator('button:has-text("Redeem Now")').first();
   await redeemNowBtn.waitFor({ state: 'visible', timeout: 8000 });
-  await redeemNowBtn.click();
-  await page.waitForTimeout(1000);
+  await humanClick(redeemNowBtn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
 
   console.log('\n--- Step 7: Payment Confirmation Modal ---');
-  const continueToPaymentBtn = page.locator('.payment-modal .payment-continue-btn, button:has-text("Continue to Payment"):visible').first();
-  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 5000 });
-  console.log('Clicking "Continue to Payment"...');
-  await continueToPaymentBtn.click();
+  await humanHesitate(2000, 3200); // Allow modal animation to complete and simulate human reading
+
+  // Inspect modal elements
+  const modalInfo = await page.evaluate(() => {
+    const dialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], .fade.show, .modal-dialog'));
+    const buttons = dialogs.flatMap((d) =>
+      Array.from(d.querySelectorAll('button, a, [role="button"]')).map((el) => ({
+        tag: el.tagName,
+        text: el.textContent?.trim(),
+        className: el.className,
+        disabled: (el as HTMLButtonElement).disabled,
+        visible: (el as HTMLElement).offsetParent !== null,
+      }))
+    );
+    return { count: dialogs.length, buttons };
+  });
+  console.log('[modal]', JSON.stringify(modalInfo));
+
+  const continueToPaymentBtn = page
+    .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible')
+    .first();
+  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 8000 });
+  console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
+  await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
+  // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler
+  await continueToPaymentBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
 
   console.log('Waiting for response / gateway redirect...');
-  await page.waitForTimeout(5000);
+  for (let sec = 0; sec < 30; sec++) {
+    if (popupTracker.page) {
+      console.log(`[gateway] Detected payment popup page: ${popupTracker.page.url()}`);
+      break;
+    }
+    if (!page.url().includes('rupayselect.truztee.com')) {
+      console.log(`[gateway] Main page redirected to gateway: ${page.url()}`);
+      break;
+    }
+    if (cooldownDetectedUntil) {
+      break;
+    }
+    // Re-click if still on truztee after 4 seconds
+    if (sec === 4 && page.url().includes('rupayselect.truztee.com')) {
+      try {
+        const btn = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible').first();
+        if (await btn.isVisible()) {
+          console.log('[gateway] Re-clicking "Continue to Payment"...');
+          await btn.click({ force: true });
+          await btn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+        }
+      } catch {}
+    }
+    await page.waitForTimeout(1000);
+  }
 
   if (cooldownDetectedUntil) {
     const cd = cooldownDetectedUntil as Date;
@@ -276,9 +347,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     return;
   }
 
-  // Determine active payment page (either new tab or current page redirect)
-  const activePaymentPage: Page = paymentPage ?? page;
+  const activePaymentPage: Page = popupTracker.page ?? page;
+  if (activePaymentPage.url().includes('rupayselect.truztee.com')) {
+    console.error('[gateway] Fatal: Gateway did not redirect/open within 30s. Saving screenshot...');
+    await activePaymentPage.screenshot({ path: 'gateway-redirect-failed.png' });
+    await context.close();
+    await client.end();
+    return;
+  }
+
+  // Active payment page (either new tab or current page redirect)
   console.log(`Payment Page URL: ${activePaymentPage.url()}`);
+  await activePaymentPage.waitForLoadState('domcontentloaded').catch(() => {});
+  await activePaymentPage.waitForTimeout(3000); // Allow gateway and iframes to render
   console.log(`Payment Page Title: ${await activePaymentPage.title()}`);
 
   // Inspect payment form elements (inputs, iframes)
@@ -307,7 +388,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('Payment Gateway Elements Detected:', JSON.stringify(formAnalysis, null, 2));
 
   // Step 8: Static Payment Gateway Automation
-  if (paymentDetails && paymentDetails.mode === 'full') {
+  if (paymentDetails && (paymentDetails.mode === 'full' || paymentDetails.mode === 'saved_card')) {
     console.log('\n--- Step 8: Executing Static Gateway Automation ---');
     const filled = await fillCardDetailsOnGateway(activePaymentPage, paymentDetails);
     if (filled) {
@@ -339,12 +420,25 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log(`[gateway] OTP recipient: ${targetPhoneNumber} (${settings?.whatsappPhoneNumber ? 'workspace owner' : 'account default'})`);
   }
 
+  // Create portal order attempt record to track this execution
+  const [attempt] = await db
+    .insert(schema.portalOrderAttempts)
+    .values({
+      workspaceId: account.workspaceId,
+      portalAccountId: account.id,
+      instanceId: candidate.instanceId,
+      ruleId: candidate.ruleId,
+      state: 'submitting',
+      submissionStartedAt: new Date(),
+    })
+    .returning();
+
   const otpCompleted = await promptForOtpAndSubmit(
     activePaymentPage,
     {
       db,
       portalAccountId: account.id,
-      attemptId: candidate.instanceId,
+      attemptId: attempt.id,
       telegramChatId,
       phoneNumber: targetPhoneNumber,
       cardName: cardRow?.cardName ?? 'RuPay Card',
@@ -362,7 +456,44 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
         const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
         if (bookingMatch) {
-          console.log(`\n🎉 Booking Reference Confirmed: ${bookingMatch[1]}`);
+          const bookingRef = bookingMatch[1];
+          console.log(`\n🎉 Booking Reference Confirmed: ${bookingRef}`);
+          const today = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
+
+          try {
+            await finalizeConfirmedOrder(db as any, attempt.id, bookingRef, today);
+            if (candidate.chosenOptionId) {
+              await db
+                .update(schema.benefitInstances)
+                .set({ chosenOptionId: candidate.chosenOptionId })
+                .where(eq(schema.benefitInstances.id, candidate.instanceId));
+            }
+            console.log(`[portal] ✓ Successfully auto-recorded booking ID "${bookingRef}" against benefit instance ${candidate.instanceId} in portal database!`);
+          } catch (e) {
+            console.error('[portal] Error in finalizeConfirmedOrder, running direct update:', e);
+            await db
+              .update(schema.benefitInstances)
+              .set({
+                orderStatus: 'Ordered but Coupon not received',
+                orderDate: today,
+                rupayBookingId: bookingRef,
+                ...(candidate.chosenOptionId ? { chosenOptionId: candidate.chosenOptionId } : {}),
+                comments: `Auto-ordered via RuPay portal runner on ${today} (Ref: ${bookingRef})`,
+              })
+              .where(eq(schema.benefitInstances.id, candidate.instanceId));
+
+            await db
+              .update(schema.portalOrderAttempts)
+              .set({ state: 'confirmed', bookingReference: bookingRef, finishedAt: new Date() })
+              .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+            const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            await recordPortalAccountCooldown(db as any, account.id, cooldown24h, 'order_completed_cooldown');
+            console.log(`[portal] ✓ Direct fallback update completed for instance ${candidate.instanceId}.`);
+          }
+
+          const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          console.log(`[portal] ⏱️ Account "${account.label}" placed into 24-hour cooldown until: ${cooldown24h.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
           if (telegramChatId) {
             const tg = getTelegramClient();
             await tg.sendBookingConfirmation({

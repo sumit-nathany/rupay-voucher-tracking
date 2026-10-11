@@ -231,14 +231,16 @@ export async function finalizeConfirmedOrder(
     })
     .where(eq(portalOrderAttempts.id, attempt.id));
 
-  // Update portal account
+  // Update portal account with 24h cooldown
+  const cooldownUntil = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   await db
     .update(portalAccounts)
     .set({
       lastConfirmedOrderAt: now,
       lastCheckedAt: now,
+      cooldownUntil,
       status: hasConflict ? 'needs_attention' : 'connected',
-      statusDetailCode: hasConflict ? 'tracker_reference_conflict' : null,
+      statusDetailCode: hasConflict ? 'tracker_reference_conflict' : 'order_completed_cooldown',
       updatedAt: now,
     })
     .where(eq(portalAccounts.id, attempt.portalAccountId));

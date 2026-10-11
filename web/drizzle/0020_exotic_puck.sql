@@ -1,0 +1,1 @@
+ALTER TABLE "app"."portal_card_mappings" DROP CONSTRAINT IF EXISTS "portal_card_mappings_workspace_card_key";
