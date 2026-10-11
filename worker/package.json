@@ -11,7 +11,8 @@
     "daemon:preprod": "tsx --env-file ../web/.env.preprod src/daemon.ts",
     "login:preprod": "tsx --env-file ../web/.env.preprod src/login-helper.ts",
     "browser:preprod": "tsx --env-file ../web/.env.preprod src/browser-runner.ts",
-    "test:live": "tsx --env-file ../web/.env.preprod src/browser-runner.ts"
+    "browser:local": "tsx --env-file ../web/.env.local src/browser-runner.ts",
+    "test:live": "tsx --env-file ../web/.env.local src/browser-runner.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

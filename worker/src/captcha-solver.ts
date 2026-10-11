@@ -106,7 +106,7 @@ export async function transcribeAudioWithGemini(
   audioBuffer: Buffer,
   apiKey: string,
 ): Promise<string | null> {
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-flash-latest', 'gemini-3.5-transcribe', 'gemini-3.8-flash'];
   const base64Audio = audioBuffer.toString('base64');
 
   for (const model of models) {
@@ -117,27 +117,34 @@ export async function transcribeAudioWithGemini(
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20000),
         body: JSON.stringify({
           contents: [
             {
+              role: 'user',
               parts: [
                 {
-                  text: 'Listen to this audio challenge carefully. Transcribe ONLY the numbers or words spoken. Return just the plain transcribed text and nothing else.',
+                  text: 'Listen to this audio challenge carefully. Transcribe ONLY the numbers or words spoken. Return just the plain transcribed digits or words separated by space and nothing else.',
                 },
                 {
-                  inline_data: {
-                    mime_type: 'audio/mp3',
+                  inlineData: {
+                    mimeType: 'audio/mp3',
                     data: base64Audio,
                   },
                 },
               ],
             },
           ],
+          generationConfig: {
+            maxOutputTokens: 60,
+            temperature: 0.1,
+          },
         }),
       });
 
       if (!res.ok) {
-        console.warn(`[captcha] Gemini model ${model} responded with ${res.status}: ${res.statusText}`);
+        const errText = await res.text().catch(() => '');
+        console.warn(`[captcha] Gemini model ${model} responded with ${res.status}: ${errText.slice(0, 150)}`);
         continue;
       }
 
@@ -197,7 +204,14 @@ export async function solveRecaptchaViaAudio(
   console.log('[captcha] Attempting reCAPTCHA Audio Challenge bypass...');
   try {
     // 1. Locate the bframe (challenge popup iframe)
-    const bframe = page.frames().find((f) => f.url().includes('recaptcha/api2/bframe'));
+    let bframe = page.frames().find((f) => f.url().includes('recaptcha/api2/bframe'));
+    if (!bframe) {
+      for (let i = 0; i < 6; i++) {
+        await page.waitForTimeout(500);
+        bframe = page.frames().find((f) => f.url().includes('recaptcha/api2/bframe'));
+        if (bframe) break;
+      }
+    }
     if (!bframe) {
       console.log('[captcha] Challenge bframe not found.');
       return false;
@@ -205,8 +219,12 @@ export async function solveRecaptchaViaAudio(
 
     // 2. Click the audio challenge button
     const audioBtn = bframe.locator('#recaptcha-audio-button, button#recaptcha-audio-button').first();
-    if (await audioBtn.isVisible({ timeout: 2000 })) {
+    try {
+      await audioBtn.waitFor({ state: 'visible', timeout: 5000 });
       await humanClick(audioBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1200 });
+    } catch {
+      console.warn('[captcha] Audio challenge button (#recaptcha-audio-button) not visible.');
+      return false;
     }
 
     await humanDelay(1500, 2500);

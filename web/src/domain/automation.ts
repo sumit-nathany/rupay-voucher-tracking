@@ -932,6 +932,7 @@ export async function findCandidatesForAccount(
   db: Database,
   portalAccountId: string,
   today: string,
+  options?: { ignoreCooldown?: boolean },
 ): Promise<CandidateNomination['candidate'] | null> {
   // 1. Verify account is connected and not paused
   const [account] = await db
@@ -942,7 +943,7 @@ export async function findCandidatesForAccount(
   if (!account || account.status !== 'connected') return null;
 
   // 1b. Check if account is in a portal 24-hour rate limit cooldown
-  if (account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
+  if (!options?.ignoreCooldown && account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
     return null;
   }
 
@@ -957,19 +958,21 @@ export async function findCandidatesForAccount(
   // 3. 24-Hour limit check:
   // Account must NOT have an attempt with submission_started_at within last 24 hours
   // in confirmed, uncertain, or resolved_no_order states
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recentAttempts = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(portalOrderAttempts)
-    .where(
-      and(
-        eq(portalOrderAttempts.portalAccountId, portalAccountId),
-        gte(portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
-        inArray(portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
-      ),
-    );
+  if (!options?.ignoreCooldown) {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentAttempts = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(portalOrderAttempts)
+      .where(
+        and(
+          eq(portalOrderAttempts.portalAccountId, portalAccountId),
+          gte(portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
+          inArray(portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
+        ),
+      );
 
-  if (recentAttempts[0].count > 0) return null;
+    if (recentAttempts[0].count > 0) return null;
+  }
 
   // Also check for any active in-flight attempt
   const activeAttempts = await db

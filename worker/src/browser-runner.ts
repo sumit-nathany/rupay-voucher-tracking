@@ -20,6 +20,7 @@ import { finalizeConfirmedOrder } from '../../web/src/domain/automation-worker';
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
   headless?: boolean;
+  ignoreCooldown?: boolean;
 }
 
 export async function runBrowserTest(options?: BrowserRunnerOptions) {
@@ -57,7 +58,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log(`Found account "${account.label}". Decrypted credentials ready.`);
 
   const today = new Date().toISOString().slice(0, 10);
-  const candidate = await findCandidatesForAccount(db, account.id, today);
+  const ignoreCooldown =
+    options?.ignoreCooldown ??
+    (process.argv.includes('--force') || process.argv.includes('--ignore-cooldown'));
+  if (ignoreCooldown) {
+    console.log('[runner] --force / ignoreCooldown active: bypassing 24h limit checks for testing.');
+  }
+  const candidate = await findCandidatesForAccount(db, account.id, today, { ignoreCooldown });
 
   if (!candidate) {
     console.log('No candidate nominated.');
@@ -243,15 +250,28 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         try {
           const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
           if (await submitButton.isVisible()) {
+            console.log('[captcha] CAPTCHA solved! Clicking Sign In...');
             await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
           }
         } catch {}
-        break;
       }
     }
-    if (jwtCookie) {
-      console.log(`✓ Login complete! Session token saved in profile for ${account.label}.`);
+
+    // Give a few extra seconds for network authentication to complete
+    if (!jwtCookie) {
+      for (let w = 0; w < 10; w++) {
+        await page.waitForTimeout(1000);
+        const updatedCookies = await context.cookies();
+        jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
+        if (jwtCookie) break;
+      }
     }
+
+    if (!jwtCookie) {
+      throw new Error(`Login timed out or failed for account "${account.label}". Please check credentials or complete CAPTCHA.`);
+    }
+
+    console.log(`✓ Login complete! Session token saved in profile for ${account.label}.`);
   } else {
     console.log(`✓ Active session exists in profile for "${account.label}". Login & CAPTCHA bypassed!`);
   }
@@ -274,8 +294,41 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await humanHesitate(1000, 1800);
   await humanClick(page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")'), { hesitateBeforeMs: 500, pauseAfterMs: 700 });
 
-  const categoryItem = page.locator(`a.dropdown-item:has-text("${targetCategory}")`).first();
+  const dropdownTexts = await page.locator('a.dropdown-item').allTextContents().catch(() => []);
+  console.log(`[dropdown] Available categories: ${dropdownTexts.map((t) => t.trim()).filter(Boolean).join(', ')}`);
+
+  const targetLower = targetCategory.toLowerCase();
+  const tokens = targetLower.split(/\s+/).filter((w) => w.length > 3);
+  let matchedItemText: string | null = null;
+
+  for (const text of dropdownTexts) {
+    const t = text.trim();
+    if (!t) continue;
+    const tl = t.toLowerCase();
+    if (tl === targetLower || tl.includes(targetLower) || targetLower.includes(tl)) {
+      matchedItemText = t;
+      break;
+    }
+  }
+
+  if (!matchedItemText) {
+    for (const text of dropdownTexts) {
+      const t = text.trim();
+      if (!t) continue;
+      const tl = t.toLowerCase();
+      if (tokens.some((token) => tl.includes(token))) {
+        matchedItemText = t;
+        break;
+      }
+    }
+  }
+
+  const categoryItem = matchedItemText
+    ? page.locator(`a.dropdown-item:has-text("${matchedItemText}")`).first()
+    : page.locator(`a.dropdown-item:has-text("${targetCategory}")`).first();
+
   if (await categoryItem.isVisible({ timeout: 2000 })) {
+    console.log(`Clicking matched category: "${await categoryItem.textContent().catch(() => '')}"`);
     await humanClick(categoryItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
   } else {
     console.log(`Dropdown item for "${targetCategory}" not found directly. Checking first available item...`);
