@@ -45,14 +45,12 @@ export function AutomationHeader({
   enabled,
   whatsappPhoneNumber,
   telegramChatId,
-  updatedAt,
   hasAttentionAccounts,
   nextRun,
 }: {
   enabled: boolean;
   whatsappPhoneNumber?: string | null;
   telegramChatId?: string | null;
-  updatedAt: string;
   hasAttentionAccounts: boolean;
   nextRun?: NextRunView;
 }) {
@@ -160,17 +158,9 @@ export function AutomationHeader({
     }
   }
 
-  const updatedDateStr = new Date(updatedAt).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Kolkata',
-  });
-
-  // Dynamic next run schedule description and badge
+  // Format dynamic schedule description and status pill
   let scheduleDescription: React.ReactNode = null;
-  let scheduleBadge: React.ReactNode = null;
+  let schedulePill: React.ReactNode = null;
 
   if (nextRun?.nextRunAt) {
     const nextRunDate = new Date(nextRun.nextRunAt);
@@ -190,7 +180,7 @@ export function AutomationHeader({
     const scheduleLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
 
     if (nextRunDate > now) {
-      scheduleBadge = (
+      schedulePill = (
         <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
           <Clock className="h-3 w-3" />
           Next unlock: {scheduleLabel}
@@ -199,7 +189,7 @@ export function AutomationHeader({
 
       scheduleDescription = (
         <>
-          Next run scheduled: <span className="font-semibold text-foreground">{scheduleLabel}</span> (when {nextRun.accountLabel} unlocks).
+          Orders run unattended. Next eligible run triggers <span className="font-semibold text-foreground">{scheduleLabel}</span> when {nextRun.accountLabel} unlocks.
         </>
       );
     }
@@ -208,13 +198,13 @@ export function AutomationHeader({
   if (!scheduleDescription) {
     if (!enabled) {
       scheduleDescription = (
-        <>Automation is currently paused. Enable automation to resume scheduled daily ordering.</>
+        <>Automation is paused. Toggle on to resume scheduled automatic voucher ordering.</>
       );
     } else if (nextRun?.reason === 'ready_now') {
-      scheduleBadge = (
+      schedulePill = (
         <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
           <Clock className="h-3 w-3" />
-          Eligible to run now
+          Eligible now
         </Badge>
       );
       scheduleDescription = (
@@ -224,7 +214,7 @@ export function AutomationHeader({
       );
     } else {
       scheduleDescription = (
-        <>Scheduled daily at 02:00 AM IST (Asia/Kolkata). Max 1 order per portal account per 24 hours.</>
+        <>Scheduled daily at 02:00 AM IST. Max 1 order per portal account per 24 hours.</>
       );
     }
   }
@@ -233,32 +223,28 @@ export function AutomationHeader({
 
   return (
     <div className="space-y-4">
-      {/* Header Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-border/80 bg-gradient-to-r from-card via-card to-muted/20 p-5 shadow-xs">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0">
-              <Bot className="h-5 w-5" />
+      {/* Header Box */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
+        <div className="flex items-center gap-3.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs">
+            <Bot className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg font-bold tracking-tight text-foreground">Automated RuPay Ordering</h1>
+              <Badge variant={enabled ? 'default' : 'secondary'} className="text-[10px] font-semibold">
+                {enabled ? 'Active' : 'Paused'}
+              </Badge>
+              {schedulePill}
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">Automated RuPay Ordering</h1>
-                <Badge variant={enabled ? 'default' : 'secondary'} className="text-[11px] font-semibold">
-                  {enabled ? 'Active' : 'Paused'}
-                </Badge>
-                {scheduleBadge}
-              </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground/80 shrink-0" />
-                <span>{scheduleDescription}</span>
-                <span className="text-muted-foreground/50 text-[11px]">• Updated {updatedDateStr}</span>
-              </p>
-            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {scheduleDescription}
+            </p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+        <div className="flex items-center gap-2.5 flex-wrap md:flex-nowrap shrink-0">
           {/* Unified OTP Channels Dialog */}
           <Dialog open={channelsDialogOpen} onOpenChange={setChannelsDialogOpen}>
             <DialogTrigger asChild>
@@ -270,9 +256,9 @@ export function AutomationHeader({
                 <BellRing className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
                 OTP Channels
                 {hasAnyOtpChannel ? (
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="OTP channel connected" />
+                  <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="Channel connected" />
                 ) : (
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No OTP channel connected" />
+                  <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No channel configured" />
                 )}
               </Button>
             </DialogTrigger>

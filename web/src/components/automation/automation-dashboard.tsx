@@ -25,12 +25,12 @@ export function AutomationDashboard({
   attempts,
 }: AutomationDashboardProps) {
   return (
-    <Tabs defaultValue="accounts" className="space-y-5">
-      <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-        <TabsList className="bg-muted/70 p-1 h-10 gap-1">
+    <Tabs defaultValue="accounts" className="space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <TabsList className="bg-muted/60 p-1 h-10 border border-border/70 rounded-xl gap-1 shadow-2xs">
           <TabsTrigger
             value="accounts"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
           >
             <KeyRound className="h-3.5 w-3.5 text-primary" />
             <span>Accounts & Cards</span>
@@ -40,7 +40,7 @@ export function AutomationDashboard({
           </TabsTrigger>
           <TabsTrigger
             value="rules"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
           >
             <Sliders className="h-3.5 w-3.5 text-primary" />
             <span>Ordering Rules</span>
@@ -50,7 +50,7 @@ export function AutomationDashboard({
           </TabsTrigger>
           <TabsTrigger
             value="activity"
-            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
+            className="gap-2 px-3.5 py-1.5 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs rounded-lg transition-all"
           >
             <History className="h-3.5 w-3.5 text-primary" />
             <span>Activity Log</span>

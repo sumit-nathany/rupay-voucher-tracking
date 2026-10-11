@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, KeyRound, Pause, Play, Trash2, CreditCard, Clock } from 'lucide-react';
+import { Plus, KeyRound, Pause, Play, Trash2, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -107,6 +107,8 @@ function AccountCard({
     }
   }
 
+  const isCooldown = account.status === 'connected' && Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
+
   const statusTone = {
     connected: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     paused: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
@@ -117,53 +119,66 @@ function AccountCard({
   }[account.status];
 
   return (
-    <div className="flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 shadow-xs space-y-3">
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-0.5">
-            <h3 className="text-sm font-bold text-foreground leading-tight">{account.label}</h3>
-            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <CreditCard className="h-3 w-3" />
-              {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount} rules
-            </p>
+    <div className="flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-5 shadow-xs hover:border-border transition-all space-y-4">
+      <div className="space-y-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs">
+              <KeyRound className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-foreground truncate" title={account.label}>
+                {account.label}
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}
+              </p>
+            </div>
           </div>
-          <Badge variant="outline" className={`text-[10px] font-semibold uppercase tracking-wider capitalize ${statusTone}`}>
-            {account.status.replace('_', ' ')}
-          </Badge>
+
+          {isCooldown ? (
+            <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1 shrink-0">
+              <Clock className="h-3 w-3" />
+              Cooldown
+            </Badge>
+          ) : (
+            <Badge variant="outline" className={`text-[10px] font-semibold tracking-wider shrink-0 capitalize ${statusTone}`}>
+              {account.status.replace('_', ' ')}
+            </Badge>
+          )}
         </div>
 
-        {account.phoneNumber && (
-          <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-            <span>💬 WhatsApp OTP:</span>
-            <span className="font-mono">{account.phoneNumber}</span>
-          </p>
-        )}
-
-        {account.statusDetailCode && (
-          <p className="text-[11px] font-medium text-destructive">
-            Reason: {account.statusDetailCode.replace(/_/g, ' ')}
-          </p>
-        )}
-
-        {account.cooldownUntil && new Date(account.cooldownUntil) > new Date() && (
-          <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
-            <Clock className="h-3 w-3 shrink-0" />
-            <span>
-              24h limit active until{' '}
-              {new Date(account.cooldownUntil).toLocaleString('en-IN', {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
+        {/* 24h Portal Limit Cooldown Callout */}
+        {isCooldown && account.cooldownUntil && (
+          <div className="flex items-center justify-between rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-1.5 font-medium">
+              <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                Unlocks {new Date(account.cooldownUntil).toLocaleString('en-IN', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  timeZone: 'Asia/Kolkata',
+                })} IST
+              </span>
+            </div>
+            <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">24h limit</span>
           </div>
         )}
 
-        <div className="text-[11px] text-muted-foreground space-y-0.5 pt-1 border-t border-border/40">
-          <p>
-            Last confirmed order:{' '}
-            <span className="text-foreground font-medium">
+        {/* Real Error Callout (Only when attention or error is genuinely needed) */}
+        {account.status !== 'connected' && account.statusDetailCode && account.statusDetailCode !== 'daily_limit_reached' && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            Action needed: {account.statusDetailCode.replace(/_/g, ' ')}
+          </div>
+        )}
+
+        {/* Metadata Grid */}
+        <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50 text-xs">
+          <div>
+            <span className="text-[11px] text-muted-foreground block">Last confirmed order</span>
+            <span className="font-medium text-foreground text-xs mt-0.5 block">
               {account.lastConfirmedOrderAt
                 ? new Date(account.lastConfirmedOrderAt).toLocaleDateString('en-IN', {
                     day: 'numeric',
@@ -172,12 +187,25 @@ function AccountCard({
                   })
                 : 'None yet'}
             </span>
-          </p>
+          </div>
+          <div>
+            <span className="text-[11px] text-muted-foreground block">WhatsApp OTP</span>
+            <span className="font-medium text-foreground text-xs font-mono mt-0.5 block">
+              {account.phoneNumber || 'Workspace default'}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2 border-t border-border/50">
-        <Button variant="ghost" size="sm" onClick={onEdit} className="h-7 text-xs font-semibold px-2">
+      {/* Card Footer Actions */}
+      <div className="flex items-center justify-between pt-3 border-t border-border/60">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onEdit}
+          className="h-8 text-xs font-semibold gap-1.5 border-border/80"
+        >
+          <KeyRound className="h-3 w-3 text-muted-foreground" />
           Update Credentials
         </Button>
         <div className="flex items-center gap-1">
@@ -186,7 +214,7 @@ function AccountCard({
             size="icon"
             disabled={busy}
             onClick={() => void handleTogglePause()}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             title={account.status === 'paused' ? 'Resume Account' : 'Pause Account'}
           >
             {account.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
@@ -196,7 +224,7 @@ function AccountCard({
             size="icon"
             disabled={busy}
             onClick={() => void handleDelete()}
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            className="h-8 w-8 text-muted-foreground hover:text-destructive"
             title="Disconnect Account"
           >
             <Trash2 className="h-3.5 w-3.5" />
