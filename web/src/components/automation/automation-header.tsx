@@ -90,21 +90,20 @@ export function AutomationHeader({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 sm:space-y-8">
       <PageHeader
         eyebrow="Automation"
         title="Automated Ordering"
         description="Daily unattended voucher ordering across portal accounts, cards, and priority rules."
-        className="mb-0"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Run Order Now Action */}
             <Button
               variant="outline"
               size="sm"
               disabled={triggeringOrder || busy || !enabled}
               onClick={() => void handleRunOrderNow()}
-              className="h-9 px-3.5 text-sm font-medium gap-2 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
+              className="h-10 px-4 text-sm font-medium gap-2 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary rounded-xl"
               title="Trigger an automated order run immediately"
             >
               {triggeringOrder ? (
@@ -122,7 +121,7 @@ export function AutomationHeader({
                 size="sm"
                 disabled={busy}
                 onClick={() => void handleToggle(false)}
-                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive h-9 px-3.5 text-sm font-medium gap-2"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive h-10 px-4 text-sm font-medium gap-2 rounded-xl"
               >
                 <PauseCircle className="h-4 w-4" />
                 Pause Automation
@@ -133,7 +132,7 @@ export function AutomationHeader({
                 size="sm"
                 disabled={busy}
                 onClick={() => void handleToggle(true)}
-                className="h-9 px-3.5 text-sm font-medium gap-2"
+                className="h-10 px-4 text-sm font-medium gap-2 rounded-xl"
               >
                 <PlayCircle className="h-4 w-4" />
                 Enable Automation
@@ -145,54 +144,54 @@ export function AutomationHeader({
 
       {/* Schedule / Cooldown Status Strip */}
       {isCooldownActive && formattedUnlockLabel ? (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-foreground">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 shrink-0">
-              <Clock className="h-4 w-4" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:p-5 text-sm text-foreground shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400 shrink-0">
+              <Clock className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-semibold text-foreground text-sm">
+              <p className="font-semibold text-foreground text-sm sm:text-base">
                 Next eligible run: {formattedUnlockLabel}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                 Waiting for {nextRun?.accountLabel} 24h portal cooldown
               </p>
             </div>
           </div>
-          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium self-start sm:self-auto">
+          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-medium px-3 py-1 self-start sm:self-auto">
             Cooldown active
           </Badge>
         </div>
       ) : !enabled ? (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 text-sm text-foreground">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-400 shrink-0">
-              <PauseCircle className="h-4 w-4" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:p-5 text-sm text-foreground shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400 shrink-0">
+              <PauseCircle className="h-5 w-5" />
             </div>
             <div>
-              <p className="font-semibold text-foreground text-sm">Automation is paused</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Scheduled orders are suspended until resumed.</p>
+              <p className="font-semibold text-foreground text-sm sm:text-base">Automation is paused</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">Scheduled orders are suspended until resumed.</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={() => void handleToggle(true)} className="h-8 text-xs font-medium bg-background">
+          <Button variant="outline" size="sm" onClick={() => void handleToggle(true)} className="h-9 px-3.5 text-xs font-medium bg-background rounded-xl">
             Resume
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-border/80 bg-muted/20 px-5 py-3.5 text-sm text-muted-foreground">
+          <div className="flex items-center gap-3">
             <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" />
-            <span className="font-medium text-foreground text-sm">
+            <span className="font-medium text-foreground text-sm sm:text-base">
               Automation active
             </span>
-            <span className="text-muted-foreground text-xs">•</span>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs sm:text-sm">•</span>
+            <span className="text-xs sm:text-sm text-muted-foreground">
               {nextRun?.reason === 'ready_now'
                 ? `Ready to order (${nextRun.accountLabel} eligible)`
                 : 'Scheduled daily at 02:00 AM IST'}
             </span>
           </div>
-          <span className="text-xs text-muted-foreground">Max 1 order / account / 24h</span>
+          <span className="text-xs sm:text-sm text-muted-foreground">Max 1 order / account / 24h</span>
         </div>
       )}
 

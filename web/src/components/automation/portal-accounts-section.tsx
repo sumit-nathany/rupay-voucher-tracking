@@ -63,34 +63,34 @@ export function PortalAccountsSection({
   const selectedAccount = accounts.find((a) => a.id === selectedAccountId) ?? null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">RuPay Portal Accounts</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">RuPay Portal Accounts</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
             Sign-in credentials used by the automated worker. Encrypted with AES-256-GCM.
           </p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="gap-2 text-sm font-medium">
+        <Button onClick={() => setAddOpen(true)} className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto">
           <Plus className="h-4 w-4" />
           Add Account
         </Button>
       </div>
 
       {accounts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
-          <KeyRound className="h-8 w-8 text-muted-foreground/60 mb-2" />
-          <p className="text-sm font-semibold text-foreground">No Portal Accounts Configured</p>
-          <p className="text-xs text-muted-foreground max-w-sm mt-1">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
+          <KeyRound className="h-10 w-10 text-muted-foreground/60 mb-3" />
+          <p className="text-base font-semibold text-foreground">No Portal Accounts Configured</p>
+          <p className="text-sm text-muted-foreground max-w-sm mt-1.5">
             Connect a RuPay Benefits portal login to enable unattended ordering for your mapped cards.
           </p>
-          <Button onClick={() => setAddOpen(true)} className="mt-4 gap-2 text-sm font-medium">
+          <Button onClick={() => setAddOpen(true)} className="mt-6 gap-2 text-sm font-medium h-10 px-4 rounded-xl">
             <Plus className="h-4 w-4" />
             Add RuPay Account
           </Button>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2 pt-1">
           {accounts.map((acc) => (
             <AccountCard
               key={acc.id}
@@ -143,27 +143,27 @@ function AccountCard({
     <button
       type="button"
       onClick={onClick}
-      className="group w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
+      className="group w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
       aria-label={`View details for ${account.label}`}
     >
-      <Card className="h-full overflow-hidden border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
-        <CardContent className="flex flex-row items-center justify-between gap-3.5 p-4 sm:p-5">
-          <div className="flex min-w-0 flex-1 items-center gap-3.5">
+      <Card className="h-full overflow-hidden rounded-2xl border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
+        <CardContent className="flex flex-row items-center justify-between gap-4 p-5 sm:p-6">
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <div
               aria-hidden
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
             >
-              <KeyRound className="h-5 w-5" />
+              <KeyRound className="h-6 w-6" />
             </div>
-            <div className="min-w-0 space-y-1">
+            <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="truncate font-semibold text-base leading-snug text-foreground group-hover:text-primary transition-colors">
+                <span className="truncate font-semibold text-base sm:text-lg leading-snug text-foreground group-hover:text-primary transition-colors">
                   {account.label}
                 </span>
                 {isCooldown ? (
                   <Badge
                     variant="outline"
-                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-normal text-xs leading-none gap-1"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-normal text-xs leading-none gap-1 py-1"
                   >
                     <Clock className="h-3 w-3" />
                     Cooldown
@@ -171,24 +171,24 @@ function AccountCard({
                 ) : account.status === 'connected' ? (
                   <Badge
                     variant="outline"
-                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal text-xs leading-none"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal text-xs leading-none py-1"
                   >
                     Active
                   </Badge>
                 ) : account.status === 'paused' ? (
-                  <Badge variant="secondary" className="leading-none text-xs font-normal">
+                  <Badge variant="secondary" className="leading-none text-xs font-normal py-1">
                     Paused
                   </Badge>
                 ) : (
-                  <Badge variant="destructive" className="leading-none text-xs font-normal">
+                  <Badge variant="destructive" className="leading-none text-xs font-normal py-1">
                     {account.status.replace('_', ' ')}
                   </Badge>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
-                <Badge variant="secondary" className="gap-1 font-normal text-xs px-2 py-0 h-5">
-                  <CreditCard className="h-3 w-3 opacity-70" aria-hidden />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-muted-foreground">
+                <Badge variant="secondary" className="gap-1.5 font-normal text-xs px-2.5 py-0.5 h-5.5">
+                  <CreditCard className="h-3.5 w-3.5 opacity-70" aria-hidden />
                   {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'}
                 </Badge>
                 <span>{account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}</span>
@@ -201,7 +201,7 @@ function AccountCard({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center pl-1 text-muted-foreground group-hover:text-foreground">
+          <div className="flex shrink-0 items-center pl-2 text-muted-foreground group-hover:text-foreground">
             <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
           </div>
         </CardContent>

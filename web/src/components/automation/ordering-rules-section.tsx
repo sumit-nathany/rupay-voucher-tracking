@@ -32,18 +32,18 @@ export function OrderingRulesSection({
   const [addOpen, setAddOpen] = useState(false);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">Ordering Rules & Priorities</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Ordering Rules & Priorities</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
             Rules determine which unclaimed benefit runs first each day. Lower priority numbers run first.
           </p>
         </div>
         <Button
           disabled={accounts.length === 0}
           onClick={() => setAddOpen(true)}
-          className="gap-2 text-sm font-medium"
+          className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto shrink-0"
         >
           <Plus className="h-4 w-4" />
           Create Rule
@@ -51,21 +51,21 @@ export function OrderingRulesSection({
       </div>
 
       {rules.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
-          <Sliders className="h-8 w-8 text-muted-foreground/60 mb-2" />
-          <p className="text-sm font-semibold text-foreground">No Ordering Rules Configured</p>
-          <p className="text-xs text-muted-foreground max-w-sm mt-1">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
+          <Sliders className="h-10 w-10 text-muted-foreground/60 mb-3" />
+          <p className="text-base font-semibold text-foreground">No Ordering Rules Configured</p>
+          <p className="text-sm text-muted-foreground max-w-sm mt-1.5">
             Create an ordering rule to nominate benefits for daily automated ordering.
           </p>
           {accounts.length > 0 && (
-            <Button onClick={() => setAddOpen(true)} className="mt-4 gap-2 text-sm font-medium">
+            <Button onClick={() => setAddOpen(true)} className="mt-6 gap-2 text-sm font-medium h-10 px-4 rounded-xl">
               <Plus className="h-4 w-4" />
               Create Rule
             </Button>
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4 pt-1">
           {rules.map((rule) => (
             <RuleRow key={rule.id} rule={rule} accounts={accounts} />
           ))}
@@ -105,18 +105,18 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
   }
 
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-xs">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 bg-primary/5 text-primary border-primary/20">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6 rounded-2xl border border-border/70 bg-card p-5 sm:p-6 shadow-xs">
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5 bg-primary/10 text-primary border-primary/20 rounded-lg">
             Priority {rule.priority}
           </Badge>
-          <h3 className="text-base font-semibold text-foreground">{rule.name}</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-foreground">{rule.name}</h3>
           <Badge variant={rule.enabled ? 'default' : 'secondary'} className="text-xs font-normal">
             {rule.enabled ? 'Enabled' : 'Disabled'}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
           Account: <span className="font-medium text-foreground">{acc?.label ?? 'Unknown'}</span> •{' '}
           {rule.cardIds.length === 0 ? 'All mapped cards' : `${rule.cardIds.length} cards`} •{' '}
           {rule.benefitIds.length === 0 ? 'All eligible benefits' : `${rule.benefitIds.length} benefits`}
@@ -129,7 +129,7 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
           size="sm"
           disabled={busy}
           onClick={() => void handleToggle()}
-          className="h-8 text-xs font-medium gap-1.5"
+          className="h-9 px-3.5 text-xs sm:text-sm font-medium gap-2 rounded-xl"
         >
           <Power className="h-3.5 w-3.5" />
           {rule.enabled ? 'Disable' : 'Enable'}
@@ -139,7 +139,7 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
           size="icon"
           disabled={busy}
           onClick={() => void handleDelete()}
-          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-destructive"
         >
           <Trash2 className="h-4 w-4" />
         </Button>

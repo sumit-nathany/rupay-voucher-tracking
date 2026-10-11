@@ -41,18 +41,18 @@ export function PortalCardMappingsSection({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
             Connect cards in your workspace to their RuPay portal login and optional payment gateway checkout details.
           </p>
         </div>
         <Button
           disabled={accounts.length === 0 || availableCards.length === 0}
           onClick={handleOpenAdd}
-          className="gap-2 text-sm font-medium"
+          className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto shrink-0"
         >
           <Plus className="h-4 w-4" />
           Map Card
@@ -60,29 +60,29 @@ export function PortalCardMappingsSection({
       </div>
 
       {mappings.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
-          <CreditCard className="h-8 w-8 text-muted-foreground/60 mb-2" />
-          <p className="text-sm font-semibold text-foreground">No Cards Mapped</p>
-          <p className="text-xs text-muted-foreground max-w-sm mt-1">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
+          <CreditCard className="h-10 w-10 text-muted-foreground/60 mb-3" />
+          <p className="text-base font-semibold text-foreground">No Cards Mapped</p>
+          <p className="text-sm text-muted-foreground max-w-sm mt-1.5">
             Map your RuPay cards to a portal account so browser automation knows which account to log into and which card details to use at checkout.
           </p>
           {accounts.length > 0 && availableCards.length > 0 && (
-            <Button onClick={handleOpenAdd} className="mt-4 gap-2 text-sm font-medium">
+            <Button onClick={handleOpenAdd} className="mt-6 gap-2 text-sm font-medium h-10 px-4 rounded-xl">
               <Plus className="h-4 w-4" />
               Map a Card
             </Button>
           )}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
+        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs mt-6">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
                 <tr>
-                  <th className="py-3 px-4">Tracker Card</th>
-                  <th className="py-3 px-4">Portal Account</th>
-                  <th className="py-3 px-4">Payment Gateway Details</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Tracker Card</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Portal Account</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6">Payment Gateway Details</th>
+                  <th className="py-3.5 sm:py-4 px-5 sm:px-6 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -90,41 +90,41 @@ export function PortalCardMappingsSection({
                   const acc = accounts.find((a) => a.id === m.portalAccountId);
                   return (
                     <tr key={m.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-sm text-foreground">{m.cardName}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
+                      <td className="py-4 sm:py-5 px-5 sm:px-6">
+                        <div className="font-semibold text-sm sm:text-base text-foreground">{m.cardName}</div>
+                        <div className="text-xs sm:text-sm text-muted-foreground mt-1">
                           {m.holderName} {m.last4 ? `(••${m.last4})` : ''}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-medium text-sm text-foreground">
+                      <td className="py-4 sm:py-5 px-5 sm:px-6 font-medium text-sm sm:text-base text-foreground">
                         {acc?.label ?? 'Unknown Account'}
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-4 sm:py-5 px-5 sm:px-6">
                         {m.paymentDetails ? (
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge
                               variant="outline"
-                              className="gap-1 font-mono text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 py-0.5 px-2 font-medium"
+                              className="gap-1.5 font-mono text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 py-1 px-2.5 font-medium"
                             >
-                              <ShieldCheck className="h-3 w-3" />
+                              <ShieldCheck className="h-3.5 w-3.5" />
                               {m.paymentDetails.mode === 'full'
                                 ? `${m.paymentDetails.maskedCardNumber || 'Full Card'} · Exp ${m.paymentDetails.expirySummary || '••/••'} · CVV ✓`
                                 : 'Saved Card · CVV ✓'}
                             </Badge>
                           </div>
                         ) : (
-                          <span className="text-xs text-muted-foreground italic">
+                          <span className="text-xs sm:text-sm text-muted-foreground italic">
                             No payment details set
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="py-4 sm:py-5 px-5 sm:px-6 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenEdit(m)}
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground"
                             title="Edit payment details / mapping"
                           >
                             <Edit2 className="h-4 w-4" />
