@@ -30,12 +30,13 @@ Read before any non-trivial change:
 From `web/`:
 
 ```bash
-npm run dev          # Next.js dev server
-npm run build        # production build
-npm test             # vitest run (single pass, node env)
-npm run lint         # eslint
-npm run db:generate  # drizzle-kit generate — after editing src/db/schema.ts
-npm run db:migrate   # apply migrations (needs DATABASE_URL)
+npm run dev               # Next.js dev server
+npm run build             # production build
+npm test                  # vitest run (single pass, node env)
+npm run lint              # eslint
+npm run db:generate       # drizzle-kit generate — after editing src/db/schema.ts
+npm run db:migrate:prod   # apply pending migrations to live production DB (uses pooler with prepare: false)
+npm run db:migrate:preprod# apply pending migrations to preprod DB
 ```
 
 From `worker/`: `npm run dev` (tsx) / `npm run build` (tsc) + `npm start`.
@@ -56,11 +57,27 @@ From `worker/`: `npm run dev` (tsx) / `npm run build` (tsc) + `npm start`.
 - Domain/DB tests use `createTestDb()` (`web/src/test/db.ts`): a fresh PGlite in-memory Postgres per test file with **every migration in `web/drizzle/` replayed** — no `DATABASE_URL` or Supabase needed. New migration files are picked up automatically and must be valid, replayable SQL.
 - Per PLAN.md's security model, every server action gets a tenant-isolation test proving workspace A cannot read, write, or reference workspace B's rows by ID — reads included; the reveal-code action is the highest priority.
 
-## Migrations
+## Migrations (CRITICAL: Database Migrations Precede UI Deployment)
 
-1. Edit `web/src/db/schema.ts`.
-2. `npm run db:generate`, then review/hand-edit the generated SQL in `web/drizzle/` — hand-written data-fix migrations also live here (see `0005`, `0007`, `0008`).
-3. `npm run db:migrate` to apply against the real database.
+> **MANDATORY RULE:** Whenever you create or modify migrations or schema: **YOU MUST RUN `npm run db:migrate:prod` BEFORE COMMITTING/PUSHING TO `main`**.
+>
+> **Why this matters:**
+> - Pushing or merging to `main` triggers an automatic Vercel production deployment.
+> - Vercel builds (`next build`) compile and deploy application code, but **do NOT execute database migrations**.
+> - Local vitest tests run on an ephemeral in-memory PGlite database which automatically replays `drizzle/` files; passing unit tests do **NOT** mean the live production database has the updated tables or columns!
+> - If code touching new tables or columns is deployed before the production DB is migrated, live queries crash with `relation "app.<table_name>" does not exist` or `column "<col>" does not exist`.
+
+### Migration Step-by-Step Checklist
+
+1. **Edit schema:** Modify `web/src/db/schema.ts`.
+2. **Generate migration:** Run `npm run db:generate` from `web/`.
+3. **Review SQL:** Inspect the newly generated migration file in `web/drizzle/` and verify `web/drizzle/meta/_journal.json`. Hand-written data-fix migrations also live here (e.g. `0005`, `0007`, `0008`).
+4. **Run tests:** Run `npm test` from `web/` to verify that PGlite replays all migrations cleanly and unit/tenant tests pass.
+5. **APPLY TO PRODUCTION:** Run `npm run db:migrate:prod` from `web/`.
+   - Verify console output confirms `All migrations applied successfully!`.
+   - If there is any migration hash discrepancy or error, resolve it immediately before proceeding.
+6. **Verify build:** Run `npm run build` from `web/` to ensure no compile-time or static analysis errors.
+7. **Commit and push:** Only after steps 4, 5, and 6 succeed, commit and push changes to git.
 
 ## Environment variables
 
@@ -79,7 +96,7 @@ Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/
 
 - **Commits:** conventional commits with a scope, lowercase, imperative — `feat(benefits): …`, `fix(catalog): …`, `refactor(domain): …`, `docs: …`. Common scopes: benefits, cards, holders, catalog, instances, domain, ui, filters, migration.
 - **Branches:** `feat/…` / `fix/…` off `main`; PRs target `main`.
-- **Deployments:** Never deploy to production manually (`npx vercel --prod` is not needed). Pushing or merging to `main` automatically triggers Vercel production deployment via git integration.
+- **Deployments:** Never deploy to production manually (`npx vercel --prod` is not needed). Pushing or merging to `main` automatically triggers Vercel production deployment via git integration. Because Vercel does NOT run migrations, whenever schema or migration files change, you MUST run `npm run db:migrate:prod` before pushing code to `main`! Deploying UI code ahead of DB migrations crashes live pages.
 - **Spec updates:** product decisions land in REQUIREMENTS.md/PLAN.md. External review rounds produce `Review Feedback vX.md` at the root; once findings are reconciled into the specs, those files are deleted.
 - **Feature docs:** new features get a requirements + implementation-plan pair under `docs/` before building (see `docs/automated-rupay-ordering-*.md`).
 - **In flight:** the `feat/automated-rupay-ordering` branch is building the automated ordering feature (worker, portal client, stored portal credentials) per `docs/automated-rupay-ordering-*.md`.
