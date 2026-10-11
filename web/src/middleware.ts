@@ -17,7 +17,7 @@ export async function middleware(request: NextRequest) {
     },
   });
   const { data } = await supabase.auth.getUser();
-  if (!data.user && !request.nextUrl.pathname.startsWith('/auth')) {
+  if (!data.user && !request.nextUrl.pathname.startsWith('/auth') && !request.nextUrl.pathname.startsWith('/api/webhooks')) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth/login';
     url.search = '';
