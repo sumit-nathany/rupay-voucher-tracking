@@ -93,13 +93,34 @@ Because all migrations are strictly backward compatible, applying them to the da
 4. **Run tests:** Run `npm test` from `web/` to verify that PGlite replays all migrations cleanly and all unit/tenant tests pass.
 5. **Verify build:** Run `npm run build` from `web/` to guarantee no compile-time or static analysis errors.
 6. **Apply to production:** Run `npm run db:migrate:prod` from `web/`.
+   - Verify terminal logs confirm targeting the production project ref (`kdtkvzbkppdqjjqzinbi`), NOT preprod.
    - Verify console output confirms `All migrations applied successfully!`.
    - Because the migration is backward compatible, the live application is completely safe even if deployment takes time.
 7. **Commit and push:** Push to `main` to trigger the Vercel production deployment of the new application code.
 
+### 3. Dual-Environment Database Targets (Prod vs Preprod)
+
+There are two separate Supabase Postgres databases:
+- **Production:** Supabase project ref `kdtkvzbkppdqjjqzinbi`, default workspace `c55818d7-7fcd-49a6-a270-cb908a9a0840`. This is the live database queried by Vercel production deployments.
+- **Pre-Production:** Supabase project ref `vxqexizifbzknsscicck`, default workspace `5c0f1e32-9179-47c7-8623-145ebd4fa6f8`. Used for local dev and staging.
+
+**Critical Guardrails:**
+- `web/.env.local` is frequently configured for preprod (`APP_ENV=preprod`). **Never assume `DATABASE_URL` in `.env.local` points to production.**
+- Production operations must always resolve `PROD_DATABASE_URL` (or `web/.env.prod`).
+- `scripts/lib/env.ts` actively guards against cross-environment pollution: targeting `prod` will fail loudly if the database URL points to preprod (`vxqexizifbzknsscicck`), and vice versa.
+- When executing migration or data scripts, always inspect the masked database connection log to verify the project ref matches `postgres.kdtkvzbkppdqjjqzinbi`.
+
+### 4. Error Visibility & Debuggability
+
+- **Never silently swallow errors in UI server components or actions.**
+- When handling exceptions in `try/catch` blocks in server components (e.g. `dashboard-content.tsx`, `benefits-content.tsx`):
+  - Always log `console.error('[component]', err)`.
+  - Pass the explicit error message to `<ErrorPanel message={...} />` (`e instanceof Error ? e.message : String(e)`).
+  - Silent error swallowing hides database errors, schema mismatches, and connection issues behind generic messages and makes debugging in production difficult.
+
 ## Environment variables
 
-Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/`). Web needs: `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `VOUCHER_ENCRYPTION_KEY` (32-byte base64), `PORTAL_CREDENTIAL_ENCRYPTION_KEY` (automation). Worker needs: `WORKER_DATABASE_URL` (or `DATABASE_URL`) and `PORTAL_USER_ID` / `PORTAL_JWT_FILE` / `PORTAL_SESSIONID_FILE` for portal sessions.
+Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/`). Web needs: `DATABASE_URL`, `PROD_DATABASE_URL`, `PREPROD_DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `VOUCHER_ENCRYPTION_KEY` (32-byte base64), `PORTAL_CREDENTIAL_ENCRYPTION_KEY` (automation). Worker needs: `WORKER_DATABASE_URL` (or `DATABASE_URL`) and `PORTAL_USER_ID` / `PORTAL_JWT_FILE` / `PORTAL_SESSIONID_FILE` for portal sessions.
 
 ## Security non-negotiables
 

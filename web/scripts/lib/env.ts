@@ -40,17 +40,31 @@ export function loadEnv(targetEnv?: string): { env: string; databaseUrl: string 
     );
   }
 
+  const PROD_REF = 'kdtkvzbkppdqjjqzinbi';
+  const PREPROD_REF = 'vxqexizifbzknsscicck';
+
+  if ((env === 'prod' || env === 'production') && databaseUrl.includes(PREPROD_REF)) {
+    throw new Error(
+      `[env] Target environment is '${env}', but resolved database URL points to pre-production project (${PREPROD_REF}). Check PROD_DATABASE_URL or .env.prod!`
+    );
+  }
+
+  if (env === 'preprod' && databaseUrl.includes(PROD_REF)) {
+    throw new Error(
+      `[env] Target environment is 'preprod', but resolved database URL points to production project (${PROD_REF}). Aborting for safety!`
+    );
+  }
+
   return { env, databaseUrl };
 }
 
 /**
- * Masks username/password credentials in a PostgreSQL connection string for safe logging.
+ * Masks password in a PostgreSQL connection string while preserving the username/project ref for verification.
  */
 export function maskDatabaseUrl(rawUrl: string): string {
   try {
     const u = new URL(rawUrl);
-    const maskedUser = u.username ? `${u.username.slice(0, 8)}...` : 'user';
-    return `${u.protocol}//${maskedUser}:****@${u.hostname}:${u.port || '5432'}${u.pathname}`;
+    return `${u.protocol}//${u.username}:****@${u.hostname}:${u.port || '5432'}${u.pathname}`;
   } catch {
     return 'postgres://****@****';
   }
