@@ -9,8 +9,14 @@ import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/lib/portal-cooldown';
+import { getAccountProfilePath } from './browser-profile';
 
-export async function runBrowserTest() {
+export interface BrowserRunnerOptions {
+  portalAccountId?: string;
+  headless?: boolean;
+}
+
+export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
   if (!dbUrl) {
     throw new Error('DATABASE_URL or WORKER_DATABASE_URL is required');
@@ -19,14 +25,26 @@ export async function runBrowserTest() {
   const client = postgres(dbUrl, { max: 1 });
   const db = drizzle(client, { schema }) as unknown as Database;
 
+  // Resolve account from options or CLI argument (--account=<id or label>)
+  const accountArg = options?.portalAccountId ?? process.argv.find((a) => a.startsWith('--account='))?.split('=')[1]?.trim();
+
   console.log('--- Step 1: Loading Candidate & Credentials ---');
-  const [account] = await db
+  const accounts = await db
     .select()
     .from(schema.portalAccounts)
     .where(eq(schema.portalAccounts.status, 'connected'));
 
-  if (!account) {
-    throw new Error('No connected portal account found in database.');
+  if (accounts.length === 0) {
+    throw new Error('No connected portal accounts found in database.');
+  }
+
+  let account = accounts[0];
+  if (accountArg) {
+    const match = accounts.find((a) => a.id === accountArg || a.label.toLowerCase() === accountArg.toLowerCase());
+    if (!match) {
+      throw new Error(`Account "${accountArg}" not found among connected accounts: ${accounts.map((a) => a.label).join(', ')}`);
+    }
+    account = match;
   }
 
   const creds = decryptPortalCredentials(account.credentialsEncrypted, account.id);
@@ -94,10 +112,11 @@ export async function runBrowserTest() {
   const paymentDetails = mapping ? decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id) : null;
   console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
 
-  console.log('\n--- Step 2: Launching Browser with Persistent Profile ---');
-  const userDataDir = path.resolve(process.cwd(), '.browser-data');
+  console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');
+  const userDataDir = getAccountProfilePath(account.id);
+  console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
   const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
-    headless: false,
+    headless: options?.headless ?? false,
     slowMo: 60,
     viewport: { width: 1366, height: 860 },
   });
@@ -177,8 +196,11 @@ export async function runBrowserTest() {
         break;
       }
     }
+    if (jwtCookie) {
+      console.log(`✓ Login complete! Session token saved in profile for ${account.label}.`);
+    }
   } else {
-    console.log('✓ Active session already exists in browser profile!');
+    console.log(`✓ Active session exists in profile for "${account.label}". Login & CAPTCHA bypassed!`);
   }
 
   await page.waitForTimeout(1500);
