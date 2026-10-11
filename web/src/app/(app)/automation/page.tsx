@@ -3,15 +3,11 @@ import { getAutomationDashboardAction } from '@/actions/automation';
 import { listCards } from '@/actions/cards';
 import { listHolders } from '@/actions/holders';
 import { AutomationHeader } from '@/components/automation/automation-header';
-import { PortalAccountsSection } from '@/components/automation/portal-accounts-section';
-import { PortalCardMappingsSection } from '@/components/automation/portal-card-mappings-section';
-import { OrderingRulesSection } from '@/components/automation/ordering-rules-section';
-import { AttemptsHistorySection } from '@/components/automation/attempts-history-section';
+import { AutomationDashboard } from '@/components/automation/automation-dashboard';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AutomationPage() {
-
   const [dashboard, rawCards, holders] = await Promise.all([
     getAutomationDashboardAction(),
     listCards(),
@@ -27,35 +23,31 @@ export default async function AutomationPage() {
   }));
 
   const hasAttentionAccounts =
-    dashboard.accounts.some((a) => a.status === 'needs_attention' || a.status === 'credentials_expired' || a.status === 'challenge_required') ||
-    dashboard.attempts.some((att) => att.state === 'uncertain');
+    dashboard.accounts.some(
+      (a) =>
+        a.status === 'needs_attention' ||
+        a.status === 'credentials_expired' ||
+        a.status === 'challenge_required',
+    ) || dashboard.attempts.some((att) => att.state === 'uncertain');
 
   return (
-    <ContentStage className="max-w-5xl space-y-8 py-6">
+    <ContentStage className="max-w-5xl space-y-6 py-6">
       <AutomationHeader
         enabled={dashboard.settings.enabled}
         whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}
         telegramChatId={dashboard.settings.telegramChatId}
-        workspaceId={dashboard.settings.workspaceId}
         updatedAt={dashboard.settings.updatedAt}
         hasAttentionAccounts={hasAttentionAccounts}
         nextRun={dashboard.nextRun}
       />
 
-      <PortalAccountsSection accounts={dashboard.accounts} />
-
-      <PortalCardMappingsSection
+      <AutomationDashboard
+        accounts={dashboard.accounts}
         mappings={dashboard.mappings}
-        accounts={dashboard.accounts}
         availableCards={availableCards}
-      />
-
-      <OrderingRulesSection
         rules={dashboard.rules}
-        accounts={dashboard.accounts}
+        attempts={dashboard.attempts}
       />
-
-      <AttemptsHistorySection attempts={dashboard.attempts} />
     </ContentStage>
   );
 }
