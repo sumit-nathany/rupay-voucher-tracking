@@ -110,12 +110,35 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log(`Card: ${cardRow?.cardName} (••${cardRow?.last4})`);
   console.log(`Benefit: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue})`);
 
-  const [mapping] = await db
-    .select()
-    .from(schema.portalCardMappings)
-    .where(eq(schema.portalCardMappings.cardId, candidate.cardId));
+  const [cardRecord] = await db
+    .select({ paymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted })
+    .from(schema.cards)
+    .where(eq(schema.cards.id, candidate.cardId));
 
-  const paymentDetails = mapping?.paymentDetailsEncrypted ? decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id) : null;
+  let paymentDetails = null;
+  if (cardRecord?.paymentDetailsEncrypted) {
+    try {
+      paymentDetails = decryptPaymentDetails(cardRecord.paymentDetailsEncrypted, candidate.cardId);
+    } catch (err) {
+      console.warn('Could not decrypt payment details from cards table:', err);
+    }
+  }
+
+  if (!paymentDetails) {
+    const [mapping] = await db
+      .select()
+      .from(schema.portalCardMappings)
+      .where(eq(schema.portalCardMappings.cardId, candidate.cardId));
+
+    if (mapping?.paymentDetailsEncrypted) {
+      try {
+        paymentDetails = decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id);
+      } catch (err) {
+        console.warn('Could not decrypt payment details from mapping table:', err);
+      }
+    }
+  }
+
   console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
 
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');

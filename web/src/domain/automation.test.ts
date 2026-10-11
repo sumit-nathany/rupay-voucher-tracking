@@ -25,6 +25,7 @@ import {
   deletePortalAccount,
   savePortalCardMapping,
   listPortalCardMappings,
+  setCardPortalAccounts,
   createOrderingRule,
   findCandidatesForAccount,
 } from './automation';
@@ -298,5 +299,61 @@ describe('automation domain', () => {
 
     const refreshedAcc2 = await listPortalCardMappings(ctx, acc2.id);
     expect(refreshedAcc2[0].paymentDetails?.hasCvv).toBe(true);
+  });
+
+  it('sets and updates portal account assignments for a card', async () => {
+    const acc1 = await createPortalAccount(ctx, {
+      label: 'Acc 1',
+      credentials: { loginId: 'u1@test.com', password: 'p1' },
+    });
+    const acc2 = await createPortalAccount(ctx, {
+      label: 'Acc 2',
+      credentials: { loginId: 'u2@test.com', password: 'p2' },
+    });
+    const acc3 = await createPortalAccount(ctx, {
+      label: 'Acc 3',
+      credentials: { loginId: 'u3@test.com', password: 'p3' },
+    });
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder 1' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'Bank Card', bankName: 'Bank' }).returning();
+    const [card] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 1',
+      lastDigits: '4321',
+    }).returning();
+
+    // Assign to Acc 1 and Acc 2
+    await setCardPortalAccounts(ctx, {
+      cardId: card.id,
+      portalAccountIds: [acc1.id, acc2.id],
+    });
+
+    const mappings1 = await listPortalCardMappings(ctx);
+    expect(mappings1.filter((m) => m.cardId === card.id).map((m) => m.portalAccountId).sort()).toEqual(
+      [acc1.id, acc2.id].sort(),
+    );
+
+    // Update assignment to Acc 2 and Acc 3 (Acc 1 removed, Acc 3 added)
+    await setCardPortalAccounts(ctx, {
+      cardId: card.id,
+      portalAccountIds: [acc2.id, acc3.id],
+    });
+
+    const mappings2 = await listPortalCardMappings(ctx);
+    expect(mappings2.filter((m) => m.cardId === card.id).map((m) => m.portalAccountId).sort()).toEqual(
+      [acc2.id, acc3.id].sort(),
+    );
+
+    // Unassign from all
+    await setCardPortalAccounts(ctx, {
+      cardId: card.id,
+      portalAccountIds: [],
+    });
+
+    const mappings3 = await listPortalCardMappings(ctx);
+    expect(mappings3.filter((m) => m.cardId === card.id).length).toBe(0);
   });
 });

@@ -142,6 +142,18 @@ export async function deletePortalCardMappingAction(input: { id: string }) {
   revalidatePath('/automation');
 }
 
+const setCardPortalAccountsSchema = z.object({
+  cardId: z.string().uuid(),
+  portalAccountIds: z.array(z.string().uuid()),
+});
+
+export async function setCardPortalAccountsAction(input: z.infer<typeof setCardPortalAccountsSchema>) {
+  const ctx = await getCtx();
+  const parsed = setCardPortalAccountsSchema.parse(input);
+  await auto.setCardPortalAccounts(ctx, parsed);
+  revalidatePath('/automation');
+}
+
 const ruleSchema = z.object({
   portalAccountId: z.string().uuid(),
   name: z.string().min(1, 'Rule name is required'),

@@ -372,7 +372,8 @@ export async function listPortalCardMappings(ctx: Ctx, portalAccountId?: string)
       cardName: bankCardTypes.displayName,
       holderName: cardHolders.name,
       last4: cards.lastDigits,
-      paymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
+      mappingPaymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
+      cardPaymentDetailsEncrypted: cards.paymentDetailsEncrypted,
       portalCardId: portalCardMappings.portalCardId,
       portalCardbinId: portalCardMappings.portalCardbinId,
       portalCardLabel: portalCardMappings.portalCardLabel,
@@ -395,9 +396,17 @@ export async function listPortalCardMappings(ctx: Ctx, portalAccountId?: string)
   const rows = await query;
   return rows.map((r) => {
     let paymentDetails = null;
-    if (r.paymentDetailsEncrypted) {
+    if (r.cardPaymentDetailsEncrypted) {
       try {
-        const decrypted = decryptPaymentDetails(r.paymentDetailsEncrypted, r.id);
+        const decrypted = decryptPaymentDetails(r.cardPaymentDetailsEncrypted, r.cardId);
+        paymentDetails = maskPaymentSummary(decrypted);
+      } catch {
+        paymentDetails = null;
+      }
+    }
+    if (!paymentDetails && r.mappingPaymentDetailsEncrypted) {
+      try {
+        const decrypted = decryptPaymentDetails(r.mappingPaymentDetailsEncrypted, r.id);
         paymentDetails = maskPaymentSummary(decrypted);
       } catch {
         paymentDetails = null;
@@ -567,12 +576,95 @@ export async function savePortalCardMapping(
       }
     }
   }
+
+  // Always keep cards.paymentDetailsEncrypted synced when payment details are updated
+  if (input.paymentDetails !== undefined) {
+    const cardEncrypted = input.paymentDetails
+      ? encryptPaymentDetails(input.paymentDetails, input.cardId)
+      : null;
+    await ctx.db
+      .update(cards)
+      .set({ paymentDetailsEncrypted: cardEncrypted })
+      .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, input.cardId)));
+  }
 }
 
 export async function deletePortalCardMapping(ctx: Ctx, id: string): Promise<void> {
   await ctx.db
     .delete(portalCardMappings)
     .where(and(eq(portalCardMappings.workspaceId, ctx.workspaceId), eq(portalCardMappings.id, id)));
+}
+
+export async function setCardPortalAccounts(
+  ctx: Ctx,
+  input: {
+    cardId: string;
+    portalAccountIds: string[];
+  },
+): Promise<void> {
+  const { cardId, portalAccountIds } = input;
+
+  // Verify card belongs to workspace
+  const [c] = await ctx.db
+    .select({ id: cards.id })
+    .from(cards)
+    .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, cardId)));
+  if (!c) throw new NotFoundError('Card not found in workspace');
+
+  // Verify all portal accounts belong to workspace
+  if (portalAccountIds.length > 0) {
+    const accs = await ctx.db
+      .select({ id: portalAccounts.id })
+      .from(portalAccounts)
+      .where(
+        and(
+          eq(portalAccounts.workspaceId, ctx.workspaceId),
+          inArray(portalAccounts.id, portalAccountIds),
+        ),
+      );
+    if (accs.length !== portalAccountIds.length) {
+      throw new NotFoundError('One or more portal accounts not found in workspace');
+    }
+  }
+
+  // Get existing mappings for this card
+  const existingMappings = await ctx.db
+    .select()
+    .from(portalCardMappings)
+    .where(
+      and(
+        eq(portalCardMappings.workspaceId, ctx.workspaceId),
+        eq(portalCardMappings.cardId, cardId),
+      ),
+    );
+
+  const existingAccountIds = new Set(existingMappings.map((m) => m.portalAccountId));
+  const desiredAccountIds = new Set(portalAccountIds);
+
+  // Delete mappings that are no longer selected
+  const toDelete = existingMappings.filter((m) => !desiredAccountIds.has(m.portalAccountId));
+  if (toDelete.length > 0) {
+    await ctx.db
+      .delete(portalCardMappings)
+      .where(
+        and(
+          eq(portalCardMappings.workspaceId, ctx.workspaceId),
+          inArray(portalCardMappings.id, toDelete.map((d) => d.id)),
+        ),
+      );
+  }
+
+  // Insert mappings for newly selected accounts
+  const toAdd = portalAccountIds.filter((accId) => !existingAccountIds.has(accId));
+  for (const accId of toAdd) {
+    await ctx.db.insert(portalCardMappings).values({
+      id: crypto.randomUUID(),
+      workspaceId: ctx.workspaceId,
+      portalAccountId: accId,
+      cardId,
+      active: true,
+    });
+  }
 }
 
 // ── Ordering Rules ──────────────────────────────────────────────────────────

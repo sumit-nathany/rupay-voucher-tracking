@@ -1,0 +1,1 @@
+ALTER TABLE "app"."cards" ADD COLUMN IF NOT EXISTS "payment_details_encrypted" text;
