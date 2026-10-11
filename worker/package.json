@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "dev:preprod": "tsx --env-file ../web/.env.preprod src/index.ts",
     "test:live": "tsx --env-file ../web/.env.preprod src/browser-runner.ts"
   },
   "dependencies": {

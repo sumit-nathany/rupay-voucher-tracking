@@ -6,14 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { saveAutomationSettingsAction } from '@/actions/automation';
 
+export interface NextRunView {
+  eligibleNow: boolean;
+  nextRunAt: string | null;
+  accountLabel: string | null;
+  reason: 'ready_now' | 'waiting_for_cooldown' | 'no_accounts' | 'automation_paused';
+}
+
 export function AutomationHeader({
   enabled,
   updatedAt,
   hasAttentionAccounts,
+  nextRun,
 }: {
   enabled: boolean;
   updatedAt: string;
   hasAttentionAccounts: boolean;
+  nextRun?: NextRunView;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +44,62 @@ export function AutomationHeader({
     month: 'short',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
+
+  // Format dynamic next run schedule
+  let scheduleDescription: React.ReactNode = null;
+  let scheduleBadge: React.ReactNode = null;
+
+  if (!enabled) {
+    scheduleDescription = (
+      <>Automation is paused. Toggle on to enable scheduled automatic ordering.</>
+    );
+  } else if (nextRun?.reason === 'waiting_for_cooldown' && nextRun.nextRunAt) {
+    const nextRunDate = new Date(nextRun.nextRunAt);
+    const now = new Date();
+    const isToday = nextRunDate.toDateString() === now.toDateString();
+    const timeStr = nextRunDate.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+    const dateStr = nextRunDate.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+    const scheduleLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
+
+    scheduleBadge = (
+      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1">
+        <Clock className="h-3 w-3" />
+        Next run: {scheduleLabel}
+      </Badge>
+    );
+
+    scheduleDescription = (
+      <>
+        Next run scheduled: <span className="font-semibold text-foreground">{scheduleLabel}</span> (when {nextRun.accountLabel} unlocks). Max 1 order per account per 24 hours.
+      </>
+    );
+  } else if (nextRun?.reason === 'ready_now') {
+    scheduleBadge = (
+      <Badge variant="outline" className="border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
+        <Clock className="h-3 w-3" />
+        Eligible to run now
+      </Badge>
+    );
+    scheduleDescription = (
+      <>
+        Ready to run now (<span className="font-semibold text-foreground">{nextRun.accountLabel}</span> eligible). Default daily schedule: 02:00 AM IST.
+      </>
+    );
+  } else {
+    scheduleDescription = (
+      <>Scheduled daily at 02:00 AM IST (Asia/Kolkata). Max 1 order per portal account per 24 hours.</>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -46,15 +110,17 @@ export function AutomationHeader({
               <Bot className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold tracking-tight text-foreground">Automated RuPay Ordering</h1>
                 <Badge variant={enabled ? 'default' : 'secondary'} className="text-[11px] font-semibold">
                   {enabled ? 'Active' : 'Paused'}
                 </Badge>
+                {scheduleBadge}
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground/80" />
-                Scheduled daily at 02:00 AM IST (Asia/Kolkata). Max 1 order per portal account per 24 hours. (Settings updated: {updatedDateStr})
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground/80 shrink-0" />
+                <span>{scheduleDescription}</span>
+                <span className="text-muted-foreground/60">(Updated {updatedDateStr})</span>
               </p>
             </div>
           </div>

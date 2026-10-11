@@ -36,6 +36,7 @@ export default async function AutomationPage() {
         enabled={dashboard.settings.enabled}
         updatedAt={dashboard.settings.updatedAt}
         hasAttentionAccounts={hasAttentionAccounts}
+        nextRun={dashboard.nextRun}
       />
 
       <PortalAccountsSection accounts={dashboard.accounts} />

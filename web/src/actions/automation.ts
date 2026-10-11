@@ -8,12 +8,13 @@ import * as worker from '@/domain/automation-worker';
 
 export async function getAutomationDashboardAction() {
   const ctx = await getCtx();
-  const [settings, accounts, mappings, rules, attempts] = await Promise.all([
+  const [settings, accounts, mappings, rules, attempts, nextRunInfo] = await Promise.all([
     auto.getAutomationSettings(ctx),
     auto.listPortalAccounts(ctx),
     auto.listPortalCardMappings(ctx),
     auto.listOrderingRules(ctx),
     auto.listAutomationAttempts(ctx, 30),
+    auto.getNextEligibleRunTime(ctx.db, ctx.workspaceId),
   ]);
 
   return {
@@ -22,6 +23,12 @@ export async function getAutomationDashboardAction() {
     mappings,
     rules,
     attempts,
+    nextRun: {
+      eligibleNow: nextRunInfo.eligibleNow,
+      nextRunAt: nextRunInfo.nextRunAt ? nextRunInfo.nextRunAt.toISOString() : null,
+      accountLabel: nextRunInfo.accountLabel,
+      reason: nextRunInfo.reason,
+    },
   };
 }
 

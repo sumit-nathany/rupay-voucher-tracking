@@ -989,3 +989,71 @@ export async function recordPortalAccountCooldown(
     })
     .where(eq(portalAccounts.id, portalAccountId));
 }
+
+export interface NextEligibleRunInfo {
+  eligibleNow: boolean;
+  nextRunAt: Date | null;
+  accountLabel: string | null;
+  reason: 'ready_now' | 'waiting_for_cooldown' | 'no_accounts' | 'automation_paused';
+}
+
+export async function getNextEligibleRunTime(
+  db: Database,
+  workspaceId?: string,
+): Promise<NextEligibleRunInfo> {
+  const now = new Date();
+
+  if (workspaceId) {
+    const [settings] = await db
+      .select()
+      .from(automationSettings)
+      .where(eq(automationSettings.workspaceId, workspaceId));
+    if (!settings || !settings.enabled) {
+      return { eligibleNow: false, nextRunAt: null, accountLabel: null, reason: 'automation_paused' };
+    }
+  }
+
+  const query = db
+    .select()
+    .from(portalAccounts)
+    .where(
+      and(
+        eq(portalAccounts.status, 'connected'),
+        workspaceId ? eq(portalAccounts.workspaceId, workspaceId) : undefined,
+      ),
+    );
+
+  const accounts = await query;
+  if (accounts.length === 0) {
+    return { eligibleNow: false, nextRunAt: null, accountLabel: null, reason: 'no_accounts' };
+  }
+
+  const readyAccounts = accounts.filter(
+    (a) => !a.cooldownUntil || new Date(a.cooldownUntil) <= now,
+  );
+
+  if (readyAccounts.length > 0) {
+    return {
+      eligibleNow: true,
+      nextRunAt: now,
+      accountLabel: readyAccounts[0].label,
+      reason: 'ready_now',
+    };
+  }
+
+  // All connected accounts are in cooldown; find the earliest one to unlock
+  const sorted = [...accounts].sort((a, b) => {
+    const tA = a.cooldownUntil ? new Date(a.cooldownUntil).getTime() : 0;
+    const tB = b.cooldownUntil ? new Date(b.cooldownUntil).getTime() : 0;
+    return tA - tB;
+  });
+
+  const earliest = sorted[0];
+  return {
+    eligibleNow: false,
+    nextRunAt: earliest.cooldownUntil ? new Date(earliest.cooldownUntil) : null,
+    accountLabel: earliest.label,
+    reason: 'waiting_for_cooldown',
+  };
+}
+
