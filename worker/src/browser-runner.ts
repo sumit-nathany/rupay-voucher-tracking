@@ -45,18 +45,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     throw new Error('No connected portal accounts found in database.');
   }
 
-  let account = accounts[0];
-  if (accountArg) {
-    const match = accounts.find((a) => a.id === accountArg || a.label.toLowerCase() === accountArg.toLowerCase());
-    if (!match) {
-      throw new Error(`Account "${accountArg}" not found among connected accounts: ${accounts.map((a) => a.label).join(', ')}`);
-    }
-    account = match;
-  }
-
-  const creds = decryptPortalCredentials(account.credentialsEncrypted, account.id);
-  console.log(`Found account "${account.label}". Decrypted credentials ready.`);
-
   const today = new Date().toISOString().slice(0, 10);
   const ignoreCooldown =
     options?.ignoreCooldown ??
@@ -64,12 +52,37 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   if (ignoreCooldown) {
     console.log('[runner] --force / ignoreCooldown active: bypassing 24h limit checks for testing.');
   }
-  const candidate = await findCandidatesForAccount(db, account.id, today, { ignoreCooldown });
+
+  let account = accounts[0];
+  let candidate: Awaited<ReturnType<typeof findCandidatesForAccount>> = null;
+
+  if (accountArg) {
+    const match = accounts.find((a) => a.id === accountArg || a.label.toLowerCase() === accountArg.toLowerCase());
+    if (!match) {
+      throw new Error(`Account "${accountArg}" not found among connected accounts: ${accounts.map((a) => a.label).join(', ')}`);
+    }
+    account = match;
+    candidate = await findCandidatesForAccount(db, account.id, today, { ignoreCooldown });
+  } else {
+    for (const acc of accounts) {
+      const c = await findCandidatesForAccount(db, acc.id, today, { ignoreCooldown });
+      if (c) {
+        account = acc;
+        candidate = c;
+        break;
+      }
+    }
+  }
+
+  const creds = decryptPortalCredentials(account.credentialsEncrypted, account.id);
+  console.log(`Selected account "${account.label}". Decrypted credentials ready.`);
 
   if (!candidate) {
-    console.log('No candidate nominated.');
-    if (account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
-      console.log(`Account is in active 24h cooldown until: ${new Date(account.cooldownUntil).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+    console.log('No candidate nominated across connected accounts.');
+    for (const acc of accounts) {
+      if (acc.cooldownUntil && new Date(acc.cooldownUntil) > new Date()) {
+        console.log(`Account ${acc.label} is in active 24h cooldown until: ${new Date(acc.cooldownUntil).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (IST)`);
+      }
     }
     await client.end();
     return;

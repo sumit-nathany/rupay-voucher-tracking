@@ -9,6 +9,7 @@
     "dev": "tsx src/index.ts",
     "dev:preprod": "tsx --env-file ../web/.env.preprod src/index.ts",
     "daemon:preprod": "tsx --env-file ../web/.env.preprod src/daemon.ts",
+    "daemon:local": "tsx --env-file ../web/.env.local src/daemon.ts",
     "login:preprod": "tsx --env-file ../web/.env.preprod src/login-helper.ts",
     "browser:preprod": "tsx --env-file ../web/.env.preprod src/browser-runner.ts",
     "browser:local": "tsx --env-file ../web/.env.local src/browser-runner.ts",
