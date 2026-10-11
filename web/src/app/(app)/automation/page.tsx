@@ -34,8 +34,6 @@ export default async function AutomationPage() {
     <ContentStage className="max-w-5xl space-y-6">
       <AutomationHeader
         enabled={dashboard.settings.enabled}
-        whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}
-        telegramChatId={dashboard.settings.telegramChatId}
         hasAttentionAccounts={hasAttentionAccounts}
         nextRun={dashboard.nextRun}
       />
@@ -46,6 +44,8 @@ export default async function AutomationPage() {
         availableCards={availableCards}
         rules={dashboard.rules}
         attempts={dashboard.attempts}
+        whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}
+        telegramChatId={dashboard.settings.telegramChatId}
       />
     </ContentStage>
   );

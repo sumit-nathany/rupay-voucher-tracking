@@ -14,6 +14,7 @@ import {
   Loader2,
   ShieldCheck,
   Pencil,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,16 +36,26 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet';
-import type { PortalAccountView } from '@/domain/automation';
+import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
 import {
   createPortalAccountAction,
   updatePortalAccountAction,
   pausePortalAccountAction,
   resumePortalAccountAction,
   deletePortalAccountAction,
+  deletePortalCardMappingAction,
 } from '@/actions/automation';
+import { MappingDialog, type CardOption } from './portal-card-mappings-section';
 
-export function PortalAccountsSection({ accounts }: { accounts: PortalAccountView[] }) {
+export function PortalAccountsSection({
+  accounts,
+  mappings,
+  availableCards,
+}: {
+  accounts: PortalAccountView[];
+  mappings: PortalCardMappingView[];
+  availableCards: CardOption[];
+}) {
   const [addOpen, setAddOpen] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
@@ -95,6 +106,9 @@ export function PortalAccountsSection({ accounts }: { accounts: PortalAccountVie
       {/* Slide-Over Drawer for Account Details, Credentials Update, Pause, and Delete */}
       <PortalAccountDetailSheet
         account={selectedAccount}
+        accounts={accounts}
+        mappings={mappings}
+        availableCards={availableCards}
         open={Boolean(selectedAccount)}
         onOpenChange={(isOpen) => {
           if (!isOpen) setSelectedAccountId(null);
@@ -236,10 +250,16 @@ function AccountCard({
 
 function PortalAccountDetailSheet({
   account,
+  accounts,
+  mappings,
+  availableCards,
   open,
   onOpenChange,
 }: {
   account: PortalAccountView | null;
+  accounts: PortalAccountView[];
+  mappings: PortalCardMappingView[];
+  availableCards: CardOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -248,16 +268,39 @@ function PortalAccountDetailSheet({
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
+  // Mapping dialog state
+  const [mapDialogOpen, setMapDialogOpen] = useState(false);
+  const [editingMapping, setEditingMapping] = useState<PortalCardMappingView | null>(null);
+
   // Sync mode and clear feedback whenever open or account changes
   useEffect(() => {
     if (open) {
       setMode('view');
       setError(null);
       setFeedback(null);
+      setMapDialogOpen(false);
+      setEditingMapping(null);
     }
   }, [open, account?.id]);
 
   if (!account) return null;
+
+  const accountMappings = mappings.filter((m) => m.portalAccountId === account.id);
+
+  async function handleUnmapCard(id: string, cardName: string) {
+    if (!confirm(`Remove card mapping for "${cardName}"?`)) return;
+    setBusy(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      await deletePortalCardMappingAction({ id });
+      setFeedback(`Card "${cardName}" removed from this account.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unmap card');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleTogglePause() {
     if (!account) return;
@@ -343,7 +386,8 @@ function PortalAccountDetailSheet({
   }[account.status];
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="sm:max-w-md w-full flex flex-col justify-between overflow-y-auto">
         {mode === 'view' && (
           <div className="flex flex-1 flex-col justify-between">
@@ -477,6 +521,107 @@ function PortalAccountDetailSheet({
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* Mapped Cards for this Account */}
+              <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <CreditCard className="h-3.5 w-3.5" />
+                    Mapped Cards ({accountMappings.length})
+                  </h4>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingMapping(null);
+                      setMapDialogOpen(true);
+                    }}
+                    className="h-7 text-xs font-semibold gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Map Card
+                  </Button>
+                </div>
+
+                {accountMappings.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border/80 p-3.5 text-center bg-muted/10 space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      No cards mapped to this RuPay account yet.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingMapping(null);
+                        setMapDialogOpen(true);
+                      }}
+                      className="h-7 text-xs font-semibold gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Map a Card to this Account
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {accountMappings.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between gap-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5 text-xs"
+                      >
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="font-semibold text-foreground truncate">{m.cardName}</div>
+                          <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                            <span>
+                              {m.holderName} {m.last4 ? `(••${m.last4})` : ''}
+                            </span>
+                            {m.paymentDetails ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-medium py-0 px-1 gap-0.5"
+                              >
+                                <ShieldCheck className="h-2.5 w-2.5" />
+                                {m.paymentDetails.mode === 'full' ? 'Full card' : 'Saved card CVV'}
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                                No checkout details
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setEditingMapping(m);
+                              setMapDialogOpen(true);
+                            }}
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            title="Edit card mapping"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={busy}
+                            onClick={() => void handleUnmapCard(m.id, m.cardName)}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            title="Remove mapping"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Quick Pause / Resume Action Card */}
@@ -697,6 +842,16 @@ function PortalAccountDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+
+    <MappingDialog
+      open={mapDialogOpen}
+      onOpenChange={setMapDialogOpen}
+      accounts={accounts}
+      cards={availableCards}
+      existing={editingMapping}
+      defaultAccountId={account.id}
+    />
+  </>
   );
 }
 

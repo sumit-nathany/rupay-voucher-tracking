@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, CreditCard, Trash2, ShieldCheck, Lock, Edit2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -179,23 +179,25 @@ function DeleteMappingButton({ id, cardName }: { id: string; cardName: string })
   );
 }
 
-function MappingDialog({
+export function MappingDialog({
   open,
   onOpenChange,
   accounts,
   cards,
   existing,
+  defaultAccountId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: PortalAccountView[];
   cards: CardOption[];
   existing: PortalCardMappingView | null;
+  defaultAccountId?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<string>(
-    existing?.portalAccountId ?? accounts[0]?.id ?? '',
+    existing?.portalAccountId ?? defaultAccountId ?? accounts[0]?.id ?? '',
   );
   const [selectedCard, setSelectedCard] = useState<string>(
     existing?.cardId ?? cards[0]?.id ?? '',
@@ -205,6 +207,15 @@ function MappingDialog({
   const [paymentMode, setPaymentMode] = useState<'full' | 'saved_card' | 'none'>(
     existing?.paymentDetails?.mode ?? 'none',
   );
+
+  useEffect(() => {
+    if (open) {
+      setSelectedAccount(existing?.portalAccountId ?? defaultAccountId ?? accounts[0]?.id ?? '');
+      setSelectedCard(existing?.cardId ?? cards[0]?.id ?? '');
+      setPaymentMode(existing?.paymentDetails?.mode ?? 'none');
+      setError(null);
+    }
+  }, [open, existing, defaultAccountId, accounts, cards]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

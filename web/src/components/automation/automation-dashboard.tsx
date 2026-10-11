@@ -1,6 +1,6 @@
 'use client';
 
-import { KeyRound, Sliders, History } from 'lucide-react';
+import { KeyRound, Sliders, History, BellRing } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import type { PortalAccountView, PortalCardMappingView, OrderingRuleView, AttemptView } from '@/domain/automation';
@@ -8,6 +8,7 @@ import { PortalAccountsSection } from './portal-accounts-section';
 import { PortalCardMappingsSection, type CardOption } from './portal-card-mappings-section';
 import { OrderingRulesSection } from './ordering-rules-section';
 import { AttemptsHistorySection } from './attempts-history-section';
+import { OtpChannelsSection } from './otp-channels-section';
 
 export interface AutomationDashboardProps {
   accounts: PortalAccountView[];
@@ -15,6 +16,8 @@ export interface AutomationDashboardProps {
   availableCards: CardOption[];
   rules: OrderingRuleView[];
   attempts: AttemptView[];
+  whatsappPhoneNumber?: string | null;
+  telegramChatId?: string | null;
 }
 
 export function AutomationDashboard({
@@ -23,7 +26,11 @@ export function AutomationDashboard({
   availableCards,
   rules,
   attempts,
+  whatsappPhoneNumber,
+  telegramChatId,
 }: AutomationDashboardProps) {
+  const hasAnyOtpChannel = Boolean(whatsappPhoneNumber || telegramChatId);
+
   return (
     <Tabs defaultValue="accounts" className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -38,6 +45,7 @@ export function AutomationDashboard({
               {accounts.length}
             </Badge>
           </TabsTrigger>
+
           <TabsTrigger
             value="rules"
             className="gap-2 px-3 py-1 text-xs font-medium"
@@ -48,6 +56,7 @@ export function AutomationDashboard({
               {rules.length}
             </Badge>
           </TabsTrigger>
+
           <TabsTrigger
             value="activity"
             className="gap-2 px-3 py-1 text-xs font-medium"
@@ -58,11 +67,28 @@ export function AutomationDashboard({
               {attempts.length}
             </Badge>
           </TabsTrigger>
+
+          <TabsTrigger
+            value="channels"
+            className="gap-2 px-3 py-1 text-xs font-medium"
+          >
+            <BellRing className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>OTP Channels</span>
+            {hasAnyOtpChannel ? (
+              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="Channel configured" />
+            ) : (
+              <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No channel configured" />
+            )}
+          </TabsTrigger>
         </TabsList>
       </div>
 
       <TabsContent value="accounts" className="space-y-8 pt-1 focus-visible:outline-none">
-        <PortalAccountsSection accounts={accounts} />
+        <PortalAccountsSection
+          accounts={accounts}
+          mappings={mappings}
+          availableCards={availableCards}
+        />
         <div className="pt-4 border-t border-border/50">
           <PortalCardMappingsSection
             mappings={mappings}
@@ -78,6 +104,13 @@ export function AutomationDashboard({
 
       <TabsContent value="activity" className="pt-1 focus-visible:outline-none">
         <AttemptsHistorySection attempts={attempts} />
+      </TabsContent>
+
+      <TabsContent value="channels" className="pt-1 focus-visible:outline-none">
+        <OtpChannelsSection
+          whatsappPhoneNumber={whatsappPhoneNumber}
+          telegramChatId={telegramChatId}
+        />
       </TabsContent>
     </Tabs>
   );
