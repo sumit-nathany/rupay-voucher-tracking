@@ -9,10 +9,38 @@ export async function humanDelay(minMs: number = 800, maxMs: number = 2000): Pro
 }
 
 /**
- * Simulates a natural human hesitation while reading or scanning the page.
+ * Simulates a natural human hesitation while reading or scanning the page,
+ * with subtle natural mouse wander if a Page is passed.
  */
-export async function humanHesitate(minMs: number = 1200, maxMs: number = 2800): Promise<void> {
-  await humanDelay(minMs, maxMs);
+export async function humanHesitate(
+  targetOrMin?: Page | number,
+  minOrMaxMs?: number,
+  maxMs?: number,
+): Promise<void> {
+  let page: Page | undefined;
+  let min = 1200;
+  let max = 2800;
+
+  if (typeof targetOrMin === 'object' && targetOrMin !== null && 'mouse' in targetOrMin) {
+    page = targetOrMin as Page;
+    min = minOrMaxMs ?? 1200;
+    max = maxMs ?? 2800;
+  } else {
+    min = (targetOrMin as number) ?? 1200;
+    max = minOrMaxMs ?? 2800;
+  }
+
+  if (page) {
+    try {
+      await installVisualMouseCursor(page);
+      const cur = cursorPositions.get(page) || { x: 450, y: 350 };
+      const jitterX = Math.max(100, Math.min(1000, cur.x + (Math.random() - 0.5) * 90));
+      const jitterY = Math.max(100, Math.min(650, cur.y + (Math.random() - 0.5) * 70));
+      await humanMoveMouse(page, jitterX, jitterY, 14);
+    } catch {}
+  }
+
+  await humanDelay(min, max);
 }
 
 /**
@@ -59,6 +87,69 @@ function getBezierPoints(
   return points;
 }
 
+/**
+ * Installs a visual human cursor onto the page so the user watching the screen
+ * sees the realistic cursor pointer gliding across elements, hovering, and clicking.
+ */
+export async function installVisualMouseCursor(page: Page): Promise<void> {
+  try {
+    await page.evaluate(() => {
+      const existing = document.getElementById('human-visual-cursor');
+      if (existing) return;
+
+      const cursor = document.createElement('div');
+      cursor.id = 'human-visual-cursor';
+      cursor.innerHTML = `
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="#f97316" stroke="white" stroke-width="1.5" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));">
+          <path d="M3 3l7 18 3-7 7-3L3 3z"/>
+        </svg>
+        <div id="human-cursor-click-ring" style="
+          position: absolute;
+          top: -8px;
+          left: -8px;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          border: 2.5px solid #ea580c;
+          opacity: 0;
+          pointer-events: none;
+          transition: transform 0.22s ease-out, opacity 0.22s ease-out;
+        "></div>
+      `;
+      cursor.style.position = 'fixed';
+      cursor.style.top = '0';
+      cursor.style.left = '0';
+      cursor.style.width = '24px';
+      cursor.style.height = '24px';
+      cursor.style.pointerEvents = 'none';
+      cursor.style.zIndex = '2147483647';
+      cursor.style.transform = 'translate(120px, 120px)';
+      cursor.style.transition = 'transform 0.04s ease-out';
+      document.body.appendChild(cursor);
+
+      window.addEventListener('mousemove', (e) => {
+        cursor.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+      }, { passive: true });
+
+      window.addEventListener('mousedown', () => {
+        const ring = document.getElementById('human-cursor-click-ring');
+        if (ring) {
+          ring.style.transform = 'scale(1.9)';
+          ring.style.opacity = '0.9';
+        }
+      }, { passive: true });
+
+      window.addEventListener('mouseup', () => {
+        const ring = document.getElementById('human-cursor-click-ring');
+        if (ring) {
+          ring.style.transform = 'scale(0.8)';
+          ring.style.opacity = '0';
+        }
+      }, { passive: true });
+    });
+  } catch {}
+}
+
 // Track approximate cursor position per page
 const cursorPositions = new WeakMap<Page, { x: number; y: number }>();
 
@@ -69,14 +160,15 @@ export async function humanMoveMouse(
   page: Page,
   targetX: number,
   targetY: number,
-  steps: number = 18,
+  steps: number = 20,
 ): Promise<void> {
+  await installVisualMouseCursor(page);
   const currentPos = cursorPositions.get(page) || { x: 300, y: 300 };
   const points = getBezierPoints(currentPos.x, currentPos.y, targetX, targetY, steps);
 
   for (const pt of points) {
     await page.mouse.move(pt.x, pt.y);
-    await humanDelay(10, 25);
+    await humanDelay(12, 26);
   }
 
   cursorPositions.set(page, { x: targetX, y: targetY });

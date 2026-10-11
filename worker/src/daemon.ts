@@ -70,11 +70,14 @@ async function startDaemon() {
   console.log('🤖 RuPay Automation Daemon started.');
   console.log('Monitoring all portal accounts and scheduling chained wake-ups...\n');
 
+  let lastScheduleLog = '';
+
   while (true) {
     try {
       // 1. First, check if a manual run was requested from the UI
       const manualRan = await checkPendingManualTrigger(db);
       if (manualRan) {
+        lastScheduleLog = '';
         await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
@@ -83,14 +86,20 @@ async function startDaemon() {
       const nextRun = await getNextEligibleRunTime(db);
 
       if (nextRun.reason === 'automation_paused') {
-        console.log('[daemon] Automation is paused. Monitoring for UI trigger or unpause...');
-        await responsiveWait(db, 60 * 1000);
+        if (lastScheduleLog !== 'paused') {
+          console.log('[daemon] Automation is paused. Monitoring for UI trigger or unpause...');
+          lastScheduleLog = 'paused';
+        }
+        await responsiveWait(db, 30 * 1000);
         continue;
       }
 
       if (nextRun.reason === 'no_accounts') {
-        console.log('[daemon] No connected accounts. Checking again in 1 minute...');
-        await responsiveWait(db, 60 * 1000);
+        if (lastScheduleLog !== 'no_accounts') {
+          console.log('[daemon] No connected accounts. Checking again in 30 seconds...');
+          lastScheduleLog = 'no_accounts';
+        }
+        await responsiveWait(db, 30 * 1000);
         continue;
       }
 
@@ -98,15 +107,21 @@ async function startDaemon() {
         const delayMs = nextRun.nextRunAt.getTime() - Date.now();
         if (delayMs > 0) {
           const istTime = nextRun.nextRunAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-          console.log(`[daemon] Next eligible account (${nextRun.accountLabel}) unlocks at ${istTime} IST.`);
-          console.log(`[daemon] Sleeping for ${Math.round(delayMs / 60000)} minutes until then (responsive to manual triggers)...`);
+          const mins = Math.ceil(delayMs / 60000);
+          const scheduleKey = `${nextRun.accountLabel}-${nextRun.nextRunAt.toISOString()}-${mins}`;
+          if (lastScheduleLog !== scheduleKey) {
+            console.log(`[daemon] Next eligible account (${nextRun.accountLabel}) unlocks at ${istTime} IST (~${mins} min).`);
+            lastScheduleLog = scheduleKey;
+          }
 
-          // Sleep until unlock time (capped at 15 minutes per slice), checking for manual triggers every 5s
-          const sleepMs = Math.min(delayMs + 1000, 15 * 60 * 1000);
+          // Sleep until unlock time (capped at 30 seconds per slice), checking for manual triggers every 5s
+          const sleepMs = Math.min(delayMs + 1000, 30 * 1000);
           await responsiveWait(db, sleepMs);
           continue;
         }
       }
+
+      lastScheduleLog = '';
 
       // 3. At least one account is eligible now! Execute ordering run.
       console.log(`\n[daemon] >>> Account eligible! Triggering automation run at ${new Date().toISOString()} <<<`);

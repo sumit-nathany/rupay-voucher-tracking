@@ -38,4 +38,13 @@ describe('portal cooldown parsing', () => {
   it('handles messages without date gracefully', () => {
     expect(parsePortalCooldownDate('An account is limited to one booking every 24 hours.')).toBeNull();
   });
+
+  it('parses arbitrary minute durations like 15 mins or 30 minutes', () => {
+    const before = Date.now();
+    const msg = 'Please try again after 15 minutes.';
+    const date = parsePortalCooldownDate(msg);
+    expect(date).not.toBeNull();
+    expect(date!.getTime()).toBeGreaterThanOrEqual(before + 14 * 60 * 1000);
+    expect(date!.getTime()).toBeLessThanOrEqual(before + 16 * 60 * 1000);
+  });
 });

@@ -8,12 +8,12 @@ import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
-import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/lib/portal-cooldown';
+import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
-import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
+import { humanClick, humanType, humanDelay, humanHesitate, installVisualMouseCursor } from './human-interaction';
 import { autoSolveRecaptcha } from './captcha-solver';
 import { finalizeConfirmedOrder } from '../../web/src/domain/automation-worker';
 
@@ -170,14 +170,16 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     viewport: { width: 1366, height: 860 },
   });
 
+  const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
+  await installVisualMouseCursor(page);
+
   // Track any new tabs / popups that might open (e.g. payment gateway tab)
   const popupTracker = { page: null as Page | null };
-  context.on('page', (newPage) => {
+  context.on('page', async (newPage) => {
     console.log(`[Popup/New Tab detected]: ${newPage.url()}`);
     popupTracker.page = newPage;
+    await installVisualMouseCursor(newPage);
   });
-
-  const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
 
   // Log console and requests to see errors and APIs
   page.on('console', (msg) => console.log(`[console ${msg.type()}]`, msg.text()));
@@ -197,15 +199,17 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         console.log(`[response ${res.status()}] ${url.slice(0, 100)}: ${text.slice(0, 300)}`);
         const json = JSON.parse(text);
         const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
-        if (inner && inner.code === 1 && inner.message && isPortalCooldownMessage(inner.message)) {
-          console.log('\n⚠️ Portal Cooldown / Limit Detected:', inner.message);
-          const parsedDate = parsePortalCooldownDate(inner.message);
-          cooldownDetectedUntil = parsedDate ?? new Date(Date.now() + 20 * 60 * 1000);
-          console.log(`Locked until (IST): ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}`);
+        const msg = inner?.message || json?.message;
+        if (msg && isPortalCooldownMessage(msg)) {
+          console.log('\n⚠️ Portal Cooldown / Limit Detected in API response:', msg);
+          const parsed = parsePortalCooldown(msg);
+          cooldownDetectedUntil = parsed?.until ?? new Date(Date.now() + 20 * 60 * 1000);
+          const reason = parsed?.reason ?? 'rate_limited_temporary';
+          console.log(`Locked until (IST): ${cooldownDetectedUntil.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} (${parsed?.durationMinutes ?? 20}m)`);
 
           // Record cooldown in database
-          await recordPortalAccountCooldown(db, account.id, cooldownDetectedUntil, 'daily_limit_reached');
-          console.log('✓ Recorded cooldown in database! No future run will be attempted before this time.');
+          await recordPortalAccountCooldown(db, account.id, cooldownDetectedUntil, reason);
+          console.log('✓ Recorded cooldown in database! Next run will wait until then.');
         }
       } catch (e) {
         // ignore parse errors for non-json
@@ -543,9 +547,25 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       const currUrl = activePaymentPage.url();
       if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com')) {
         const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
-        const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
-        if (bookingMatch) {
-          const bookingRef = bookingMatch[1];
+        
+        // Exclude common non-ID generic English words
+        const invalidWords = new Set([
+          'process', 'processing', 'pending', 'initiated', 'failed', 'failure',
+          'cancelled', 'loading', 'success', 'successful', 'transaction', 'completed',
+          'reference', 'confirmed', 'details', 'status', 'summary', 'payment', 'please'
+        ]);
+
+        const matches = Array.from(pageText.matchAll(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/gi));
+        let bookingRef: string | null = null;
+        for (const m of matches) {
+          const cand = m[1].trim();
+          if (!invalidWords.has(cand.toLowerCase()) && (/[0-9]/.test(cand) || cand.toUpperCase().startsWith('RUP'))) {
+            bookingRef = cand;
+            break;
+          }
+        }
+
+        if (bookingRef) {
           console.log(`\n🎉 Booking Reference Confirmed: ${bookingRef}`);
           const today = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
 
@@ -589,7 +609,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
               chatId: telegramChatId,
               cardName: cardRow?.cardName ?? 'RuPay Card',
               benefitName: benefitDetails.exactBenefit,
-              bookingRef: bookingMatch[1],
+              bookingRef,
             });
             console.log(`[gateway] Sent booking confirmation via Telegram to ${telegramChatId}.`);
           } else if (targetPhoneNumber) {
@@ -598,7 +618,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
               to: targetPhoneNumber,
               cardName: cardRow?.cardName ?? 'RuPay Card',
               benefitName: benefitDetails.exactBenefit,
-              bookingRef: bookingMatch[1],
+              bookingRef,
             });
             console.log(`[gateway] Sent booking confirmation via WhatsApp to ${targetPhoneNumber}.`);
           }
