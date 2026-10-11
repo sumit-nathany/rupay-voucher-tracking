@@ -220,14 +220,32 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log('✓ PNB Salary Imperial card already selected.');
   }
 
-  console.log('\n--- Step 4: Navigating to Gym Access ---');
+  const targetCategory = benefitDetails.benefitType || 'Gym Access';
+  console.log(`\n--- Step 4: Navigating to ${targetCategory} ---`);
   await page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")').click();
   await page.waitForTimeout(400);
-  await page.locator('a.dropdown-item:has-text("Gym Access")').click();
+
+  const categoryItem = page.locator(`a.dropdown-item:has-text("${targetCategory}")`).first();
+  if (await categoryItem.isVisible({ timeout: 2000 })) {
+    await categoryItem.click();
+  } else {
+    console.log(`Dropdown item for "${targetCategory}" not found directly. Checking first available item...`);
+    const fallbackItem = page.locator(`a.dropdown-item`).first();
+    await fallbackItem.click();
+  }
   await page.waitForTimeout(2000);
 
-  console.log('\n--- Step 5: Clicking Redeem on Category Page ---');
-  const redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
+  console.log(`\n--- Step 5: Clicking Redeem on Category Page (${benefitDetails.exactBenefit}) ---`);
+  let redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
+  if (benefitDetails.benefitProvider) {
+    const providerCardBtn = page
+      .locator(`.offer-card:has-text("${benefitDetails.benefitProvider}"), .card:has-text("${benefitDetails.benefitProvider}")`)
+      .locator('button:has-text("Redeem")')
+      .first();
+    if (await providerCardBtn.isVisible({ timeout: 2000 })) {
+      redeemBtn = providerCardBtn;
+    }
+  }
   await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
   await redeemBtn.click();
   await page.waitForTimeout(1500);
