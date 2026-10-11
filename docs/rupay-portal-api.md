@@ -147,19 +147,52 @@ The `cname`, `cnumber`, `emailid` and `address` fields hold the provider's conta
   in the category, not one per offer. The data has no field saying this; it is only in the
   `ddescription` HTML. **Not yet confirmed.**
 
-## `cardbinid`
+### 5. Order / Booking Initiation: `Select/addUserTransaction` (login)
 
-- It appears in endpoints 2, 3 and 4 and is required. With `cardbinid: 0`, the offers call for card 151 returns
-  "This Service/Benefit is not available for your account/cardtype".
-- The card list (endpoint 1) does not include it.
-- The working value (208, for PNB Salary Imperial card 151) came from the logged-in user's own session. It is most likely the id of the
-  card **BIN** (the first digits of the card number) the user registered on the portal.
-- Calling endpoint 2 for Axis (95) with `cardbinid` 208 or 0 returned "No Services defined for the Selected Card".
+Called when the user clicks **Continue to Payment** in the redemption modal:
 
-**Effect:** benefits can only be fetched for cards whose `cardbinid` we know, which in practice means cards the
-logged-in user has registered on the portal. We did not try other `cardbinid` values; guessing them would
-mean probing the portal for other people's card data. The call that returns a user's registered cards and their `cardbinid` has
-not been captured yet.
+```json
+{
+  "tamount": 2,
+  "pid": 62,
+  "order_status": "Initiated",
+  "cardtypeid": 151,
+  "cardbinid": 208
+}
+```
+
+- `tamount`: Nominal verification transaction amount (₹2).
+- `pid`: The portal offer/benefit identifier (e.g. Cult.fit 3 Month = 62).
+- `cardtypeid`: The portal card type id (e.g. 151 for PNB Salary Imperial).
+- `cardbinid`: The card BIN id registered on the account (e.g. 208).
+- `order_status`: Set to `"Initiated"`.
+
+**Success Response:**
+Returns an HTML form injection designed to redirect the browser to the payment gateway (CCAvenue / Razorpay):
+```html
+<form name="redirect" method="post" action="https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction">
+  <input type="hidden" name="encRequest" value="..." />
+  <input type="hidden" name="access_code" value="..." />
+</form>
+<script type="text/javascript">document.redirect.submit();</script>
+```
+
+**Rate Limit / 24-Hour Failure Response:**
+The portal strictly limits each account to **one booking every 24 hours** across all card types:
+```json
+{
+  "code": 1,
+  "message": "Booking Limit Reached: You have already availed a booking in the last 24 hours. Try again after 11 Oct 2026 18:40 hrs.",
+  "response": []
+}
+```
+The exact unlock time is embedded in the message string in Indian Standard Time (`DD Mon YYYY HH:mm hrs`).
+
+## Registered Cards & `cardbinid`
+
+- **How registered cards appear in the UI:** In the portal interface, registered cards populate a `<select id="cardSelect">` dropdown where option values are formatted as `<cardtypeid>_<cardbinid>` (e.g. `"151_208"` for PNB Salary Imperial).
+- **Entitlement boundary:** The RuPay portal **does not store card numbers or track cards by their last 4 digits**. It only associates the portal account with the bank card type (`cardtypeid`) and BIN (`cardbinid`). Benefit availability (e.g., 1 per quarter) is enforced per portal account per card type.
+- **Physical card verification:** The actual physical card validation occurs downstream on the payment gateway, where the user enters the full 16-digit card number and completes an OTP authorization for the nominal ₹2 charge.
 
 ## Example: PNB Salary Imperial RuPay Select Card (portal id 151)
 
@@ -230,7 +263,8 @@ Spa Services (6 options) and OTT Entertainment (2 options). This replaced the 14
 ## Open questions
 
 - Variant numbers for Platinum Debit and Platinum Credit.
-- Which call returns the user's registered cards with their `cardbinid`.
+- Registered cards source: Resolved. Cards registered to the logged-in account appear directly in the portal header's `<select id="cardSelect">` with value formatted as `<cardtypeid>_<cardbinid>` (e.g. `151_208`).
+- Physical card binding: Resolved. The portal enforces entitlements at the `(portal_account, cardtypeid, quarter)` level rather than physical card number; actual card verification is handled by the payment gateway during the ₹2 charge.
 - Whether "redeem any one" categories mean one redemption per category per period. We assume they do (see above).
 - How to re-import a card that is already being tracked, by adding a new version instead of replacing it. (Current
   behaviour: `import` refuses such a card. On 2026-10-10, PNB 151's stale `effective_to` was cleared with a targeted SQL

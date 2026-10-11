@@ -8,6 +8,7 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "dev:preprod": "tsx --env-file ../web/.env.preprod src/index.ts",
+    "daemon:preprod": "tsx --env-file ../web/.env.preprod src/daemon.ts",
     "test:live": "tsx --env-file ../web/.env.preprod src/browser-runner.ts"
   },
   "dependencies": {

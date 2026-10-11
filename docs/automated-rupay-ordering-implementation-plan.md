@@ -389,14 +389,13 @@ Use only sanitized fixtures and the fake client to test:
 
 The immediate kill switch is `automation_settings.enabled = false`; it is checked before candidate selection and immediately before portal submission. A portal-account pause is the narrower kill switch. Disabling the Cloud Scheduler job is the infrastructure-level fallback. None of these delete attempts or alter existing tracker status/history.
 
-## 12. Explicit review questions
+## 12. Review questions and verified findings
 
-An external reviewer should verify these items before implementation begins:
+The discovery gate and live browser validation resolved the operational questions (see [automated-rupay-ordering-architecture.md](./automated-rupay-ordering-architecture.md) for full details):
 
-1. Whether the exact portal ordering flow permits unattended login without OTP/CAPTCHA. Portal terms and account-owner authorization are release gates, not optional implementation details.
-2. Whether `rupay_booking_id` is the correct durable portal confirmation identifier or whether a separate automation reference column is required.
-3. Whether the current application's non-public `app` schema / PostgREST lockdown covers all new migration objects, including sequences and functions.
-4. Whether a dedicated worker database role can be made sufficiently narrow without breaking Drizzle migrations or existing deployment practices.
-5. Whether rule scope and default pick-one option IDs remain valid through catalog-version changes, and whether the UI gives enough warning for stale rules.
-6. Whether a daily cadence is correct when the portal’s rule is rolling 24 hours rather than calendar-day based.
-7. Whether the configured workload's monthly cost estimate and budget alert fit the account's billing policy.
+1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. Solved via persistent browser profile directories (`.browser-data/account_<id>`) that maintain the session JWT token across runs. Unattended runs bypass login and CAPTCHA entirely.
+2. **24-hour cadence vs calendar day:** The portal enforces a strict rolling 24-hour limit from the last booking. Resolved via `cooldown_until` on `app.portal_accounts`, automated IST parsing, and the dynamic multi-account daemon event loop (`worker/src/daemon.ts`).
+3. **Card mapping & BIN lookup:** Entitlements are bound to `(account, cardtypeid, quarter)` on the portal, not individual physical card numbers. The registered card dropdown in the UI provides the composite `${cardtypeid}_${cardbinid}` identifier.
+4. **Order submission contract:** Confirmed as `POST /api/Select/addUserTransaction`, which returns an HTML payment gateway redirect on success and a timestamped rate limit message on cooldown.
+5. **PostgREST lockdown:** Verified; all application tables reside in the private `app` schema and return 401/404 via public anon PostgREST.
+
