@@ -9,16 +9,26 @@ import * as q from '@/domain/instance-queries';
  * viewed period first, then list, in one server action. No separate generate step.
  */
 export async function loadBenefitsAction(input: Parameters<typeof q.listInstances>[1]) {
-  const ctx = await getCtx();
-  await ensureInstances(ctx, input.view);
-  return q.listInstances(ctx, input);
+  try {
+    const ctx = await getCtx();
+    await ensureInstances(ctx, input.view);
+    return await q.listInstances(ctx, input);
+  } catch (err) {
+    console.error('[loadBenefitsAction] failed:', err);
+    throw err;
+  }
 }
 
 /** Dashboard page-load: ensure instances for the view, then summarize. */
 export async function loadDashboardAction(view: Parameters<typeof q.getDashboardSummary>[1]) {
-  const ctx = await getCtx();
-  await ensureInstances(ctx, view);
-  return q.getDashboardSummary(ctx, view);
+  try {
+    const ctx = await getCtx();
+    await ensureInstances(ctx, view);
+    return await q.getDashboardSummary(ctx, view);
+  } catch (err) {
+    console.error('[loadDashboardAction] failed:', err);
+    throw err;
+  }
 }
 
 /** Read-only variants (no generation), e.g. for refreshing after an edit. */

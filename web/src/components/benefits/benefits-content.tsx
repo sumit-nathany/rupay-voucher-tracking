@@ -43,8 +43,10 @@ export async function BenefitsContent({
       scope: isAll ? 'all' : lifetime ? 'lifetime' : undefined,
     });
   } catch (e) {
+    console.error('[BenefitsContent] failed to load benefits:', e);
     unstable_rethrow(e);
-    return <ErrorPanel message="The benefits list could not be loaded. Check the filters and try again." />;
+    const msg = e instanceof Error ? e.message : String(e);
+    return <ErrorPanel message={`The benefits list could not be loaded: ${msg}`} />;
   }
 
   if (items.length === 0) {

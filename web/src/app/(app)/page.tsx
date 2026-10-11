@@ -7,6 +7,8 @@ import { ContentStage } from '@/components/layout/content-stage';
 import { PageHeader } from '@/components/layout/page-header';
 import { today as istToday } from '@/lib/periods';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage({
   searchParams,
 }: {

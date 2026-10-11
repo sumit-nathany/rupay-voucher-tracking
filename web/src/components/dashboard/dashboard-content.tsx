@@ -17,8 +17,10 @@ export async function DashboardContent({ view, today }: { view: ViewedPeriod; to
   try {
     s = await loadDashboardAction(view);
   } catch (e) {
+    console.error('[DashboardContent] failed to load dashboard:', e);
     unstable_rethrow(e);
-    return <ErrorPanel message="The dashboard could not be loaded." />;
+    const msg = e instanceof Error ? e.message : String(e);
+    return <ErrorPanel message={`The dashboard could not be loaded: ${msg}`} />;
   }
 
   if (s.counts && Object.values(s.counts).every((n) => n === 0) && s.expiringSoon.length === 0) {

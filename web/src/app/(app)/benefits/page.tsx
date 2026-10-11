@@ -50,6 +50,8 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
   }
 }
 
+export const dynamic = 'force-dynamic';
+
 export default async function BenefitsPage({ searchParams }: { searchParams: Promise<Record<string, Raw>> }) {
   const sp = await searchParams;
   const today = istToday();
