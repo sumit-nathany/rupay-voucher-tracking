@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import {
-  bankCardTypes, benefitCatalogVersions, benefitInstances, benefits,
+  bankCardTypes, benefitCatalogVersions, benefitInstances, benefitValueOverrides, benefits,
   cardHolders, cards, workspaces,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
@@ -252,5 +252,21 @@ describe('sale and details', () => {
     expect(reverted.cashValue).toBeNull();
     expect(reverted.defaultCashValue).toBe(500);
     expect(reverted.value).toBe(500);
+
+    // 4. Adding workspace benefit value override changes defaultCashValue and value
+    const [ov] = await db.insert(benefitValueOverrides).values({
+      workspaceId: A.workspaceId,
+      benefitName: '₹500 Voucher',
+      customValue: '375.00',
+    }).returning();
+
+    const withOv = await inst.getInstance(A, instRow.id);
+    expect(withOv.catalogDefaultValue).toBe(500);
+    expect(withOv.customDefaultValue).toBe(375);
+    expect(withOv.defaultCashValue).toBe(375);
+    expect(withOv.value).toBe(375);
+    expect(withOv.benefitName).toBe('₹500 Voucher');
+
+    await db.delete(benefitValueOverrides).where(eq(benefitValueOverrides.id, ov.id));
   });
 });

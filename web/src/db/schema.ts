@@ -321,6 +321,39 @@ export const cardBenefitOverrides = app.table(
   ],
 );
 
+// Workspace-wide valuation overrides for benefits.
+// Replaces the shared catalog's nominal default value for a given benefit
+// across all cards in the workspace.
+export const benefitValueOverrides = app.table(
+  "benefit_value_overrides",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id),
+    benefitName: text("benefit_name").notNull(),
+    benefitType: text("benefit_type"),
+    benefitProvider: text("benefit_provider"),
+    benefitId: uuid("benefit_id"),
+    customValue: numeric("custom_value", { precision: 10, scale: 2 }).notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    check("benefit_value_overrides_custom_value_check", sql`${t.customValue} >= 0`),
+    unique("benefit_value_overrides_workspace_id_id_key").on(t.workspaceId, t.id),
+    unique("benefit_value_overrides_workspace_benefit_name_key").on(
+      t.workspaceId,
+      t.benefitName,
+    ),
+    foreignKey({
+      name: "benefit_value_overrides_workspace_id_fkey",
+      columns: [t.workspaceId],
+      foreignColumns: [workspaces.id],
+    }),
+  ],
+);
+
 export const benefitInstances = app.table(
   "benefit_instances",
   {

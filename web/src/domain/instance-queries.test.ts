@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import {
-  bankCardTypes, benefitCatalogVersions, benefitInstances, benefits,
+  bankCardTypes, benefitCatalogVersions, benefitInstances, benefitValueOverrides, benefits,
   cardBenefitOverrides, cardHolders, cards, workspaces,
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
@@ -563,4 +563,58 @@ describe('discount coupons', () => {
     const allSearch = await listInstances(A, { view: Q3, scope: 'all', search: 'FlightBooking' });
     expect(ids(allSearch)).toContain(discId);
   });
+
+  it('applies workspace benefit value override across cards while preserving instance overrides', async () => {
+    // Both cardA1 and cardA2 have alpha ("Alpha Benefit", default nominal value = 500)
+    const inst1 = await mk({ ws: A, card: cardA1, ben: alpha, ...q3, status: 'Not Ordered' });
+    const inst2 = await mk({ ws: A, card: cardA2, ben: alpha, ...q3, status: 'Not Ordered' });
+
+    // 1. Before override: value is catalog default 500
+    const beforeRows = await listInstances(A, { view: Q3 });
+    const row1Before = beforeRows.find((r) => r.id === inst1)!;
+    const row2Before = beforeRows.find((r) => r.id === inst2)!;
+    expect(row1Before.value).toBe(500);
+    expect(row2Before.value).toBe(500);
+    expect(row1Before.defaultCashValue).toBe(500);
+    expect(row1Before.customDefaultValue).toBeNull();
+    expect(row1Before.catalogDefaultValue).toBe(500);
+
+    // 2. Insert workspace benefit value override for "Alpha Spa" = 350
+    const [ov] = await db.insert(benefitValueOverrides).values({
+      workspaceId: A.workspaceId,
+      benefitName: 'Alpha Spa',
+      customValue: '350.00',
+    }).returning();
+
+    // 3. After override: both cards' instances evaluate to 350
+    const afterRows = await listInstances(A, { view: Q3 });
+    const row1After = afterRows.find((r) => r.id === inst1)!;
+    const row2After = afterRows.find((r) => r.id === inst2)!;
+    expect(row1After.value).toBe(350);
+    expect(row1After.defaultCashValue).toBe(350);
+    expect(row1After.customDefaultValue).toBe(350);
+    expect(row1After.catalogDefaultValue).toBe(500);
+    expect(row2After.value).toBe(350);
+
+    // 4. Tenant isolation: Workspace B is not affected by Workspace A's override
+    const [instB] = await Promise.all([
+      mk({ ws: B, card: cardB, ben: alpha, ...q3, status: 'Not Ordered' }),
+    ]);
+    const rowsB = await listInstances(B, { view: Q3 });
+    const rowB = rowsB.find((r) => r.id === instB)!;
+    expect(rowB.value).toBe(500);
+    expect(rowB.customDefaultValue).toBeNull();
+
+    // 5. Instance-specific cashValue override takes precedence over workspace valuation override
+    await db.update(benefitInstances).set({ cashValue: '200.00' }).where(eq(benefitInstances.id, inst1));
+    const instanceOverrideRows = await listInstances(A, { view: Q3 });
+    const row1InstOverride = instanceOverrideRows.find((r) => r.id === inst1)!;
+    expect(row1InstOverride.cashValue).toBe(200);
+    expect(row1InstOverride.defaultCashValue).toBe(350);
+    expect(row1InstOverride.value).toBe(200);
+
+    // Clean up
+    await db.delete(benefitValueOverrides).where(eq(benefitValueOverrides.id, ov.id));
+  });
 });
+

@@ -13,8 +13,10 @@ import {
   Layers,
   Loader2,
   Pencil,
+  Sparkles,
   Tag,
 } from 'lucide-react';
+import { CustomValuationDialog } from './custom-valuation-dialog';
 import {
   chooseOptionAction,
   getInstanceAction,
@@ -143,6 +145,8 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
             open={open}
             applied={applied}
             reload={() => load(inst.id, () => true)}
+            title={title}
+            subtitle={subtitle}
           />
         )}
       </SheetContent>
@@ -157,11 +161,15 @@ function DrawerBody({
   open,
   applied,
   reload,
+  title,
+  subtitle,
 }: {
   inst: InstanceView;
   open: boolean;
   applied: (v: InstanceView) => void;
   reload: () => Promise<void>;
+  title?: string;
+  subtitle?: string;
 }) {
   const kind = statusKind(inst.orderStatus);
   const editable = canEdit(inst.orderStatus);
@@ -169,7 +177,13 @@ function DrawerBody({
   return (
     <div className="flex flex-col gap-4 pb-6">
       {/* 1. Hero Card: Key numbers & Status */}
-      <HeroCard inst={inst} applied={applied} reload={reload} />
+      <HeroCard
+        inst={inst}
+        applied={applied}
+        reload={reload}
+        title={title}
+        subtitle={subtitle}
+      />
 
       {/* 2. Choose One Option (if applicable) */}
       <OptionSection inst={inst} editable={editable} applied={applied} />
@@ -216,13 +230,18 @@ function HeroCard({
   inst,
   applied,
   reload,
+  title,
+  subtitle,
 }: {
   inst: InstanceView;
   applied: (v: InstanceView) => void;
   reload: () => Promise<void>;
+  title?: string;
+  subtitle?: string;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [valuationOpen, setValuationOpen] = React.useState(false);
   const kind = statusKind(inst.orderStatus);
   const selectId = React.useId();
 
@@ -249,6 +268,7 @@ function HeroCard({
   }
 
   const options = kind === 'skipped' ? (['Skipped', 'Not Ordered'] as const) : WORKFLOW_STATUSES;
+  const benefitDisplayName = inst.benefitName || title || 'Benefit';
 
   return (
     <div className="rounded-2xl border border-border/70 bg-gradient-to-b from-muted/50 to-muted/20 p-4 space-y-3.5 shadow-xs">
@@ -260,8 +280,44 @@ function HeroCard({
             <p className="text-2xl font-bold tracking-tight text-foreground">{formatMoney(inst.value ?? inst.cashValue)}</p>
             {inst.cashValue != null && inst.defaultCashValue != null && Number(inst.cashValue) !== inst.defaultCashValue && (
               <span className="text-xs text-muted-foreground">
-                (default {formatMoney(inst.defaultCashValue)})
+                (instance override)
               </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+            {inst.customDefaultValue != null ? (
+              <>
+                <span className="text-primary font-medium flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> Custom valuation
+                </span>
+                {inst.catalogDefaultValue != null && (
+                  <span className="text-muted-foreground">
+                    (Catalog: {formatMoney(inst.catalogDefaultValue)})
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setValuationOpen(true)}
+                  className="text-muted-foreground hover:text-foreground underline underline-offset-2 ml-0.5"
+                >
+                  Change
+                </button>
+              </>
+            ) : (
+              <>
+                {inst.catalogDefaultValue != null && (
+                  <span className="text-muted-foreground">
+                    Catalog: {formatMoney(inst.catalogDefaultValue)}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setValuationOpen(true)}
+                  className="text-primary hover:underline font-medium"
+                >
+                  Customize valuation
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -275,6 +331,17 @@ function HeroCard({
           </p>
         </div>
       </div>
+
+      <CustomValuationDialog
+        open={valuationOpen}
+        onOpenChange={setValuationOpen}
+        benefitName={benefitDisplayName}
+        benefitType={inst.benefitType}
+        benefitProvider={inst.benefitProvider || subtitle}
+        catalogDefaultValue={inst.catalogDefaultValue}
+        customDefaultValue={inst.customDefaultValue}
+        onSaved={() => void reload()}
+      />
 
       <div className="h-px bg-border/60" />
 
@@ -809,7 +876,9 @@ function DetailsSection({
             <span className="font-medium text-foreground">
               {formatMoney(inst.value ?? inst.cashValue)}
               {inst.cashValue != null && inst.defaultCashValue != null && Number(inst.cashValue) !== inst.defaultCashValue
-                ? ' (custom)'
+                ? ' (instance override)'
+                : inst.customDefaultValue != null
+                ? ' (custom valuation)'
                 : ''}
             </span>
           </div>

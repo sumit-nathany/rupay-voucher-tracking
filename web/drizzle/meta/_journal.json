@@ -134,6 +134,13 @@
       "when": 1791740000000,
       "tag": "0018_trigger_requested_at",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791745000000,
+      "tag": "0019_benefit_value_overrides",
+      "breakpoints": true
     }
   ]
 }

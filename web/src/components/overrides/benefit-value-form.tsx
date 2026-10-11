@@ -1,0 +1,220 @@
+'use client';
+
+import * as React from 'react';
+import { IndianRupee, Pencil, Plus } from 'lucide-react';
+import { upsertBenefitValueOverrideAction } from '@/actions/benefit-values';
+import type { BenefitValueOverrideView, WorkspaceDistinctBenefit } from '@/domain/benefit-values';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SheetFooter } from '@/components/ui/sheet';
+import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
+
+function BenefitValueFormBody({
+  override,
+  distinctBenefits,
+  close,
+}: {
+  override?: BenefitValueOverrideView;
+  distinctBenefits: WorkspaceDistinctBenefit[];
+  close: () => void;
+}) {
+  const { run, pending, error, setError } = useRunAction();
+  const editing = Boolean(override);
+
+  const uid = React.useId();
+  const [selectedName, setSelectedName] = React.useState(override?.benefitName ?? '');
+  const [customInputName, setCustomInputName] = React.useState('');
+  const [isManualInput, setIsManualInput] = React.useState(false);
+  const [customValue, setCustomValue] = React.useState(override ? String(override.customValue) : '');
+
+  // Find info about selected benefit
+  const selectedInfo = React.useMemo(() => {
+    const matchName = isManualInput ? customInputName : selectedName;
+    return distinctBenefits.find(
+      (b) => b.benefitName.toLowerCase().trim() === matchName.toLowerCase().trim(),
+    );
+  }, [distinctBenefits, selectedName, customInputName, isManualInput]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const finalName = (editing ? override!.benefitName : isManualInput ? customInputName : selectedName).trim();
+    if (!finalName) {
+      setError('Please select or specify a benefit name.');
+      return;
+    }
+
+    const val = Number(customValue.trim());
+    if (isNaN(val) || val < 0) {
+      setError('Please enter a valid valuation amount (₹0 or greater).');
+      return;
+    }
+
+    const ok = await run(
+      () =>
+        upsertBenefitValueOverrideAction({
+          benefitName: finalName,
+          customValue: Math.round(val * 100) / 100,
+          benefitType: selectedInfo?.benefitType ?? override?.benefitType ?? null,
+          benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
+        }),
+      'Could not save custom valuation.',
+    );
+
+    if (ok) close();
+  }
+
+  // Available options for selection (if adding new, highlight those not already customized)
+  const availableChoices = React.useMemo(() => {
+    return distinctBenefits.filter((b) => !b.overrideId || b.benefitName === override?.benefitName);
+  }, [distinctBenefits, override]);
+
+  return (
+    <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
+      {editing ? (
+        <div className="space-y-1 rounded-lg bg-muted/50 p-3 border border-border/50 text-xs">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Benefit</span>
+          <p className="font-semibold text-foreground text-sm">{override!.benefitName}</p>
+          {(override?.benefitType || override?.benefitProvider) && (
+            <p className="text-muted-foreground text-xs">
+              {[override?.benefitType, override?.benefitProvider].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {!isManualInput && availableChoices.length > 0 ? (
+            <Field id={`${uid}-select`} label="Select Benefit" hint="Choose a benefit active on your cards">
+              <Select
+                value={selectedName}
+                onValueChange={(v) => {
+                  if (v === '__manual__') {
+                    setIsManualInput(true);
+                    setSelectedName('');
+                  } else {
+                    setSelectedName(v);
+                  }
+                }}
+              >
+                <SelectTrigger id={`${uid}-select`} className="w-full">
+                  <SelectValue placeholder="Choose a benefit…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableChoices.map((b) => (
+                    <SelectItem key={b.benefitName} value={b.benefitName}>
+                      {b.benefitName} {b.catalogValue != null ? `(Catalog: ₹${b.catalogValue})` : ''}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__manual__">Type custom benefit name…</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : (
+            <div className="space-y-2">
+              <Field id={`${uid}-name`} label="Benefit Name" hint="Exact name of the voucher or benefit">
+                <Input
+                  id={`${uid}-name`}
+                  value={customInputName}
+                  onChange={(e) => setCustomInputName(e.target.value)}
+                  placeholder="e.g. BookMyShow ₹250 Voucher"
+                  required
+                />
+              </Field>
+              {availableChoices.length > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => {
+                    setIsManualInput(false);
+                    setCustomInputName('');
+                  }}
+                >
+                  ← Select from existing benefits
+                </button>
+              )}
+            </div>
+          )}
+
+          {selectedInfo && selectedInfo.catalogValue != null && (
+            <div className="rounded-lg bg-muted/40 p-2.5 border border-border/40 text-xs flex justify-between items-center">
+              <span className="text-muted-foreground">RuPay Catalog Nominal Value:</span>
+              <span className="font-medium text-foreground">₹{selectedInfo.catalogValue}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Field
+        id={`${uid}-val`}
+        label="My Valuation (₹)"
+        hint="The value you place on this benefit. Will be reflected in dashboard totals and benefit lists."
+      >
+        <div className="relative">
+          <IndianRupee className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            id={`${uid}-val`}
+            type="number"
+            step="0.01"
+            min="0"
+            className="pl-9"
+            placeholder={selectedInfo?.catalogValue != null ? String(selectedInfo.catalogValue) : 'e.g. 200'}
+            value={customValue}
+            onChange={(e) => setCustomValue(e.target.value)}
+            required
+            autoFocus={editing}
+          />
+        </div>
+      </Field>
+
+      <ErrorText>{error}</ErrorText>
+
+      <SheetFooter className="mt-auto">
+        <SubmitButton pending={pending}>
+          {editing ? 'Update Valuation' : 'Save Valuation'}
+        </SubmitButton>
+      </SheetFooter>
+    </form>
+  );
+}
+
+export function BenefitValueFormSheet({
+  override,
+  distinctBenefits = [],
+}: {
+  override?: BenefitValueOverrideView;
+  distinctBenefits?: WorkspaceDistinctBenefit[];
+}) {
+  if (override) {
+    return (
+      <FormSheet
+        trigger={<><Pencil className="h-3.5 w-3.5 mr-1" aria-hidden />Edit</>}
+        triggerProps={{ variant: 'outline', size: 'sm', 'aria-label': `Edit valuation for ${override.benefitName}` }}
+        title="Edit Benefit Valuation"
+        description="Update your personal valuation for this benefit across all cards."
+      >
+        {(close) => (
+          <BenefitValueFormBody
+            override={override}
+            distinctBenefits={distinctBenefits}
+            close={close}
+          />
+        )}
+      </FormSheet>
+    );
+  }
+
+  return (
+    <FormSheet
+      trigger={<><Plus className="h-4 w-4 mr-1.5" aria-hidden />Set Custom Value</>}
+      triggerProps={{ size: 'sm' }}
+      title="Set Custom Benefit Valuation"
+      description="Define your own valuation for a benefit. This value will replace RuPay’s catalog nominal value across all cards."
+    >
+      {(close) => (
+        <BenefitValueFormBody
+          distinctBenefits={distinctBenefits}
+          close={close}
+        />
+      )}
+    </FormSheet>
+  );
+}

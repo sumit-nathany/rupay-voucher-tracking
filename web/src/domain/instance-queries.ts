@@ -5,6 +5,7 @@ import {
   benefitCatalogVersions,
   benefitOptions,
   benefitInstances,
+  benefitValueOverrides,
   cardBenefitOverrides,
   cardHolders,
   cards,
@@ -81,8 +82,12 @@ export interface InstanceListItem {
   lapsed: boolean;
   /** Instance's own cash_value (may be null). */
   cashValue: number | null;
-  /** Catalog version / override default_cash_value (may be null). */
+  /** Effective default cash value: custom valuation if set, else catalog face value (may be null). */
   defaultCashValue: number | null;
+  /** Workspace custom valuation override (may be null). */
+  customDefaultValue: number | null;
+  /** Catalog version / override nominal default_cash_value (may be null). */
+  catalogDefaultValue: number | null;
   /** cashValue ?? defaultCashValue ?? 0 — the figure used in dashboard totals. */
   value: number;
   soldFor: number | null;
@@ -214,6 +219,7 @@ const selection = {
   cProvider: benefitOptions.provider,
   cName: benefitOptions.offerName,
   cValue: benefitOptions.cashValue,
+  bvoValue: benefitValueOverrides.customValue,
   cardId: cards.id,
   cardName: cards.displayName,
   cardLastDigits: cards.lastDigits,
@@ -230,7 +236,9 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
   const fromOverride = r.overrideId != null;
   // A chosen offer ("redeem any one" benefit) replaces the category-level name, provider and value.
   const chosen = !fromOverride && r.cName != null;
-  const defaultCashValue = chosen ? (num(r.cValue) ?? num(r.vValue)) : num(fromOverride ? r.oValue : r.vValue);
+  const catalogDefaultValue = chosen ? (num(r.cValue) ?? num(r.vValue)) : num(fromOverride ? r.oValue : r.vValue);
+  const customDefaultValue = num(r.bvoValue);
+  const defaultCashValue = customDefaultValue ?? catalogDefaultValue;
   const cashValue = num(r.cashValue);
   const status = r.status as OrderStatus;
   const benefitName = (chosen ? r.cName : fromOverride ? r.oName : r.vName) ?? '';
@@ -251,6 +259,8 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     lapsed: status === 'Not Ordered' && r.periodEnd < todayStr,
     cashValue,
     defaultCashValue,
+    customDefaultValue,
+    catalogDefaultValue,
     value: cashValue ?? defaultCashValue ?? 0,
     soldFor: num(r.soldFor),
     rupayBookingId: r.rupayBookingId,
@@ -299,6 +309,13 @@ async function query(ctx: Ctx, where: SQL | undefined): Promise<InstanceListItem
       and(
         eq(cardBenefitOverrides.id, benefitInstances.overrideId),
         eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+      ),
+    )
+    .leftJoin(
+      benefitValueOverrides,
+      and(
+        eq(benefitValueOverrides.workspaceId, ctx.workspaceId),
+        sql`lower(trim(${benefitValueOverrides.benefitName})) = lower(trim(coalesce(${benefitOptions.offerName}, ${cardBenefitOverrides.exactBenefit}, ${benefitCatalogVersions.exactBenefit})))`,
       ),
     )
     .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), where))

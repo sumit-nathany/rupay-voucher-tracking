@@ -1,9 +1,10 @@
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   benefitCatalogVersions,
   benefitInstances,
   benefitOptions,
+  benefitValueOverrides,
   cardBenefitOverrides,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
@@ -72,7 +73,12 @@ type Row = typeof benefitInstances.$inferSelect;
 export type InstanceView = Omit<Row, 'codeEncrypted'> & {
   hasCode: boolean;
   defaultCashValue: number | null;
+  customDefaultValue: number | null;
+  catalogDefaultValue: number | null;
   value: number;
+  benefitName: string;
+  benefitType: string;
+  benefitProvider: string | null;
 };
 
 export interface RevealedCode {
@@ -98,8 +104,17 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
     .select({
       instance: benefitInstances,
       vValue: benefitCatalogVersions.defaultCashValue,
+      vName: benefitCatalogVersions.exactBenefit,
+      vType: benefitCatalogVersions.benefitType,
+      vProvider: benefitCatalogVersions.benefitProvider,
       oValue: cardBenefitOverrides.defaultCashValue,
+      oName: cardBenefitOverrides.exactBenefit,
+      oType: cardBenefitOverrides.benefitType,
+      oProvider: cardBenefitOverrides.benefitProvider,
       cValue: benefitOptions.cashValue,
+      cName: benefitOptions.offerName,
+      cProvider: benefitOptions.provider,
+      bvoValue: benefitValueOverrides.customValue,
     })
     .from(benefitInstances)
     .leftJoin(
@@ -121,6 +136,13 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
         eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
       ),
     )
+    .leftJoin(
+      benefitValueOverrides,
+      and(
+        eq(benefitValueOverrides.workspaceId, ctx.workspaceId),
+        sql`lower(trim(${benefitValueOverrides.benefitName})) = lower(trim(coalesce(${benefitOptions.offerName}, ${cardBenefitOverrides.exactBenefit}, ${benefitCatalogVersions.exactBenefit})))`,
+      ),
+    )
     .where(scope(ctx, instanceId));
 
   if (!row) throw new NotFoundError('Instance not found');
@@ -128,17 +150,27 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
   const { codeEncrypted, ...rest } = row.instance;
   const fromOverride = rest.overrideId != null;
   const chosen = !fromOverride && rest.chosenOptionId != null;
-  const defaultCashValue = chosen
+  const catalogDefaultValue = chosen
     ? (num(row.cValue) ?? num(row.vValue))
     : num(fromOverride ? row.oValue : row.vValue);
+  const customDefaultValue = num(row.bvoValue);
+  const defaultCashValue = customDefaultValue ?? catalogDefaultValue;
   const cashValue = num(rest.cashValue);
   const value = cashValue ?? defaultCashValue ?? 0;
+  const benefitName = (chosen ? row.cName : fromOverride ? row.oName : row.vName) ?? '';
+  const benefitType = (fromOverride ? row.oType : row.vType) ?? '';
+  const benefitProvider = (chosen ? row.cProvider : fromOverride ? row.oProvider : row.vProvider) ?? null;
 
   return {
     ...rest,
     hasCode: codeEncrypted != null,
     defaultCashValue,
+    customDefaultValue,
+    catalogDefaultValue,
     value,
+    benefitName,
+    benefitType,
+    benefitProvider,
   };
 }
 
