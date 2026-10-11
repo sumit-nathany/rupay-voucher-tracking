@@ -1,6 +1,18 @@
 import readline from 'readline';
 import type { Page, Frame, Locator } from 'playwright';
+import { eq } from 'drizzle-orm';
 import type { DecryptedPaymentDetails } from '../../web/src/lib/card-payment-details';
+import * as schema from '../../web/src/db/schema';
+import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
+
+export interface OtpPromptContext {
+  db?: any;
+  portalAccountId?: string;
+  attemptId?: string;
+  phoneNumber?: string | null;
+  cardName?: string;
+  benefitName?: string;
+}
 
 export interface PaymentAutomationResult {
   status: 'confirmed' | 'otp_required' | 'failed' | 'timeout';
@@ -294,12 +306,53 @@ export async function findOtpInput(page: Page): Promise<{ target: Page | Frame; 
  * Prompts the user interactively in the terminal for the OTP with a timeout,
  * while simultaneously watching if the user fills it directly in the open browser window.
  */
-export async function promptForOtpAndSubmit(page: Page, timeoutMs: number = 180000): Promise<boolean> {
+export async function promptForOtpAndSubmit(
+  page: Page,
+  contextOptions?: OtpPromptContext,
+  timeoutMs: number = 180000,
+): Promise<boolean> {
   console.log(`\n======================================================`);
   console.log(`📲 3D-SECURE BANK OTP VERIFICATION REQUIRED`);
   console.log(`Current URL: ${page.url()}`);
-  console.log(`👉 Enter the OTP in your terminal OR type it in the open browser.`);
+  if (contextOptions?.phoneNumber) {
+    console.log(`💬 WhatsApp Notification dispatched to: ${contextOptions.phoneNumber}`);
+  }
+  console.log(`👉 Enter OTP in terminal, reply on WhatsApp, or type in browser.`);
   console.log(`======================================================\n`);
+
+  let challengeId: string | null = null;
+
+  // 1. If WhatsApp number and DB are provided, create challenge and send prompt
+  if (contextOptions?.db && contextOptions?.phoneNumber && contextOptions?.portalAccountId) {
+    try {
+      const expiresAt = new Date(Date.now() + 2 * 60 * 1000);
+      const [challenge] = await contextOptions.db
+        .insert(schema.portalOrderOtpChallenges)
+        .values({
+          attemptId: contextOptions.attemptId,
+          portalAccountId: contextOptions.portalAccountId,
+          phoneNumber: contextOptions.phoneNumber,
+          status: 'pending',
+          expiresAt,
+        })
+        .returning();
+
+      if (challenge) {
+        challengeId = challenge.id;
+        const whatsapp = getWhatsAppClient();
+        await whatsapp.sendOtpPrompt({
+          to: contextOptions.phoneNumber,
+          cardName: contextOptions.cardName || 'RuPay Card',
+          benefitName: contextOptions.benefitName || 'RuPay Benefit',
+          amount: 2,
+          timeoutMinutes: 2,
+        });
+        console.log(`[gateway] WhatsApp OTP challenge initiated (id: ${challengeId}).`);
+      }
+    } catch (e) {
+      console.error('[gateway] Failed to dispatch WhatsApp prompt:', e);
+    }
+  }
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -314,24 +367,13 @@ export async function promptForOtpAndSubmit(page: Page, timeoutMs: number = 1800
       rl.close();
     };
 
-    // Terminal stdin prompt
-    rl.question('👉 Enter OTP: ', async (otpAnswer) => {
-      if (resolved) return;
-      cleanup();
-
-      const trimmedOtp = otpAnswer.trim();
-      if (!trimmedOtp) {
-        console.log('[gateway] No OTP provided in terminal. Monitoring browser window...');
-        return;
-      }
-
-      console.log(`[gateway] Injecting entered OTP into bank verification field...`);
+    async function injectOtp(otp: string, source: string) {
+      console.log(`\n[gateway] >>> Injecting OTP (${source}): ${otp} into bank ACS page <<<`);
       const otpInput = await findOtpInput(page);
       if (otpInput) {
-        await otpInput.locator.fill(trimmedOtp);
-        console.log('[gateway] OTP filled! Clicking Submit/Verify...');
+        await otpInput.locator.fill(otp);
+        console.log('[gateway] OTP filled! Clicking Submit/Verify button...');
 
-        // Try clicking OTP Submit button
         const submitSelectors = [
           'button:has-text("Submit")',
           'input[type="submit"]',
@@ -353,19 +395,51 @@ export async function promptForOtpAndSubmit(page: Page, timeoutMs: number = 1800
           } catch {}
         }
       } else {
-        console.log('[gateway] Could not locate OTP field on page. Please click Submit in browser.');
+        console.log('[gateway] Could not locate OTP input field automatically. Please submit in browser.');
       }
+    }
 
+    // Terminal stdin prompt
+    rl.question('👉 Enter OTP: ', async (otpAnswer) => {
+      if (resolved) return;
+      cleanup();
+
+      const trimmedOtp = otpAnswer.trim();
+      if (trimmedOtp) {
+        await injectOtp(trimmedOtp, 'terminal');
+      }
       resolve(true);
     });
 
-    // Background watcher: in case the user typed and submitted directly in the browser window
+    // Background watcher: checks WhatsApp DB challenge AND browser navigation
     const pollInterval = setInterval(async () => {
       if (resolved) {
         clearInterval(pollInterval);
         return;
       }
 
+      // 1. Check if WhatsApp Webhook populated the OTP in database
+      if (challengeId && contextOptions?.db) {
+        try {
+          const [ch] = await contextOptions.db
+            .select()
+            .from(schema.portalOrderOtpChallenges)
+            .where(eq(schema.portalOrderOtpChallenges.id, challengeId));
+
+          if (ch && ch.status === 'received' && ch.otpCode) {
+            console.log(`\n🎉 Received OTP "${ch.otpCode}" via WhatsApp Webhook!`);
+            clearInterval(pollInterval);
+            cleanup();
+            await injectOtp(ch.otpCode, 'WhatsApp');
+            resolve(true);
+            return;
+          }
+        } catch (err) {
+          // Ignore transient db poll errors
+        }
+      }
+
+      // 2. Check if user typed and submitted directly in the browser window
       const currUrl = page.url();
       if (
         currUrl.includes('success') ||

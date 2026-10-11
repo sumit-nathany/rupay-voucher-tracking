@@ -31,6 +31,7 @@ export interface PortalAccountView {
   id: string;
   workspaceId: string;
   label: string;
+  phoneNumber: string | null;
   status: 'connected' | 'paused' | 'credentials_expired' | 'challenge_required' | 'portal_changed' | 'needs_attention';
   hasCredentials: boolean;
   lastConfirmedOrderAt: string | null;
@@ -179,6 +180,7 @@ export async function listPortalAccounts(ctx: Ctx): Promise<PortalAccountView[]>
     id: a.id,
     workspaceId: a.workspaceId,
     label: a.label,
+    phoneNumber: a.phoneNumber ?? null,
     status: a.status as PortalAccountView['status'],
     hasCredentials: Boolean(a.credentialsEncrypted),
     lastConfirmedOrderAt: a.lastConfirmedOrderAt ? a.lastConfirmedOrderAt.toISOString() : null,
@@ -194,7 +196,7 @@ export async function listPortalAccounts(ctx: Ctx): Promise<PortalAccountView[]>
 
 export async function createPortalAccount(
   ctx: Ctx,
-  input: { label: string; credentials: { loginId: string; password: string; extra?: Record<string, string> } },
+  input: { label: string; phoneNumber?: string | null; credentials: { loginId: string; password: string; extra?: Record<string, string> } },
 ): Promise<PortalAccountView> {
   const label = input.label.trim();
   if (!label) throw new Error('Label cannot be empty');
@@ -212,6 +214,7 @@ export async function createPortalAccount(
       id: accountId,
       workspaceId: ctx.workspaceId,
       label,
+      phoneNumber: input.phoneNumber?.trim() || null,
       credentialsEncrypted,
       status: 'connected',
     })
@@ -221,6 +224,7 @@ export async function createPortalAccount(
     id: row.id,
     workspaceId: row.workspaceId,
     label: row.label,
+    phoneNumber: row.phoneNumber,
     status: row.status as PortalAccountView['status'],
     hasCredentials: true,
     lastConfirmedOrderAt: null,
@@ -236,7 +240,7 @@ export async function createPortalAccount(
 
 export async function updatePortalAccount(
   ctx: Ctx,
-  input: { id: string; label?: string; credentials?: { loginId: string; password: string; extra?: Record<string, string> } },
+  input: { id: string; label?: string; phoneNumber?: string | null; credentials?: { loginId: string; password: string; extra?: Record<string, string> } },
 ): Promise<PortalAccountView> {
   const [existing] = await ctx.db
     .select()
@@ -251,6 +255,10 @@ export async function updatePortalAccount(
     const l = input.label.trim();
     if (!l) throw new Error('Label cannot be empty');
     patch.label = l;
+  }
+
+  if (input.phoneNumber !== undefined) {
+    patch.phoneNumber = input.phoneNumber?.trim() || null;
   }
 
   if (input.credentials) {
@@ -275,6 +283,7 @@ export async function updatePortalAccount(
     id: row.id,
     workspaceId: row.workspaceId,
     label: row.label,
+    phoneNumber: row.phoneNumber,
     status: row.status as PortalAccountView['status'],
     hasCredentials: true,
     lastConfirmedOrderAt: row.lastConfirmedOrderAt ? row.lastConfirmedOrderAt.toISOString() : null,

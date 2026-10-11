@@ -464,6 +464,7 @@ export const portalAccounts = app.table(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     label: text("label").notNull(),
     credentialsEncrypted: text("credentials_encrypted").notNull(),
+    phoneNumber: text("phone_number"),
     status: text("status").notNull().default("connected"),
     lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
@@ -635,6 +636,33 @@ export const portalOrderAttempts = app.table(
     }).onDelete("cascade"),
     index("portal_order_attempts_account_submission_idx").on(t.portalAccountId, t.submissionStartedAt.desc()),
     index("portal_order_attempts_workspace_instance_idx").on(t.workspaceId, t.instanceId),
+  ],
+);
+
+export const portalOrderOtpChallenges = app.table(
+  "portal_order_otp_challenges",
+  {
+    id: id(),
+    attemptId: uuid("attempt_id")
+      .notNull()
+      .references(() => portalOrderAttempts.id, { onDelete: "cascade" }),
+    portalAccountId: uuid("portal_account_id")
+      .notNull()
+      .references(() => portalAccounts.id, { onDelete: "cascade" }),
+    phoneNumber: text("phone_number").notNull(),
+    status: text("status").notNull().default("pending"),
+    otpCode: text("otp_code"),
+    messageId: text("message_id"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    check(
+      "portal_order_otp_challenges_status_check",
+      sql`${t.status} IN ('pending', 'received', 'expired', 'failed')`,
+    ),
+    index("portal_order_otp_challenges_phone_pending_idx").on(t.phoneNumber, t.status),
   ],
 );
 

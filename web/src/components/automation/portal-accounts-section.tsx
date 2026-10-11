@@ -132,6 +132,13 @@ function AccountCard({
           </Badge>
         </div>
 
+        {account.phoneNumber && (
+          <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <span>💬 WhatsApp OTP:</span>
+            <span className="font-mono">{account.phoneNumber}</span>
+          </p>
+        )}
+
         {account.statusDetailCode && (
           <p className="text-[11px] font-medium text-destructive">
             Reason: {account.statusDetailCode.replace(/_/g, ' ')}
@@ -208,6 +215,7 @@ function AddAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const label = String(fd.get('label') ?? '').trim();
+    const phoneNumber = String(fd.get('phoneNumber') ?? '').trim();
     const loginId = String(fd.get('loginId') ?? '').trim();
     const password = String(fd.get('password') ?? '').trim();
     const pin = String(fd.get('pin') ?? '').trim();
@@ -222,6 +230,7 @@ function AddAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     try {
       await createPortalAccountAction({
         label,
+        phoneNumber: phoneNumber || undefined,
         credentials: {
           loginId,
           password,
@@ -250,6 +259,12 @@ function AddAccountDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
           <div className="space-y-1.5">
             <Label htmlFor="label" className="text-xs font-semibold">Account Label</Label>
             <Input id="label" name="label" placeholder="e.g. My Primary RuPay Login" required className="h-9 text-sm" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="phoneNumber" className="text-xs font-semibold">WhatsApp Number for OTP (optional)</Label>
+            <Input id="phoneNumber" name="phoneNumber" placeholder="e.g. +919876543210" className="h-9 text-sm" />
+            <p className="text-[11px] text-muted-foreground">Receive 3D-Secure bank OTP requests directly on WhatsApp to automate checkout.</p>
           </div>
 
           <div className="space-y-1.5">
@@ -299,6 +314,7 @@ function EditAccountDialog({
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const label = String(fd.get('label') ?? '').trim();
+    const phoneNumber = String(fd.get('phoneNumber') ?? '').trim();
     const loginId = String(fd.get('loginId') ?? '').trim();
     const password = String(fd.get('password') ?? '').trim();
     const pin = String(fd.get('pin') ?? '').trim();
@@ -309,6 +325,7 @@ function EditAccountDialog({
       await updatePortalAccountAction({
         id: account.id,
         label: label || undefined,
+        phoneNumber: phoneNumber || null,
         credentials:
           loginId && password
             ? {
@@ -340,6 +357,12 @@ function EditAccountDialog({
           <div className="space-y-1.5">
             <Label htmlFor="edit-label" className="text-xs font-semibold">Account Label</Label>
             <Input id="edit-label" name="label" defaultValue={account.label} required className="h-9 text-sm" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-phoneNumber" className="text-xs font-semibold">WhatsApp Number for OTP (optional)</Label>
+            <Input id="edit-phoneNumber" name="phoneNumber" defaultValue={account.phoneNumber ?? ''} placeholder="e.g. +919876543210" className="h-9 text-sm" />
+            <p className="text-[11px] text-muted-foreground">Receive 3D-Secure bank OTP requests directly on WhatsApp to automate checkout.</p>
           </div>
 
           <div className="space-y-1.5">

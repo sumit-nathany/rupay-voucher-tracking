@@ -46,6 +46,7 @@ export async function saveAutomationSettingsAction(input: z.infer<typeof saveSet
 
 const createAccountSchema = z.object({
   label: z.string().min(1, 'Label is required'),
+  phoneNumber: z.string().optional().nullable(),
   credentials: z.object({
     loginId: z.string().min(1, 'Login ID is required'),
     password: z.string().min(1, 'Password is required'),
@@ -64,6 +65,7 @@ export async function createPortalAccountAction(input: z.infer<typeof createAcco
 const updateAccountSchema = z.object({
   id: z.string().uuid(),
   label: z.string().min(1).optional(),
+  phoneNumber: z.string().optional().nullable(),
   credentials: z
     .object({
       loginId: z.string().min(1),

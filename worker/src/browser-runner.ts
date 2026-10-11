@@ -11,6 +11,7 @@ import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web
 import { isPortalCooldownMessage, parsePortalCooldownDate } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
+import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
@@ -304,7 +305,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
   await activePaymentPage.waitForTimeout(3000); // Allow bank ACS / 3DS page to settle
 
-  const otpCompleted = await promptForOtpAndSubmit(activePaymentPage, 180000);
+  const otpCompleted = await promptForOtpAndSubmit(
+    activePaymentPage,
+    {
+      db,
+      portalAccountId: account.id,
+      attemptId: candidate.instanceId,
+      phoneNumber: account.phoneNumber,
+      cardName: cardRow?.cardName ?? 'RuPay Card',
+      benefitName: benefitDetails.exactBenefit,
+    },
+    180000,
+  );
+
   if (otpCompleted) {
     console.log('Monitoring transaction completion & booking reference...');
     for (let sec = 0; sec < 30; sec++) {
@@ -315,6 +328,16 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const bookingMatch = pageText.match(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i);
         if (bookingMatch) {
           console.log(`\n🎉 Booking Reference Confirmed: ${bookingMatch[1]}`);
+          if (account.phoneNumber) {
+            const whatsapp = getWhatsAppClient();
+            await whatsapp.sendBookingConfirmation({
+              to: account.phoneNumber,
+              cardName: cardRow?.cardName ?? 'RuPay Card',
+              benefitName: benefitDetails.exactBenefit,
+              bookingRef: bookingMatch[1],
+            });
+            console.log(`[gateway] Sent booking confirmation via WhatsApp to ${account.phoneNumber}.`);
+          }
           break;
         }
       }

@@ -27,7 +27,7 @@ TABLES=(workspaces workspace_members card_holders bank_card_types benefits
   benefit_instances notification_preferences reminder_log
   automation_settings portal_accounts portal_card_mappings ordering_rules
   ordering_rule_cards ordering_rule_benefits ordering_rule_option_defaults
-  ordering_job_runs portal_order_attempts)
+  ordering_job_runs portal_order_attempts portal_order_otp_challenges)
 fail=0
 
 check() { # label key method profile table
