@@ -14,6 +14,7 @@ import {
   benefitCatalogVersions,
   benefitOptions,
   bankCardTypes,
+  orderingQueueItems,
 } from '@/db/schema';
 import type { Ctx, Database } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
@@ -109,7 +110,7 @@ export interface CandidateNomination {
     chosenOptionId: string | null;
     portalCardId: string | null;
     portalCardbinId: string | null;
-    ruleId: string;
+    ruleId: string | null;
     rulePriority: number;
     portalAccountId: string;
   };
@@ -1009,7 +1010,102 @@ export async function findCandidatesForAccount(
   const cardMap = new Map(mappings.map((m) => [m.cardId, m]));
   const mappedCardIds = Array.from(cardMap.keys());
 
-  // 5. Fetch enabled rules for this account
+  // 5a. Check Modern Ordering Queue first:
+  // If user has configured an order queue, evaluate candidates directly in queue position order
+  const queueItems = await db
+    .select({
+      id: orderingQueueItems.id,
+      instanceId: orderingQueueItems.instanceId,
+      position: orderingQueueItems.position,
+      enabled: orderingQueueItems.enabled,
+      chosenOptionId: orderingQueueItems.chosenOptionId,
+    })
+    .from(orderingQueueItems)
+    .where(
+      and(
+        eq(orderingQueueItems.workspaceId, account.workspaceId),
+        eq(orderingQueueItems.enabled, true),
+      ),
+    )
+    .orderBy(asc(orderingQueueItems.position));
+
+  if (queueItems.length > 0) {
+    const queueInstanceIds = queueItems.map((q) => q.instanceId);
+    const instances = await db
+      .select({
+        id: benefitInstances.id,
+        cardId: benefitInstances.cardId,
+        benefitId: benefitInstances.benefitId,
+        orderDeadline: benefitInstances.orderDeadline,
+        chosenOptionId: benefitInstances.chosenOptionId,
+        generatedFromVersion: benefitInstances.generatedFromVersion,
+      })
+      .from(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, account.workspaceId),
+          inArray(benefitInstances.id, queueInstanceIds),
+          inArray(benefitInstances.cardId, mappedCardIds),
+          eq(benefitInstances.orderStatus, 'Not Ordered'),
+          gte(benefitInstances.orderDeadline, today),
+          isNull(benefitInstances.soldFor),
+        ),
+      );
+
+    if (instances.length > 0) {
+      const blockingAttempts = await db
+        .select({ instanceId: portalOrderAttempts.instanceId })
+        .from(portalOrderAttempts)
+        .where(
+          and(
+            inArray(portalOrderAttempts.instanceId, instances.map((i) => i.id)),
+            inArray(portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+          ),
+        );
+      const blockedSet = new Set(blockingAttempts.map((b) => b.instanceId));
+      const instMap = new Map(instances.map((i) => [i.id, i]));
+
+      for (const qItem of queueItems) {
+        if (blockedSet.has(qItem.instanceId)) continue;
+        const inst = instMap.get(qItem.instanceId);
+        if (!inst || !inst.benefitId) continue;
+
+        const mapping = cardMap.get(inst.cardId);
+        if (!mapping) continue;
+
+        const chosenOpt = qItem.chosenOptionId ?? inst.chosenOptionId ?? null;
+
+        // Check pick-one option requirements:
+        if (inst.generatedFromVersion) {
+          const opts = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(benefitOptions)
+            .where(eq(benefitOptions.versionId, inst.generatedFromVersion));
+          if (opts[0].count > 1 && !chosenOpt) {
+            // Pick-one requires an option to be chosen. Skip if not selected yet.
+            continue;
+          }
+        }
+
+        return {
+          instanceId: inst.id,
+          cardId: inst.cardId,
+          benefitId: inst.benefitId,
+          orderDeadline: inst.orderDeadline,
+          chosenOptionId: chosenOpt,
+          portalCardId: mapping.portalCardId,
+          portalCardbinId: mapping.portalCardbinId,
+          ruleId: null,
+          rulePriority: qItem.position,
+          portalAccountId,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  // 5b. Legacy Fallback: Fetch enabled rules for this account
   const rules = await db
     .select()
     .from(orderingRules)

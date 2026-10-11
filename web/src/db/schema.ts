@@ -618,6 +618,28 @@ export const orderingRuleOptionDefaults = app.table(
   (t) => [primaryKey({ columns: [t.ruleId, t.benefitId] })],
 );
 
+export const orderingQueueItems = app.table(
+  "ordering_queue_items",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    instanceId: uuid("instance_id")
+      .notNull()
+      .references(() => benefitInstances.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    chosenOptionId: uuid("chosen_option_id").references(() => benefitOptions.id, { onDelete: "set null" }),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("ordering_queue_workspace_instance_key").on(t.workspaceId, t.instanceId),
+    index("idx_ordering_queue_position").on(t.workspaceId, t.position),
+  ],
+);
+
 export const orderingJobRuns = app.table(
   "ordering_job_runs",
   {

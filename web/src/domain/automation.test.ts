@@ -12,6 +12,7 @@ import {
   benefitInstances,
   portalOrderAttempts,
   orderingRules,
+  orderingQueueItems,
 } from '@/db/schema';
 import type { Database, Ctx } from '@/lib/context';
 import {
@@ -229,6 +230,91 @@ describe('automation domain', () => {
 
     cand = await findCandidatesForAccount(db, acc.id, today);
     expect(cand).toBeNull();
+  });
+
+  it('nominates candidate from ordering_queue_items according to queue position', async () => {
+    await saveAutomationSettings(ctx, { enabled: true });
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder 1' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ bankName: 'HDFC', cardType: 'Millennia', displayName: 'HDFC Millennia' }).returning();
+    const [c1] = await db.insert(cards).values({ workspaceId, holderId: holder.id, bankCardTypeId: cardType.id, lastDigits: '1111', displayName: 'Card 1', active: true }).returning();
+
+    const acc = await createPortalAccount(ctx, {
+      label: 'acc@test.com',
+      credentials: { loginId: 'acc@test.com', password: 'pwd' },
+    });
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc.id,
+      cardId: c1.id,
+      portalCardId: 'pc-1',
+      portalCardbinId: 'bin-1',
+    });
+
+    const [b1] = await db.insert(benefits).values({ bankCardTypeId: cardType.id }).returning();
+    const [b2] = await db.insert(benefits).values({ bankCardTypeId: cardType.id }).returning();
+
+    const [v1] = await db.insert(benefitCatalogVersions).values({
+      benefitId: b1.id,
+      benefitType: 'Spa',
+      benefitProvider: 'O2',
+      exactBenefit: 'Spa Session',
+      frequency: 'Quarterly',
+      effectiveFrom: '2026-01-01',
+    }).returning();
+
+    const [v2] = await db.insert(benefitCatalogVersions).values({
+      benefitId: b2.id,
+      benefitType: 'Swiggy',
+      benefitProvider: 'Swiggy',
+      exactBenefit: 'Swiggy Voucher',
+      frequency: 'Monthly',
+      effectiveFrom: '2026-01-01',
+    }).returning();
+
+    const [inst1] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: c1.id,
+      benefitId: b1.id,
+      bankCardTypeId: cardType.id,
+      generatedFromVersion: v1.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-10-31',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    const [inst2] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: c1.id,
+      benefitId: b2.id,
+      bankCardTypeId: cardType.id,
+      generatedFromVersion: v2.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-10-31',
+      periodLabel: 'Oct 2026',
+      orderDeadline: '2026-10-31',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    // Insert queue items: inst2 is position 0 (first), inst1 is position 1 (second)
+    await db.insert(orderingQueueItems).values([
+      { workspaceId, instanceId: inst2.id, position: 0, enabled: true },
+      { workspaceId, instanceId: inst1.id, position: 1, enabled: true },
+    ]);
+
+    // Position 0 (inst2) should be picked
+    let cand = await findCandidatesForAccount(db, acc.id, today);
+    expect(cand).not.toBeNull();
+    expect(cand?.instanceId).toBe(inst2.id);
+    expect(cand?.rulePriority).toBe(0);
+
+    // Disable inst2 in the queue -> inst1 should now be picked
+    await db.update(orderingQueueItems).set({ enabled: false }).where(eq(orderingQueueItems.instanceId, inst2.id));
+    cand = await findCandidatesForAccount(db, acc.id, today);
+    expect(cand).not.toBeNull();
+    expect(cand?.instanceId).toBe(inst1.id);
+    expect(cand?.rulePriority).toBe(1);
   });
 
   it('allows mapping the same card to multiple portal accounts and inherits/syncs payment details', async () => {

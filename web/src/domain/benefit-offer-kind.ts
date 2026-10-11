@@ -19,6 +19,15 @@ export function isGolfBenefit(
   return hay.includes('golf');
 }
 
+export function isCabBenefit(
+  benefitType: string | null | undefined,
+  benefitProvider: string | null | undefined,
+  exactBenefit: string | null | undefined,
+): boolean {
+  const hay = `${benefitProvider ?? ''} ${exactBenefit ?? ''} ${benefitType ?? ''}`.toLowerCase();
+  return hay.includes('cab') || hay.includes('uber') || hay.includes('ola');
+}
+
 /**
  * Classify catalog / instance display fields. Used at seed time and as a fallback
  * when `offer_kind` was not set on older rows.
@@ -28,6 +37,8 @@ export function inferOfferKind(
   benefitProvider: string | null,
   exactBenefit: string,
 ): OfferKind {
+  // Cabs are gift vouchers (prepaid vouchers like Uber INR 100, Ola INR 100)
+  if (isCabBenefit(benefitType, benefitProvider, exactBenefit)) return 'voucher';
   if (isGolfBenefit(benefitType, benefitProvider, exactBenefit)) return 'discount';
   const hay = `${benefitProvider ?? ''} ${exactBenefit} ${benefitType}`.toLowerCase();
   if (DISCOUNT_PROVIDER_MARKERS.some((m) => hay.includes(m))) return 'discount';
@@ -42,6 +53,9 @@ export function resolveOfferKind(
   benefitProvider: string | null,
   exactBenefit: string,
 ): OfferKind {
+  // Cabs are always vouchers
+  if (isCabBenefit(benefitType, benefitProvider, exactBenefit)) return 'voucher';
+  // Golf is always discount
   if (isGolfBenefit(benefitType, benefitProvider, exactBenefit)) return 'discount';
   return stored ?? inferOfferKind(benefitType, benefitProvider, exactBenefit);
 }

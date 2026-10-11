@@ -5,17 +5,19 @@ import { z } from 'zod';
 import { getCtx } from '@/lib/session';
 import * as auto from '@/domain/automation';
 import * as worker from '@/domain/automation-worker';
+import * as queueDomain from '@/domain/ordering-queue';
 import { getTelegramClient } from '@/lib/telegram-client';
 
 export async function getAutomationDashboardAction() {
   const ctx = await getCtx();
-  const [settings, accounts, mappings, rules, attempts, nextRunInfo] = await Promise.all([
+  const [settings, accounts, mappings, rules, attempts, nextRunInfo, queue] = await Promise.all([
     auto.getAutomationSettings(ctx),
     auto.listPortalAccounts(ctx),
     auto.listPortalCardMappings(ctx),
     auto.listOrderingRules(ctx),
     auto.listAutomationAttempts(ctx, 30),
     auto.getNextEligibleRunTime(ctx.db, ctx.workspaceId),
+    queueDomain.listOrderingQueue(ctx),
   ]);
 
   return {
@@ -33,6 +35,7 @@ export async function getAutomationDashboardAction() {
       accountLabel: nextRunInfo.accountLabel,
       reason: nextRunInfo.reason,
     },
+    queue,
   };
 }
 
@@ -235,5 +238,48 @@ export async function triggerManualOrderAction() {
   await auto.requestManualAutomationRun(ctx);
   revalidatePath('/automation');
   return { success: true };
+}
+
+export async function listOrderingQueueAction() {
+  const ctx = await getCtx();
+  return queueDomain.listOrderingQueue(ctx);
+}
+
+const populateQueueSchema = z.object({
+  strategy: z.enum(['nearest_expiring', 'highest_value']).optional(),
+});
+
+export async function populateAndSortQueueAction(input?: z.infer<typeof populateQueueSchema>) {
+  const ctx = await getCtx();
+  const parsed = input ? populateQueueSchema.parse(input) : undefined;
+  const result = await queueDomain.populateAndSortQueue(ctx, parsed?.strategy);
+  revalidatePath('/automation');
+  return result;
+}
+
+const updateQueueItemSchema = z.object({
+  instanceId: z.string().uuid(),
+  enabled: z.boolean().optional(),
+  chosenOptionId: z.string().uuid().nullable().optional(),
+  position: z.number().int().min(0).optional(),
+});
+
+export async function updateQueueItemAction(input: z.infer<typeof updateQueueItemSchema>) {
+  const ctx = await getCtx();
+  const parsed = updateQueueItemSchema.parse(input);
+  await queueDomain.updateQueueItem(ctx, parsed);
+  revalidatePath('/automation');
+}
+
+const moveQueueItemSchema = z.object({
+  instanceId: z.string().uuid(),
+  direction: z.enum(['up', 'down']),
+});
+
+export async function moveQueueItemAction(input: z.infer<typeof moveQueueItemSchema>) {
+  const ctx = await getCtx();
+  const parsed = moveQueueItemSchema.parse(input);
+  await queueDomain.moveQueueItem(ctx, parsed.instanceId, parsed.direction);
+  revalidatePath('/automation');
 }
 

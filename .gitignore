@@ -21,3 +21,4 @@ supabase/.temp
 worker/.browser-data
 worker/*.png
 worker/node_modules
+node_modules

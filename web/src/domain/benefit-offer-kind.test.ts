@@ -48,3 +48,11 @@ describe('isGolfBenefit', () => {
   });
 });
 
+describe('cab benefits', () => {
+  it('marks cab services, Uber, and Ola as voucher', () => {
+    expect(inferOfferKind('Cab Services', 'Uber', 'Redeemable Coupon - INR 100')).toBe('voucher');
+    expect(inferOfferKind('Cab Services', 'Ola', 'Instant Gift Card - INR 100')).toBe('voucher');
+    expect(resolveOfferKind('discount', 'Cab Services', 'Uber', 'Uber Coupon')).toBe('voucher');
+  });
+});
+
