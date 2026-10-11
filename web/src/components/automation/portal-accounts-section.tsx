@@ -508,23 +508,10 @@ function PortalAccountDetailSheet({
                 </div>
 
                 {accountMappings.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border/80 p-3.5 text-center bg-muted/10 space-y-2">
+                  <div className="rounded-lg border border-dashed border-border/80 p-4 text-center bg-muted/10">
                     <p className="text-xs text-muted-foreground">
                       No cards mapped to this RuPay account yet.
                     </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditingMapping(null);
-                        setMapDialogOpen(true);
-                      }}
-                      className="h-7 text-xs font-semibold gap-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Map a Card to this Account
-                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-2">
