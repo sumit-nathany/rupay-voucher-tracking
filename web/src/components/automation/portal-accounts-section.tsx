@@ -66,13 +66,13 @@ export function PortalAccountsSection({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">RuPay Portal Accounts</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">RuPay Portal Accounts</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Sign-in credentials used by the automated worker. Encrypted with AES-256-GCM.
           </p>
         </div>
-        <Button size="sm" onClick={() => setAddOpen(true)} className="h-8 gap-1.5 text-xs font-semibold">
-          <Plus className="h-3.5 w-3.5" />
+        <Button onClick={() => setAddOpen(true)} className="gap-2 text-sm font-medium">
+          <Plus className="h-4 w-4" />
           Add Account
         </Button>
       </div>
@@ -84,12 +84,13 @@ export function PortalAccountsSection({
           <p className="text-xs text-muted-foreground max-w-sm mt-1">
             Connect a RuPay Benefits portal login to enable unattended ordering for your mapped cards.
           </p>
-          <Button size="sm" onClick={() => setAddOpen(true)} className="mt-4 h-8 text-xs font-semibold">
+          <Button onClick={() => setAddOpen(true)} className="mt-4 gap-2 text-sm font-medium">
+            <Plus className="h-4 w-4" />
             Add RuPay Account
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="grid gap-3 sm:grid-cols-2">
           {accounts.map((acc) => (
             <AccountCard
               key={acc.id}
@@ -129,14 +130,14 @@ function AccountCard({
     account.status === 'connected' &&
     Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
 
-  const statusTone = {
-    connected: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-    paused: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    needs_attention: 'border-destructive/30 bg-destructive/10 text-destructive',
-    credentials_expired: 'border-destructive/30 bg-destructive/10 text-destructive',
-    challenge_required: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-    portal_changed: 'border-destructive/30 bg-destructive/10 text-destructive',
-  }[account.status];
+  const formattedCooldownTime = account.cooldownUntil
+    ? new Date(account.cooldownUntil).toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
+      })
+    : null;
 
   return (
     <button
@@ -146,101 +147,62 @@ function AccountCard({
       aria-label={`View details for ${account.label}`}
     >
       <Card className="h-full overflow-hidden border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
-        <CardContent className="flex flex-col justify-between gap-3.5 p-4 sm:p-5 h-full">
-          <div className="space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary shrink-0 shadow-xs group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                  <KeyRound className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors" title={account.label}>
-                    {account.label}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {account.mappingsCount} mapped {account.mappingsCount === 1 ? 'card' : 'cards'} • {account.rulesCount}{' '}
-                    {account.rulesCount === 1 ? 'rule' : 'rules'}
-                  </p>
-                </div>
-              </div>
-
-              {isCooldown ? (
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold gap-1 shrink-0"
-                >
-                  <Clock className="h-3 w-3" />
-                  Cooldown
-                </Badge>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] font-medium tracking-wider shrink-0 capitalize ${statusTone}`}
-                >
-                  {account.status.replace('_', ' ')}
-                </Badge>
-              )}
+        <CardContent className="flex flex-row items-center justify-between gap-3.5 p-4 sm:p-5">
+          <div className="flex min-w-0 flex-1 items-center gap-3.5">
+            <div
+              aria-hidden
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
+            >
+              <KeyRound className="h-5 w-5" />
             </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="truncate font-semibold text-base leading-snug text-foreground group-hover:text-primary transition-colors">
+                  {account.label}
+                </span>
+                {isCooldown ? (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-normal text-xs leading-none gap-1"
+                  >
+                    <Clock className="h-3 w-3" />
+                    Cooldown
+                  </Badge>
+                ) : account.status === 'connected' ? (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal text-xs leading-none"
+                  >
+                    Active
+                  </Badge>
+                ) : account.status === 'paused' ? (
+                  <Badge variant="secondary" className="leading-none text-xs font-normal">
+                    Paused
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive" className="leading-none text-xs font-normal">
+                    {account.status.replace('_', ' ')}
+                  </Badge>
+                )}
+              </div>
 
-            {/* 24h Portal Limit Cooldown Callout */}
-            {isCooldown && account.cooldownUntil && (
-              <div className="flex items-center justify-between rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
-                <div className="flex items-center gap-1.5 font-medium">
-                  <Clock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>
-                    Unlocks{' '}
-                    {new Date(account.cooldownUntil).toLocaleString('en-IN', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      timeZone: 'Asia/Kolkata',
-                    })}{' '}
-                    IST
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
+                <Badge variant="secondary" className="gap-1 font-normal text-xs px-2 py-0 h-5">
+                  <CreditCard className="h-3 w-3 opacity-70" aria-hidden />
+                  {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'}
+                </Badge>
+                <span>{account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}</span>
+                {isCooldown && formattedCooldownTime && (
+                  <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
+                    · Unlocks {formattedCooldownTime} IST
                   </span>
-                </div>
-                <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">24h limit</span>
-              </div>
-            )}
-
-            {/* Real Error Callout */}
-            {account.status !== 'connected' &&
-              account.statusDetailCode &&
-              account.statusDetailCode !== 'daily_limit_reached' && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  Action needed: {account.statusDetailCode.replace(/_/g, ' ')}
-                </div>
-              )}
-
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/50 text-xs">
-              <div>
-                <span className="text-[11px] text-muted-foreground block">Last confirmed order</span>
-                <span className="font-medium text-foreground text-xs mt-0.5 block">
-                  {account.lastConfirmedOrderAt
-                    ? new Date(account.lastConfirmedOrderAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric',
-                      })
-                    : 'None yet'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[11px] text-muted-foreground block">WhatsApp OTP</span>
-                <span className="font-medium text-foreground text-xs font-mono mt-0.5 block">
-                  {account.phoneNumber || 'Workspace default'}
-                </span>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Card Footer Click Hint */}
-          <div className="flex items-center justify-between pt-3 border-t border-border/40 text-xs text-muted-foreground">
-            <span className="text-xs font-medium group-hover:text-primary transition-colors">
-              View details & credentials
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          <div className="flex shrink-0 items-center pl-1 text-muted-foreground group-hover:text-foreground">
+            <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
           </div>
         </CardContent>
       </Card>
@@ -495,7 +457,7 @@ function PortalAccountDetailSheet({
                   </div>
                   <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                     <span className="text-muted-foreground">WhatsApp OTP Phone</span>
-                    <span className="font-mono font-medium text-foreground">
+                    <span className="font-medium text-foreground">
                       {account.phoneNumber || 'Workspace default'}
                     </span>
                   </div>

@@ -34,50 +34,50 @@ export function AutomationDashboard({
   return (
     <Tabs defaultValue="accounts" className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <TabsList className="bg-muted/60 p-1 h-9 rounded-lg gap-1 border border-border/60">
+        <TabsList className="bg-muted/50 p-1 h-10 rounded-xl gap-1 border border-border/60">
           <TabsTrigger
             value="accounts"
-            className="gap-2 px-3 py-1 text-xs font-medium"
+            className="gap-2 px-3.5 py-1.5 text-sm font-medium rounded-lg"
           >
-            <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
+            <KeyRound className="h-4 w-4 text-muted-foreground" />
             <span>Accounts & Cards</span>
-            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
+            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-xs font-medium">
               {accounts.length}
             </Badge>
           </TabsTrigger>
 
           <TabsTrigger
             value="rules"
-            className="gap-2 px-3 py-1 text-xs font-medium"
+            className="gap-2 px-3.5 py-1.5 text-sm font-medium rounded-lg"
           >
-            <Sliders className="h-3.5 w-3.5 text-muted-foreground" />
+            <Sliders className="h-4 w-4 text-muted-foreground" />
             <span>Ordering Rules</span>
-            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
+            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-xs font-medium">
               {rules.length}
             </Badge>
           </TabsTrigger>
 
           <TabsTrigger
             value="activity"
-            className="gap-2 px-3 py-1 text-xs font-medium"
+            className="gap-2 px-3.5 py-1.5 text-sm font-medium rounded-lg"
           >
-            <History className="h-3.5 w-3.5 text-muted-foreground" />
+            <History className="h-4 w-4 text-muted-foreground" />
             <span>Activity Log</span>
-            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-[10px] h-4 font-semibold">
+            <Badge variant="secondary" className="ml-0.5 px-1.5 py-0 text-xs font-medium">
               {attempts.length}
             </Badge>
           </TabsTrigger>
 
           <TabsTrigger
             value="channels"
-            className="gap-2 px-3 py-1 text-xs font-medium"
+            className="gap-2 px-3.5 py-1.5 text-sm font-medium rounded-lg"
           >
-            <BellRing className="h-3.5 w-3.5 text-muted-foreground" />
+            <BellRing className="h-4 w-4 text-muted-foreground" />
             <span>OTP Channels</span>
             {hasAnyOtpChannel ? (
-              <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500" title="Channel configured" />
+              <span className="flex h-2 w-2 rounded-full bg-emerald-500" title="Channel configured" />
             ) : (
-              <span className="flex h-1.5 w-1.5 rounded-full bg-amber-500" title="No channel configured" />
+              <span className="flex h-2 w-2 rounded-full bg-amber-500" title="No channel configured" />
             )}
           </TabsTrigger>
         </TabsList>
@@ -89,13 +89,11 @@ export function AutomationDashboard({
           mappings={mappings}
           availableCards={availableCards}
         />
-        <div className="pt-4 border-t border-border/50">
-          <PortalCardMappingsSection
-            mappings={mappings}
-            accounts={accounts}
-            availableCards={availableCards}
-          />
-        </div>
+        <PortalCardMappingsSection
+          mappings={mappings}
+          accounts={accounts}
+          availableCards={availableCards}
+        />
       </TabsContent>
 
       <TabsContent value="rules" className="pt-1 focus-visible:outline-none">

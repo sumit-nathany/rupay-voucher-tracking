@@ -112,10 +112,10 @@ export function OtpChannelsSection({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-foreground">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground">
           3DS Bank OTP Delivery Channels
         </h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground mt-1">
           Automated voucher checkouts require 3D-Secure bank OTP verification. Connect your preferred channel to receive instant prompts and reply with your 6-digit OTP.
         </p>
       </div>
@@ -132,15 +132,15 @@ export function OtpChannelsSection({
                   </div>
                   <div>
                     <CardTitle className="text-base font-semibold">Telegram Bot</CardTitle>
-                    <CardDescription className="text-xs">Interactive, 2-way real-time OTP reply</CardDescription>
+                    <CardDescription className="text-sm text-muted-foreground">Interactive, 2-way real-time OTP reply</CardDescription>
                   </div>
                 </div>
                 {telegramChatId ? (
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
+                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-normal gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Connected
                   </Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-[10px] font-semibold">
+                  <Badge variant="secondary" className="text-xs font-normal">
                     Not configured
                   </Badge>
                 )}
@@ -176,7 +176,7 @@ export function OtpChannelsSection({
 
               <form onSubmit={handleSaveTelegram} className="space-y-3.5">
                 <div className="space-y-1.5">
-                  <Label htmlFor="telegram-chat-id" className="text-xs font-medium">
+                  <Label htmlFor="telegram-chat-id" className="text-sm font-medium">
                     Telegram Chat ID
                   </Label>
                   <div className="flex gap-2">
@@ -186,7 +186,7 @@ export function OtpChannelsSection({
                       placeholder="e.g. 1647769921"
                       value={telegramInput}
                       onChange={(e) => setTelegramInput(e.target.value)}
-                      className="font-mono text-sm"
+                      className="text-sm"
                     />
                     <Button
                       type="button"
@@ -194,7 +194,7 @@ export function OtpChannelsSection({
                       size="sm"
                       onClick={() => void handleSendTestTelegram()}
                       disabled={testingTelegram || (!telegramInput && !telegramChatId)}
-                      className="shrink-0 gap-1.5 text-xs font-semibold"
+                      className="shrink-0 gap-1.5 text-xs font-medium"
                     >
                       {testingTelegram ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -226,11 +226,10 @@ export function OtpChannelsSection({
                 <div className="pt-2 flex justify-end">
                   <Button
                     type="submit"
-                    size="sm"
                     disabled={savingTelegram}
-                    className="gap-1.5 text-xs font-semibold"
+                    className="gap-1.5 text-sm font-medium"
                   >
-                    {savingTelegram ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {savingTelegram ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     Save Telegram Chat ID
                   </Button>
                 </div>
@@ -250,15 +249,15 @@ export function OtpChannelsSection({
                   </div>
                   <div>
                     <CardTitle className="text-base font-semibold">WhatsApp Delivery</CardTitle>
-                    <CardDescription className="text-xs">Direct WhatsApp notification to phone</CardDescription>
+                    <CardDescription className="text-sm text-muted-foreground">Direct WhatsApp notification to phone</CardDescription>
                   </div>
                 </div>
                 {whatsappPhoneNumber ? (
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold gap-1">
+                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-normal gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Connected
                   </Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-[10px] font-semibold">
+                  <Badge variant="secondary" className="text-xs font-normal">
                     Not configured
                   </Badge>
                 )}
@@ -278,7 +277,7 @@ export function OtpChannelsSection({
 
               <form onSubmit={handleSavePhone} className="space-y-3.5">
                 <div className="space-y-1.5">
-                  <Label htmlFor="whatsapp-phone" className="text-xs font-medium">
+                  <Label htmlFor="whatsapp-phone" className="text-sm font-medium">
                     WhatsApp Phone Number (with country code)
                   </Label>
                   <Input
@@ -287,9 +286,9 @@ export function OtpChannelsSection({
                     placeholder="+919876543210"
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
-                    className="font-mono text-sm"
+                    className="text-sm"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Example: <code className="text-foreground font-mono">+919876543210</code>. Leave blank to disable WhatsApp OTP prompts.
                   </p>
                 </div>
@@ -314,11 +313,10 @@ export function OtpChannelsSection({
                 <div className="pt-2 flex justify-end">
                   <Button
                     type="submit"
-                    size="sm"
                     disabled={savingPhone}
-                    className="gap-1.5 text-xs font-semibold"
+                    className="gap-1.5 text-sm font-medium"
                   >
-                    {savingPhone ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     Save Phone Number
                   </Button>
                 </div>

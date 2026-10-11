@@ -32,21 +32,20 @@ export function OrderingRulesSection({
   const [addOpen, setAddOpen] = useState(false);
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">Ordering Rules & Priorities</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">Ordering Rules & Priorities</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Rules determine which unclaimed benefit runs first each day. Lower priority numbers run first.
           </p>
         </div>
         <Button
-          size="sm"
           disabled={accounts.length === 0}
           onClick={() => setAddOpen(true)}
-          className="h-8 gap-1.5 text-xs font-semibold"
+          className="gap-2 text-sm font-medium"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-4 w-4" />
           Create Rule
         </Button>
       </div>
@@ -59,13 +58,14 @@ export function OrderingRulesSection({
             Create an ordering rule to nominate benefits for daily automated ordering.
           </p>
           {accounts.length > 0 && (
-            <Button size="sm" onClick={() => setAddOpen(true)} className="mt-4 h-8 text-xs font-semibold">
+            <Button onClick={() => setAddOpen(true)} className="mt-4 gap-2 text-sm font-medium">
+              <Plus className="h-4 w-4" />
               Create Rule
             </Button>
           )}
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {rules.map((rule) => (
             <RuleRow key={rule.id} rule={rule} accounts={accounts} />
           ))}
@@ -108,11 +108,11 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-xs">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="font-mono text-[10px] font-bold px-2 py-0.5 bg-primary/5 text-primary border-primary/20">
+          <Badge variant="outline" className="text-xs font-medium px-2 py-0.5 bg-primary/5 text-primary border-primary/20">
             Priority {rule.priority}
           </Badge>
-          <h3 className="text-sm font-bold text-foreground">{rule.name}</h3>
-          <Badge variant={rule.enabled ? 'default' : 'secondary'} className="text-[10px] font-semibold">
+          <h3 className="text-base font-semibold text-foreground">{rule.name}</h3>
+          <Badge variant={rule.enabled ? 'default' : 'secondary'} className="text-xs font-normal">
             {rule.enabled ? 'Enabled' : 'Disabled'}
           </Badge>
         </div>
@@ -129,9 +129,9 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
           size="sm"
           disabled={busy}
           onClick={() => void handleToggle()}
-          className="h-7 text-xs font-semibold gap-1.5"
+          className="h-8 text-xs font-medium gap-1.5"
         >
-          <Power className="h-3 w-3" />
+          <Power className="h-3.5 w-3.5" />
           {rule.enabled ? 'Disable' : 'Enable'}
         </Button>
         <Button
@@ -139,9 +139,9 @@ function RuleRow({ rule, accounts }: { rule: OrderingRuleView; accounts: PortalA
           size="icon"
           disabled={busy}
           onClick={() => void handleDelete()}
-          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-4 w-4" />
         </Button>
       </div>
     </div>

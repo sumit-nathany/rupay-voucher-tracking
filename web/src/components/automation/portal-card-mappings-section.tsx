@@ -41,21 +41,20 @@ export function PortalCardMappingsSection({
   }
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">Card to Portal Mappings</h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Connect cards in your workspace to their RuPay portal login and optional payment gateway checkout details.
           </p>
         </div>
         <Button
-          size="sm"
           disabled={accounts.length === 0 || availableCards.length === 0}
           onClick={handleOpenAdd}
-          className="h-8 gap-1.5 text-xs font-semibold"
+          className="gap-2 text-sm font-medium"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-4 w-4" />
           Map Card
         </Button>
       </div>
@@ -68,7 +67,8 @@ export function PortalCardMappingsSection({
             Map your RuPay cards to a portal account so browser automation knows which account to log into and which card details to use at checkout.
           </p>
           {accounts.length > 0 && availableCards.length > 0 && (
-            <Button size="sm" onClick={handleOpenAdd} className="mt-4 h-8 text-xs font-semibold">
+            <Button onClick={handleOpenAdd} className="mt-4 gap-2 text-sm font-medium">
+              <Plus className="h-4 w-4" />
               Map a Card
             </Button>
           )}
@@ -77,12 +77,12 @@ export function PortalCardMappingsSection({
         <div className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
+              <thead className="bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
                 <tr>
-                  <th className="py-2.5 px-4">Tracker Card</th>
-                  <th className="py-2.5 px-4">Portal Account</th>
-                  <th className="py-2.5 px-4">Payment Gateway Details</th>
-                  <th className="py-2.5 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">Tracker Card</th>
+                  <th className="py-3 px-4">Portal Account</th>
+                  <th className="py-3 px-4">Payment Gateway Details</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -91,12 +91,12 @@ export function PortalCardMappingsSection({
                   return (
                     <tr key={m.id} className="hover:bg-muted/20 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-foreground">{m.cardName}</div>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="font-semibold text-sm text-foreground">{m.cardName}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
                           {m.holderName} {m.last4 ? `(••${m.last4})` : ''}
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-medium text-foreground">
+                      <td className="py-3 px-4 font-medium text-sm text-foreground">
                         {acc?.label ?? 'Unknown Account'}
                       </td>
                       <td className="py-3 px-4">
@@ -104,7 +104,7 @@ export function PortalCardMappingsSection({
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge
                               variant="outline"
-                              className="gap-1 font-mono text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+                              className="gap-1 font-mono text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 py-0.5 px-2 font-medium"
                             >
                               <ShieldCheck className="h-3 w-3" />
                               {m.paymentDetails.mode === 'full'
@@ -113,7 +113,7 @@ export function PortalCardMappingsSection({
                             </Badge>
                           </div>
                         ) : (
-                          <span className="text-[11px] text-muted-foreground italic">
+                          <span className="text-xs text-muted-foreground italic">
                             No payment details set
                           </span>
                         )}
@@ -124,10 +124,10 @@ export function PortalCardMappingsSection({
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenEdit(m)}
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
                             title="Edit payment details / mapping"
                           >
-                            <Edit2 className="h-3.5 w-3.5" />
+                            <Edit2 className="h-4 w-4" />
                           </Button>
                           <DeleteMappingButton id={m.id} cardName={m.cardName} />
                         </div>
