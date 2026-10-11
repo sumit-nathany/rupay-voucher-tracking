@@ -53,27 +53,27 @@ export default async function OverridesPage() {
   );
 
   return (
-    <ContentStage className="max-w-3xl">
+    <ContentStage className="max-w-5xl space-y-6">
       <PageHeader
         eyebrow="Personal catalog"
         title="Overrides & Valuations"
         description="Customize benefit values across all your cards, or add and hide benefits for a specific card."
       />
 
-      <Tabs defaultValue="values" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 max-w-sm">
-          <TabsTrigger value="values" className="text-xs">
+      <Tabs defaultValue="values" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 max-w-sm sm:max-w-md">
+          <TabsTrigger value="values" className="text-xs sm:text-sm">
             Benefit Values ({benefitValues.length})
           </TabsTrigger>
-          <TabsTrigger value="cards" className="text-xs">
+          <TabsTrigger value="cards" className="text-xs sm:text-sm">
             Card Benefits ({overrides.length})
           </TabsTrigger>
         </TabsList>
 
         {/* ── Tab 1: Workspace-wide Benefit Valuations ── */}
-        <TabsContent value="values" className="space-y-4 outline-none">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground leading-relaxed">
+        <TabsContent value="values" className="space-y-6 outline-none">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
               Define your own valuation for benefits. This custom value will replace RuPay’s catalog nominal face value across all your cards in dashboard totals and queues.
             </p>
             <div className="shrink-0">
@@ -87,31 +87,35 @@ export default async function OverridesPage() {
               description="All benefits currently follow RuPay's nominal catalog values. Click 'Set Custom Value' to define your own valuation for any benefit."
             />
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {benefitValues.map((v) => {
                 const info = distinctByName.get(v.benefitName.toLowerCase().trim());
                 const catalogVal = info?.catalogValue;
 
                 return (
                   <li key={v.id}>
-                    <Card>
-                      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="default">Custom Valuation</Badge>
-                            <span className="font-semibold text-foreground text-sm">
+                    <Card className="hover:border-border transition-colors h-full">
+                      <CardContent className="flex flex-col justify-between gap-4 p-5 h-full">
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant="default" className="font-normal text-xs">
+                              Custom Valuation
+                            </Badge>
+                            <span className="text-base font-semibold text-foreground">
                               ₹{v.customValue.toFixed(2)}
                             </span>
                           </div>
-                          <p className="break-words font-medium">{v.benefitName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {[v.benefitType ?? info?.benefitType, v.benefitProvider ?? info?.benefitProvider]
-                              .filter(Boolean)
-                              .join(' · ')}
-                            {catalogVal != null ? ` · RuPay Catalog: ₹${catalogVal}` : ''}
-                          </p>
+                          <div>
+                            <p className="font-medium text-base text-foreground break-words">{v.benefitName}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {[v.benefitType ?? info?.benefitType, v.benefitProvider ?? info?.benefitProvider]
+                                .filter(Boolean)
+                                .join(' · ')}
+                              {catalogVal != null ? ` · RuPay Catalog: ₹${catalogVal}` : ''}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-start gap-2">
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/40">
                           <BenefitValueFormSheet override={v} distinctBenefits={distinctBenefits} />
                           <DeleteBenefitValueButton id={v.id} name={v.benefitName} />
                         </div>
@@ -125,9 +129,9 @@ export default async function OverridesPage() {
         </TabsContent>
 
         {/* ── Tab 2: Card Specific Overrides (Add / Suppress) ── */}
-        <TabsContent value="cards" className="space-y-4 outline-none">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground leading-relaxed">
+        <TabsContent value="cards" className="space-y-6 outline-none">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
               Add or hide benefits for a specific card without changing the shared catalog for everyone.
             </p>
             <div className="shrink-0">
@@ -141,28 +145,36 @@ export default async function OverridesPage() {
               description="Your cards follow the shared catalog as-is."
             />
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {overrides.map((o) => {
                 const isAdd = o.kind === 'add';
                 const title = isAdd ? (o.exactBenefit ?? 'Added benefit') : 'Hidden catalog benefit';
                 return (
                   <li key={o.id}>
-                    <Card>
-                      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-4">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant={isAdd ? 'default' : 'outline'}>{isAdd ? 'Added' : 'Suppressed'}</Badge>
-                            <Badge variant={o.active ? 'success' : 'secondary'}>{o.active ? 'On' : 'Off'}</Badge>
+                    <Card className="hover:border-border transition-colors h-full">
+                      <CardContent className="flex flex-col justify-between gap-4 p-5 h-full">
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant={isAdd ? 'default' : 'outline'}>{isAdd ? 'Added' : 'Suppressed'}</Badge>
+                              <Badge variant={o.active ? 'success' : 'secondary'}>{o.active ? 'On' : 'Off'}</Badge>
+                            </div>
+                            {isAdd && o.defaultCashValue ? (
+                              <span className="text-sm font-semibold text-foreground">
+                                ₹{o.defaultCashValue}
+                              </span>
+                            ) : null}
                           </div>
-                          <p className="break-words font-medium">{title}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {cardName.get(o.cardId) ?? 'Unknown card'}
-                            {isAdd &&
-                              ` · ${[o.benefitType, o.benefitProvider].filter(Boolean).join(' / ')} · ${o.instanceCount} per ${o.frequency}`}
-                            {isAdd && o.defaultCashValue ? ` · ₹${o.defaultCashValue}` : ''}
-                          </p>
+                          <div>
+                            <p className="font-medium text-base text-foreground break-words">{title}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {cardName.get(o.cardId) ?? 'Unknown card'}
+                              {isAdd &&
+                                ` · ${[o.benefitType, o.benefitProvider].filter(Boolean).join(' / ')} · ${o.instanceCount} per ${o.frequency}`}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 flex-wrap items-start gap-2">
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/40">
                           <OverrideToggle id={o.id} active={o.active} label={title} />
                           {isAdd && (
                             <OverrideFormSheet

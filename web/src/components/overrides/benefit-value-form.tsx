@@ -35,6 +35,42 @@ function BenefitValueFormBody({
     );
   }, [distinctBenefits, selectedName, customInputName, isManualInput]);
 
+  // Available options for selection (if adding new, highlight those not already customized)
+  const availableChoices = React.useMemo(() => {
+    return distinctBenefits.filter((b) => !b.overrideId || b.benefitName === override?.benefitName);
+  }, [distinctBenefits, override]);
+
+  // Unique categories derived from available benefits
+  const categories = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const b of availableChoices) {
+      set.add(b.benefitType?.trim() || 'Other');
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [availableChoices]);
+
+  const initialCategory = React.useMemo(() => {
+    if (override?.benefitType) return override.benefitType;
+    if (override?.benefitName) {
+      const match = distinctBenefits.find(
+        (b) => b.benefitName.toLowerCase().trim() === override.benefitName.toLowerCase().trim(),
+      );
+      if (match?.benefitType) return match.benefitType;
+    }
+    return '';
+  }, [override, distinctBenefits]);
+
+  const [selectedCategory, setSelectedCategory] = React.useState<string>(initialCategory);
+
+  // Filtered benefits based on selected category
+  const filteredChoices = React.useMemo(() => {
+    if (!selectedCategory) return [];
+    if (selectedCategory === '__all__') return availableChoices;
+    return availableChoices.filter(
+      (b) => (b.benefitType?.trim() || 'Other') === selectedCategory,
+    );
+  }, [availableChoices, selectedCategory]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const finalName = (editing ? override!.benefitName : isManualInput ? customInputName : selectedName).trim();
@@ -54,7 +90,13 @@ function BenefitValueFormBody({
         upsertBenefitValueOverrideAction({
           benefitName: finalName,
           customValue: Math.round(val * 100) / 100,
-          benefitType: selectedInfo?.benefitType ?? override?.benefitType ?? null,
+          benefitType:
+            selectedInfo?.benefitType ??
+            (selectedCategory && selectedCategory !== '__all__' && selectedCategory !== 'Other'
+              ? selectedCategory
+              : null) ??
+            override?.benefitType ??
+            null,
           benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
         }),
       'Could not save custom valuation.',
@@ -62,11 +104,6 @@ function BenefitValueFormBody({
 
     if (ok) close();
   }
-
-  // Available options for selection (if adding new, highlight those not already customized)
-  const availableChoices = React.useMemo(() => {
-    return distinctBenefits.filter((b) => !b.overrideId || b.benefitName === override?.benefitName);
-  }, [distinctBenefits, override]);
 
   return (
     <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
@@ -83,31 +120,80 @@ function BenefitValueFormBody({
       ) : (
         <div className="space-y-3">
           {!isManualInput && availableChoices.length > 0 ? (
-            <Field id={`${uid}-select`} label="Select Benefit" hint="Choose a benefit active on your cards">
-              <Select
-                value={selectedName}
-                onValueChange={(v) => {
-                  if (v === '__manual__') {
-                    setIsManualInput(true);
-                    setSelectedName('');
-                  } else {
-                    setSelectedName(v);
-                  }
-                }}
+            <>
+              <Field id={`${uid}-category`} label="Category" hint="Choose category first">
+                <Select
+                  value={selectedCategory}
+                  onValueChange={(cat) => {
+                    setSelectedCategory(cat);
+                    const stillValid = availableChoices.some(
+                      (b) =>
+                        b.benefitName === selectedName &&
+                        (cat === '__all__' || (b.benefitType?.trim() || 'Other') === cat),
+                    );
+                    if (!stillValid) {
+                      setSelectedName('');
+                    }
+                  }}
+                >
+                  <SelectTrigger id={`${uid}-category`} className="w-full">
+                    <SelectValue placeholder="Choose a category…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All Categories ({availableChoices.length})</SelectItem>
+                    {categories.map((cat) => {
+                      const count = availableChoices.filter(
+                        (b) => (b.benefitType?.trim() || 'Other') === cat,
+                      ).length;
+                      return (
+                        <SelectItem key={cat} value={cat}>
+                          {cat} ({count})
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </Field>
+
+              <Field
+                id={`${uid}-select`}
+                label="Benefit"
+                hint={
+                  selectedCategory
+                    ? `Showing benefits in ${selectedCategory === '__all__' ? 'all categories' : selectedCategory}`
+                    : 'Select a category above to view benefits'
+                }
               >
-                <SelectTrigger id={`${uid}-select`} className="w-full">
-                  <SelectValue placeholder="Choose a benefit…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableChoices.map((b) => (
-                    <SelectItem key={b.benefitName} value={b.benefitName}>
-                      {b.benefitName} {b.catalogValue != null ? `(Catalog: ₹${b.catalogValue})` : ''}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="__manual__">Type custom benefit name…</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
+                <Select
+                  value={selectedName}
+                  disabled={!selectedCategory}
+                  onValueChange={(v) => {
+                    if (v === '__manual__') {
+                      setIsManualInput(true);
+                      setSelectedName('');
+                    } else {
+                      setSelectedName(v);
+                    }
+                  }}
+                >
+                  <SelectTrigger id={`${uid}-select`} className="w-full">
+                    <SelectValue
+                      placeholder={
+                        selectedCategory ? 'Choose a benefit…' : 'Select a category first…'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredChoices.map((b) => (
+                      <SelectItem key={b.benefitName} value={b.benefitName}>
+                        {b.benefitName} {b.catalogValue != null ? `(Catalog: ₹${b.catalogValue})` : ''}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__manual__">Type custom benefit name…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </>
           ) : (
             <div className="space-y-2">
               <Field id={`${uid}-name`} label="Benefit Name" hint="Exact name of the voucher or benefit">
@@ -122,13 +208,13 @@ function BenefitValueFormBody({
               {availableChoices.length > 0 && (
                 <button
                   type="button"
-                  className="text-xs text-primary hover:underline"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
                   onClick={() => {
                     setIsManualInput(false);
                     setCustomInputName('');
                   }}
                 >
-                  ← Select from existing benefits
+                  ← Select from existing categories & benefits
                 </button>
               )}
             </div>
@@ -137,7 +223,7 @@ function BenefitValueFormBody({
           {selectedInfo && selectedInfo.catalogValue != null && (
             <div className="rounded-lg bg-muted/40 p-2.5 border border-border/40 text-xs flex justify-between items-center">
               <span className="text-muted-foreground">RuPay Catalog Nominal Value:</span>
-              <span className="font-medium text-foreground">₹{selectedInfo.catalogValue}</span>
+              <span className="font-semibold text-foreground">₹{selectedInfo.catalogValue}</span>
             </div>
           )}
         </div>
