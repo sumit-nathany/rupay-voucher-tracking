@@ -130,14 +130,30 @@ function AccountCard({
     account.status === 'connected' &&
     Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
 
-  const formattedCooldownTime = account.cooldownUntil
-    ? new Date(account.cooldownUntil).toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Kolkata',
-      })
-    : null;
+  let formattedCooldownTime: string | null = null;
+  if (account.cooldownUntil) {
+    const cd = new Date(account.cooldownUntil);
+    const now = new Date();
+    const isToday = cd.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = cd.toDateString() === tomorrow.toDateString();
+
+    const timeStr = cd.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    });
+
+    const dayPrefix = isToday
+      ? 'Today'
+      : isTomorrow
+      ? 'Tomorrow'
+      : cd.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+
+    formattedCooldownTime = `${dayPrefix} at ${timeStr}`;
+  }
 
   return (
     <button

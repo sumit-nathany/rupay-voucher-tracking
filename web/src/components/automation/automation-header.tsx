@@ -75,6 +75,10 @@ export function AutomationHeader({
     const nextRunDate = new Date(nextRun.nextRunAt);
     const now = new Date();
     const isToday = nextRunDate.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = nextRunDate.toDateString() === tomorrow.toDateString();
+
     const timeStr = nextRunDate.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
@@ -86,7 +90,8 @@ export function AutomationHeader({
       month: 'short',
       timeZone: 'Asia/Kolkata',
     });
-    formattedUnlockLabel = isToday ? `Today at ${timeStr} IST` : `${dateStr} at ${timeStr} IST`;
+    const dayPrefix = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : dateStr;
+    formattedUnlockLabel = `${dayPrefix} at ${timeStr} IST`;
   }
 
   return (
