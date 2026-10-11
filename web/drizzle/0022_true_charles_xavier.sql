@@ -13,4 +13,19 @@ CREATE TABLE "app"."ordering_queue_items" (
 ALTER TABLE "app"."ordering_queue_items" ADD CONSTRAINT "ordering_queue_items_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "app"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."ordering_queue_items" ADD CONSTRAINT "ordering_queue_items_instance_id_benefit_instances_id_fk" FOREIGN KEY ("instance_id") REFERENCES "app"."benefit_instances"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."ordering_queue_items" ADD CONSTRAINT "ordering_queue_items_chosen_option_id_benefit_options_id_fk" FOREIGN KEY ("chosen_option_id") REFERENCES "app"."benefit_options"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "idx_ordering_queue_position" ON "app"."ordering_queue_items" USING btree ("workspace_id","position");
+CREATE INDEX "idx_ordering_queue_position" ON "app"."ordering_queue_items" USING btree ("workspace_id","position");--> statement-breakpoint
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'postgres') THEN
+    GRANT ALL ON TABLE "app"."ordering_queue_items" TO postgres;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN
+    GRANT ALL ON TABLE "app"."ordering_queue_items" TO authenticated;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT ALL ON TABLE "app"."ordering_queue_items" TO service_role;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN
+    GRANT ALL ON TABLE "app"."ordering_queue_items" TO anon;
+  END IF;
+END $$;

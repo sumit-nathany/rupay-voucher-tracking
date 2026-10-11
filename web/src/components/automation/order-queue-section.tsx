@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, useMemo } from 'react';
+import { useState, useTransition, useMemo, useEffect } from 'react';
 import {
   Sparkles,
   Calendar,
@@ -50,6 +50,10 @@ export function OrderQueueSection({
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [selectedCardId, setSelectedCardId] = useState<string>('all');
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    setItems(initialQueue);
+  }, [initialQueue]);
 
   // Filter items based on active view mode and selection
   const displayedItems = useMemo(() => {
@@ -128,9 +132,10 @@ export function OrderQueueSection({
     startTransition(async () => {
       try {
         await reorderQueueAction({
-          orderedInstanceIds: reorderedDisplayed.map((d) => d.instanceId),
+          orderedInstanceIds: nextAll.map((d) => d.instanceId),
         });
-      } catch {
+      } catch (err) {
+        console.error('Failed to reorder queue:', err);
         setItems(initialQueue);
       }
     });

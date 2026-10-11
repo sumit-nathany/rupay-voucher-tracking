@@ -365,6 +365,22 @@ export async function updateQueueItem(
     position?: number;
   },
 ): Promise<void> {
+  let defaultOptionId: string | null = input.chosenOptionId ?? null;
+  if (input.chosenOptionId === undefined) {
+    const [inst] = await ctx.db
+      .select({ chosenOptionId: schema.benefitInstances.chosenOptionId })
+      .from(schema.benefitInstances)
+      .where(
+        and(
+          eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
+          eq(schema.benefitInstances.id, input.instanceId),
+        ),
+      );
+    if (inst?.chosenOptionId) {
+      defaultOptionId = inst.chosenOptionId;
+    }
+  }
+
   await ctx.db
     .insert(schema.orderingQueueItems)
     .values({
@@ -372,7 +388,7 @@ export async function updateQueueItem(
       instanceId: input.instanceId,
       position: input.position ?? 0,
       enabled: input.enabled ?? true,
-      chosenOptionId: input.chosenOptionId ?? null,
+      chosenOptionId: defaultOptionId,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
