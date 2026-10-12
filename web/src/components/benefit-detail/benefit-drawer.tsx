@@ -825,21 +825,7 @@ function DetailsSection({
     }
   }
 
-  const field = (k: keyof DetailsForm, label: string, input: React.ReactNode) => (
-    <div className="space-y-1">
-      <Label htmlFor={`${uid}-${k}`} className="text-xs font-medium">
-        {label}
-      </Label>
-      {input}
-      {errors[k] && (
-        <p id={`${uid}-${k}-err`} role="alert" className="text-[11px] text-destructive">
-          {errors[k]}
-        </p>
-      )}
-    </div>
-  );
-
-  const common = (k: keyof DetailsForm, customClass = 'h-9 text-xs') => ({
+  const common = (k: keyof DetailsForm, customClass = 'h-7 text-xs') => ({
     id: `${uid}-${k}`,
     disabled: !editable || busy,
     className: customClass,
@@ -906,52 +892,149 @@ function DetailsSection({
           </div>
         </div>
       ) : (
-        <form aria-label="Details" className="space-y-3 pt-1" noValidate onSubmit={(e) => void submit(e)}>
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            {field('orderDate', 'Order date', <Input type="date" value={form.orderDate} onChange={set('orderDate')} {...common('orderDate')} />)}
-            {field('expiryDate', 'Expiry date', <Input type="date" value={form.expiryDate} onChange={set('expiryDate')} {...common('expiryDate')} />)}
+        <form aria-label="Details" className="space-y-2 text-xs" noValidate onSubmit={(e) => void submit(e)}>
+          {/* Order Date */}
+          <div className="py-1 border-b border-border/40">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={`${uid}-orderDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
+                Order Date
+              </Label>
+              <Input
+                type="date"
+                value={form.orderDate}
+                onChange={set('orderDate')}
+                {...common('orderDate', 'h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]')}
+              />
+            </div>
+            {errors.orderDate && (
+              <p id={`${uid}-orderDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+                {errors.orderDate}
+              </p>
+            )}
           </div>
-          {field(
-            'cashValue',
-            'Cash value (₹)',
-            <Input
-              inputMode="decimal"
-              value={form.cashValue}
-              onChange={set('cashValue')}
-              placeholder={inst.defaultCashValue != null ? `Default: ₹${inst.defaultCashValue}` : 'e.g. 500'}
-              {...common('cashValue')}
-            />,
-          )}
-          {field('rupayBookingId', 'Booking ID', <Input value={form.rupayBookingId} onChange={set('rupayBookingId')} maxLength={200} {...common('rupayBookingId')} />)}
-          {field(
-            'portalAccountId',
-            'RuPay Account',
-            <Select
-              value={form.portalAccountId || 'none'}
-              onValueChange={(v) => setForm((f) => ({ ...f, portalAccountId: v === 'none' ? '' : v }))}
-              disabled={!editable || busy}
-            >
-              <SelectTrigger id={`${uid}-portalAccountId`} className="h-9 text-xs">
-                <SelectValue placeholder="Select RuPay account" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None / Unassigned</SelectItem>
-                {accounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.label}
-                  </SelectItem>
-                ))}
-                {form.portalAccountId && !accounts.some((a) => a.id === form.portalAccountId) && (
-                  <SelectItem value={form.portalAccountId}>
-                    {inst.portalAccountLabel || form.portalAccountId}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>,
-          )}
-          {field('comments', 'Comments', <Textarea value={form.comments} onChange={set('comments')} maxLength={5000} {...common('comments', 'min-h-16 text-xs')} />)}
 
-          <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/50">
+          {/* Expiry Date */}
+          <div className="py-1 border-b border-border/40">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={`${uid}-expiryDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
+                Expiry Date
+              </Label>
+              <Input
+                type="date"
+                value={form.expiryDate}
+                onChange={set('expiryDate')}
+                {...common('expiryDate', 'h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]')}
+              />
+            </div>
+            {errors.expiryDate && (
+              <p id={`${uid}-expiryDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+                {errors.expiryDate}
+              </p>
+            )}
+          </div>
+
+          {/* RuPay Booking ID */}
+          <div className="py-1 border-b border-border/40">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={`${uid}-rupayBookingId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
+                RuPay Booking ID
+              </Label>
+              <Input
+                value={form.rupayBookingId}
+                onChange={set('rupayBookingId')}
+                maxLength={200}
+                placeholder="e.g. RUPS-..."
+                {...common('rupayBookingId', 'h-7 text-xs font-mono text-right max-w-[170px] sm:max-w-[200px]')}
+              />
+            </div>
+            {errors.rupayBookingId && (
+              <p id={`${uid}-rupayBookingId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+                {errors.rupayBookingId}
+              </p>
+            )}
+          </div>
+
+          {/* RuPay Account */}
+          <div className="py-1 border-b border-border/40">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={`${uid}-portalAccountId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
+                RuPay Account
+              </Label>
+              <Select
+                value={form.portalAccountId || 'none'}
+                onValueChange={(v) => setForm((f) => ({ ...f, portalAccountId: v === 'none' ? '' : v }))}
+                disabled={!editable || busy}
+              >
+                <SelectTrigger id={`${uid}-portalAccountId`} className="h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]">
+                  <SelectValue placeholder="Select account" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None / Unassigned</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.label}
+                    </SelectItem>
+                  ))}
+                  {form.portalAccountId && !accounts.some((a) => a.id === form.portalAccountId) && (
+                    <SelectItem value={form.portalAccountId}>
+                      {inst.portalAccountLabel || form.portalAccountId}
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            {errors.portalAccountId && (
+              <p id={`${uid}-portalAccountId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+                {errors.portalAccountId}
+              </p>
+            )}
+          </div>
+
+          {/* Cash Value */}
+          <div className="py-1 border-b border-border/40">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor={`${uid}-cashValue`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
+                Cash Value
+              </Label>
+              <div className="relative flex items-center max-w-[170px] sm:max-w-[200px] w-full justify-end">
+                <span className="absolute left-2.5 text-xs text-muted-foreground">₹</span>
+                <Input
+                  inputMode="decimal"
+                  value={form.cashValue}
+                  onChange={set('cashValue')}
+                  placeholder={inst.defaultCashValue != null ? String(inst.defaultCashValue) : '500'}
+                  {...common('cashValue', 'h-7 text-xs pl-6 text-right font-medium w-full')}
+                />
+              </div>
+            </div>
+            {errors.cashValue && (
+              <p id={`${uid}-cashValue-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+                {errors.cashValue}
+              </p>
+            )}
+          </div>
+
+          {/* Comments / Notes */}
+          <div className="py-1">
+            <Label htmlFor={`${uid}-comments`} className="text-muted-foreground block mb-1 text-xs font-normal cursor-pointer">
+              Comments / Notes
+            </Label>
+            <Textarea
+              value={form.comments}
+              onChange={set('comments')}
+              placeholder="No notes added"
+              maxLength={5000}
+              {...common('comments', 'min-h-16 text-xs leading-relaxed bg-muted/40 border-border/40')}
+            />
+            {errors.comments && (
+              <p id={`${uid}-comments-err`} role="alert" className="text-[11px] text-destructive mt-1">
+                {errors.comments}
+              </p>
+            )}
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
             <Button
               type="button"
               variant="ghost"
