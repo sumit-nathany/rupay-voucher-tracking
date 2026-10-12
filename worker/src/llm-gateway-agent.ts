@@ -252,7 +252,7 @@ export async function consultGeminiVision(
   taskDescription: string,
   apiKey: string,
 ): Promise<{ candidateIndex: number; action: string; reasoning: string } | null> {
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
 
   for (const model of models) {
     try {
@@ -538,9 +538,9 @@ export async function resolveOtpInput(
 }
 
 export interface GatewayScreenAnalysis {
-  state: 'TOKENIZATION_MODAL' | 'BANK_OTP_SCREEN' | 'CARD_INPUT_SCREEN' | 'PROCESSING_OR_LOADING' | 'ORDER_SUCCESS' | 'CARD_INPUT_ERROR' | 'UNKNOWN';
+  state: 'TOKENIZATION_MODAL' | 'BANK_OTP_SCREEN' | 'CARD_INPUT_SCREEN' | 'PROCESSING_OR_LOADING' | 'ORDER_SUCCESS' | 'CARD_INPUT_ERROR' | 'OFFERS_POPUP' | 'UNKNOWN';
   description: string;
-  action: 'click_secure_and_pay' | 'click_opt_out' | 'wait_for_otp' | 'none';
+  action: 'click_secure_and_pay' | 'click_opt_out' | 'dismiss_popup' | 'wait_for_otp' | 'none';
   targetButtonText?: string;
 }
 
@@ -551,7 +551,7 @@ export async function analyzeGatewayScreenWithLLM(
   screenshotBase64: string,
   apiKey: string,
 ): Promise<GatewayScreenAnalysis | null> {
-  const models = ['gemini-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-flash-latest'];
 
   for (const model of models) {
     try {
@@ -563,22 +563,24 @@ Classify the screen into one of these states:
 1. "BANK_OTP_SCREEN": An authentic 3D-Secure / Bank OTP verification page is visible (explicitly asking for SMS OTP / 3DS passcode, bank logo like PNB/SBI/HDFC/Axis/ICICI/PayU/Razorpay/Wibmo, OTP input box, submit/verify button). The page indicates that the bank is asking for OTP to authorize the transaction.
 2. "CARD_INPUT_SCREEN": The user or gateway is on the card details entry screen (entering card number, expiry, CVV, or choosing a saved debit/credit card). This is NOT an OTP screen.
 3. "TOKENIZATION_MODAL": An RBI card tokenization modal/popup is visible (e.g., "Secure your card with Rupay", "Secure & Pay", "Opt out for now", "Save this card as per RBI guidelines").
-4. "PROCESSING_OR_LOADING": A loading spinner, processing animation, "Please wait while we redirect you to your bank", or waiting for bank response.
-5. "ORDER_SUCCESS": Order confirmed / success page / transaction reference displayed.
-6. "CARD_INPUT_ERROR": An error banner or validation error on the card form (e.g. invalid CVV, expired card, declined).
-7. "UNKNOWN": Any other screen.
+4. "OFFERS_POPUP": An offer modal or promotions overlay is displayed (e.g. "Save more with payment offers", discounts popup, skip/continue prompt).
+5. "PROCESSING_OR_LOADING": A loading spinner, processing animation, "Please wait while we redirect you to your bank", or waiting for bank response.
+6. "ORDER_SUCCESS": Order confirmed / success page / transaction reference displayed.
+7. "CARD_INPUT_ERROR": An error banner or validation error on the card form (e.g. invalid CVV, expired card, declined).
+8. "UNKNOWN": Any other screen.
 
 Respond in valid JSON only with this schema:
 {
-  "state": "BANK_OTP_SCREEN" | "CARD_INPUT_SCREEN" | "TOKENIZATION_MODAL" | "PROCESSING_OR_LOADING" | "ORDER_SUCCESS" | "CARD_INPUT_ERROR" | "UNKNOWN",
+  "state": "BANK_OTP_SCREEN" | "CARD_INPUT_SCREEN" | "TOKENIZATION_MODAL" | "OFFERS_POPUP" | "PROCESSING_OR_LOADING" | "ORDER_SUCCESS" | "CARD_INPUT_ERROR" | "UNKNOWN",
   "description": "brief 1-sentence description of what is on screen",
-  "action": "click_secure_and_pay" | "click_opt_out" | "wait_for_otp" | "none",
-  "targetButtonText": "text of the button to click if state is TOKENIZATION_MODAL (e.g. 'Secure & Pay' or 'Opt out for now')"
+  "action": "click_secure_and_pay" | "click_opt_out" | "dismiss_popup" | "wait_for_otp" | "none",
+  "targetButtonText": "text of the button to click (e.g. 'Secure & Pay', 'Opt out for now', 'Continue without offer', 'Skip', or close button)"
 }`;
 
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(12000),
         body: JSON.stringify({
           contents: [
             {
@@ -645,7 +647,7 @@ export async function handlePostPaymentTransition(
       }
     }
 
-    // 2. Fast-path check: Is the RBI Tokenization Modal visible in DOM across frames?
+    // 2. Fast-path check: Is the RBI Tokenization Modal or Offers Popup visible in DOM across frames?
     let modalHandled = false;
     for (const t of [page, ...page.frames()]) {
       const secureAndPayBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
@@ -667,6 +669,28 @@ export async function handlePostPaymentTransition(
         }
         modalHandled = true;
         break;
+      }
+
+      // Check for Razorpay "Save more with payment offers" popup
+      const offersHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Save more with payment offers")').first();
+      if (await offersHeader.isVisible().catch(() => false)) {
+        console.log('[gateway] Detected "Save more with payment offers" popup in DOM.');
+        const closeOrProceedLocators = [
+          t.locator(':is(button, [role="button"]):has-text("Continue without offer")').first(),
+          t.locator(':is(button, [role="button"]):has-text("Skip")').first(),
+          t.locator('button[aria-label*="Close" i], button.btn-close, button.close, [data-dismiss="modal"]').first(),
+          t.locator(':is(button, [role="button"]):has-text("✕"), :is(button, [role="button"]):has-text("×")').first(),
+        ];
+        for (const loc of closeOrProceedLocators) {
+          if (await loc.isVisible().catch(() => false)) {
+            console.log('[gateway] Dismissing offers popup via button...');
+            await humanClick(loc, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+            await loc.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+            modalHandled = true;
+            break;
+          }
+        }
+        if (modalHandled) break;
       }
     }
     if (modalHandled) continue;
@@ -699,6 +723,34 @@ export async function handlePostPaymentTransition(
           if (analysis.state === 'PROCESSING_OR_LOADING') {
             console.log('[gateway-llm] Processing / redirecting to bank ACS...');
             continue;
+          }
+
+          if (analysis.state === 'OFFERS_POPUP') {
+            console.log(`[gateway-llm] 🎁 Gemini Vision detected Offers Popup ("${analysis.description}"). Dismissing...`);
+            const targetText = analysis.targetButtonText || 'Continue without offer';
+            let clicked = false;
+            for (const t of [page, ...page.frames()]) {
+              const locators = [
+                t.locator(`:is(button, [role="button"], a):has-text("${targetText}")`).first(),
+                t.locator(':is(button, [role="button"], a):has-text("Continue without offer")').first(),
+                t.locator(':is(button, [role="button"], a):has-text("Skip")').first(),
+                t.locator(':is(button, [role="button"], a):has-text("Proceed")').first(),
+                t.locator(':is(button, [role="button"], a):has-text("Pay")').first(),
+                t.locator('button[aria-label*="Close" i], button.btn-close, button.close, [data-dismiss="modal"]').first(),
+                t.locator(':is(button, [role="button"]):has-text("✕"), :is(button, [role="button"]):has-text("×")').first(),
+              ];
+              for (const loc of locators) {
+                if (await loc.isVisible().catch(() => false)) {
+                  console.log(`[gateway-llm] Clicked dismiss button on offers popup...`);
+                  await humanClick(loc, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+                  await loc.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+                  clicked = true;
+                  break;
+                }
+              }
+              if (clicked) break;
+            }
+            if (clicked) continue;
           }
 
           if (analysis.state === 'TOKENIZATION_MODAL') {
