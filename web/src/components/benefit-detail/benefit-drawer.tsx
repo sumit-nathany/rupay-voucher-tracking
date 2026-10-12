@@ -791,6 +791,7 @@ function DetailsSection({
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const uid = React.useId();
+  const sectionRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     setForm(toForm(inst));
@@ -798,12 +799,53 @@ function DetailsSection({
 
   const accounts = inst.availablePortalAccounts ?? [];
 
-  const set = (k: keyof DetailsForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const set = (k: keyof DetailsForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
+  };
+
+  const startEditing = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const scrollParent = sectionRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    const scrollPos = scrollParent ? scrollParent.scrollTop : null;
+
+    setEditing(true);
+
+    if (scrollParent && scrollPos != null) {
+      requestAnimationFrame(() => {
+        scrollParent.scrollTop = scrollPos;
+      });
+      setTimeout(() => {
+        if (scrollParent.scrollTop !== scrollPos) {
+          scrollParent.scrollTop = scrollPos;
+        }
+      }, 0);
+    }
+  };
+
+  const cancel = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const scrollParent = sectionRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    const scrollPos = scrollParent ? scrollParent.scrollTop : null;
+
+    setForm(toForm(inst));
+    setEditing(false);
+    setErrors({});
+    setServerError(null);
+
+    if (scrollParent && scrollPos != null) {
+      requestAnimationFrame(() => {
+        scrollParent.scrollTop = scrollPos;
+      });
+    }
   };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
     const r = validateDetails(form);
     if (!r.ok) {
       setErrors(r.errors);
@@ -812,11 +854,20 @@ function DetailsSection({
     setErrors({});
     setServerError(null);
     setBusy(true);
+
+    const scrollParent = sectionRef.current?.closest('.overflow-y-auto') as HTMLElement | null;
+    const scrollPos = scrollParent ? scrollParent.scrollTop : null;
+
     try {
       const v = await updateDetailsAction({ instanceId: inst.id, ...r.value });
       setForm(toForm(v));
       setEditing(false);
       applied(v);
+      if (scrollParent && scrollPos != null) {
+        requestAnimationFrame(() => {
+          scrollParent.scrollTop = scrollPos;
+        });
+      }
     } catch (err) {
       setServerError(errorMessage(err));
       void reload();
@@ -826,7 +877,7 @@ function DetailsSection({
   }
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-xs">
+    <div ref={sectionRef} className="rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-xs">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-muted text-muted-foreground">
@@ -834,67 +885,66 @@ function DetailsSection({
           </div>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">Booking & Details</h4>
         </div>
-        {editable && !editing && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditing(true);
-            }}
-          >
-            <Pencil className="h-3 w-3" /> Edit
-          </Button>
+        {editable && (
+          <div className="flex items-center gap-1.5">
+            {editing ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  onClick={cancel}
+                  disabled={busy}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs font-medium"
+                  onClick={(e) => void submit(e)}
+                  disabled={busy}
+                >
+                  {busy && <Loader2 className="h-3 w-3 animate-spin mr-1" />} Save
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={startEditing}
+              >
+                <Pencil className="h-3 w-3" /> Edit
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
-      {!editing ? (
-        <div className="space-y-0 text-xs">
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <span className="text-muted-foreground">Order Date</span>
-            <span className="font-medium text-foreground">{inst.orderDate ? formatDate(inst.orderDate) : '—'}</span>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <span className="text-muted-foreground">Expiry Date</span>
-            <span className="font-medium text-foreground">{inst.expiryDate ? formatDate(inst.expiryDate) : '—'}</span>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <span className="text-muted-foreground">RuPay Booking ID</span>
-            <span className="font-mono text-foreground">{inst.rupayBookingId || '—'}</span>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <span className="text-muted-foreground">RuPay Account</span>
-            <span className="font-medium text-foreground">{inst.portalAccountLabel || '—'}</span>
-          </div>
-          <div className="flex items-center justify-between py-2 border-b border-border/40">
-            <span className="text-muted-foreground">Cash Value</span>
-            <span className="font-medium text-foreground">
-              {formatMoney(inst.value ?? inst.cashValue)}
-              {inst.cashValue != null && inst.defaultCashValue != null && Number(inst.cashValue) !== inst.defaultCashValue
-                ? ' (instance override)'
-                : inst.customDefaultValue != null
-                ? ' (custom valuation)'
-                : ''}
-            </span>
-          </div>
-          <div className="py-2.5">
-            <span className="text-muted-foreground block mb-1.5">Comments / Notes</span>
-            <p className="text-foreground/90 whitespace-pre-wrap rounded-xl bg-muted/40 p-3 border border-border/40 text-xs leading-relaxed">
-              {inst.comments || 'No notes added'}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <form aria-label="Details" className="space-y-0 text-xs" noValidate onSubmit={(e) => void submit(e)}>
-          {/* Order Date */}
-          <div className="py-2 border-b border-border/40">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={`${uid}-orderDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
-                Order Date
-              </Label>
+      <form
+        id="booking-details-form"
+        aria-label="Details"
+        className="space-y-0 text-xs"
+        noValidate
+        onSubmit={(e) => void submit(e)}
+      >
+        {/* Order Date */}
+        <div className="py-2 border-b border-border/40 min-h-[44px] flex flex-col justify-center">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor={`${uid}-orderDate`}
+              className="text-xs text-muted-foreground shrink-0 cursor-pointer select-none"
+            >
+              Order Date
+            </label>
+            {!editing ? (
+              <span className="font-medium text-foreground text-right truncate">
+                {inst.orderDate ? formatDate(inst.orderDate) : '—'}
+              </span>
+            ) : (
               <input
                 type="date"
                 value={form.orderDate}
@@ -908,20 +958,29 @@ function DetailsSection({
                   errors.orderDate && 'border-destructive focus:border-destructive focus:ring-destructive/20',
                 )}
               />
-            </div>
-            {errors.orderDate && (
-              <p id={`${uid}-orderDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
-                {errors.orderDate}
-              </p>
             )}
           </div>
+          {editing && errors.orderDate && (
+            <p id={`${uid}-orderDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+              {errors.orderDate}
+            </p>
+          )}
+        </div>
 
-          {/* Expiry Date */}
-          <div className="py-2 border-b border-border/40">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={`${uid}-expiryDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
-                Expiry Date
-              </Label>
+        {/* Expiry Date */}
+        <div className="py-2 border-b border-border/40 min-h-[44px] flex flex-col justify-center">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor={`${uid}-expiryDate`}
+              className="text-xs text-muted-foreground shrink-0 cursor-pointer select-none"
+            >
+              Expiry Date
+            </label>
+            {!editing ? (
+              <span className="font-medium text-foreground text-right truncate">
+                {inst.expiryDate ? formatDate(inst.expiryDate) : '—'}
+              </span>
+            ) : (
               <input
                 type="date"
                 value={form.expiryDate}
@@ -935,20 +994,29 @@ function DetailsSection({
                   errors.expiryDate && 'border-destructive focus:border-destructive focus:ring-destructive/20',
                 )}
               />
-            </div>
-            {errors.expiryDate && (
-              <p id={`${uid}-expiryDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
-                {errors.expiryDate}
-              </p>
             )}
           </div>
+          {editing && errors.expiryDate && (
+            <p id={`${uid}-expiryDate-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+              {errors.expiryDate}
+            </p>
+          )}
+        </div>
 
-          {/* RuPay Booking ID */}
-          <div className="py-2 border-b border-border/40">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={`${uid}-rupayBookingId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
-                RuPay Booking ID
-              </Label>
+        {/* RuPay Booking ID */}
+        <div className="py-2 border-b border-border/40 min-h-[44px] flex flex-col justify-center">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor={`${uid}-rupayBookingId`}
+              className="text-xs text-muted-foreground shrink-0 cursor-pointer select-none"
+            >
+              RuPay Booking ID
+            </label>
+            {!editing ? (
+              <span className="font-mono text-foreground text-right truncate">
+                {inst.rupayBookingId || '—'}
+              </span>
+            ) : (
               <input
                 type="text"
                 value={form.rupayBookingId}
@@ -964,62 +1032,83 @@ function DetailsSection({
                   errors.rupayBookingId && 'border-destructive focus:border-destructive focus:ring-destructive/20',
                 )}
               />
-            </div>
-            {errors.rupayBookingId && (
-              <p id={`${uid}-rupayBookingId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
-                {errors.rupayBookingId}
-              </p>
             )}
           </div>
+          {editing && errors.rupayBookingId && (
+            <p id={`${uid}-rupayBookingId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+              {errors.rupayBookingId}
+            </p>
+          )}
+        </div>
 
-          {/* RuPay Account */}
-          <div className="py-2 border-b border-border/40">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={`${uid}-portalAccountId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
-                RuPay Account
-              </Label>
-              <Select
-                value={form.portalAccountId || 'none'}
-                onValueChange={(v) => setForm((f) => ({ ...f, portalAccountId: v === 'none' ? '' : v }))}
+        {/* RuPay Account */}
+        <div className="py-2 border-b border-border/40 min-h-[44px] flex flex-col justify-center">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor={`${uid}-portalAccountId`}
+              className="text-xs text-muted-foreground shrink-0 cursor-pointer select-none"
+            >
+              RuPay Account
+            </label>
+            {!editing ? (
+              <span className="font-medium text-foreground text-right truncate">
+                {inst.portalAccountLabel || '—'}
+              </span>
+            ) : (
+              <select
+                id={`${uid}-portalAccountId`}
+                value={form.portalAccountId}
+                onChange={(e) => setForm((f) => ({ ...f, portalAccountId: e.target.value }))}
                 disabled={!editable || busy}
+                aria-invalid={errors.portalAccountId ? true : undefined}
+                aria-describedby={errors.portalAccountId ? `${uid}-portalAccountId-err` : undefined}
+                className={cn(
+                  'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50',
+                  errors.portalAccountId && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                )}
               >
-                <SelectTrigger
-                  id={`${uid}-portalAccountId`}
-                  className={cn(
-                    'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2.5 text-xs font-medium text-foreground shadow-none outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50',
-                    errors.portalAccountId && 'border-destructive focus:border-destructive focus:ring-destructive/20',
-                  )}
-                >
-                  <SelectValue placeholder="Select account" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None / Unassigned</SelectItem>
-                  {accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.label}
-                    </SelectItem>
-                  ))}
-                  {form.portalAccountId && !accounts.some((a) => a.id === form.portalAccountId) && (
-                    <SelectItem value={form.portalAccountId}>
-                      {inst.portalAccountLabel || form.portalAccountId}
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            {errors.portalAccountId && (
-              <p id={`${uid}-portalAccountId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
-                {errors.portalAccountId}
-              </p>
+                <option value="">None / Unassigned</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label}
+                  </option>
+                ))}
+                {form.portalAccountId && !accounts.some((a) => a.id === form.portalAccountId) && (
+                  <option value={form.portalAccountId}>
+                    {inst.portalAccountLabel || form.portalAccountId}
+                  </option>
+                )}
+              </select>
             )}
           </div>
+          {editing && errors.portalAccountId && (
+            <p id={`${uid}-portalAccountId-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+              {errors.portalAccountId}
+            </p>
+          )}
+        </div>
 
-          {/* Cash Value */}
-          <div className="py-2 border-b border-border/40">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={`${uid}-cashValue`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
-                Cash Value
-              </Label>
+        {/* Cash Value */}
+        <div className="py-2 border-b border-border/40 min-h-[44px] flex flex-col justify-center">
+          <div className="flex items-center justify-between gap-3">
+            <label
+              htmlFor={`${uid}-cashValue`}
+              className="text-xs text-muted-foreground shrink-0 cursor-pointer select-none"
+            >
+              Cash Value
+            </label>
+            {!editing ? (
+              <span className="font-medium text-foreground text-right truncate">
+                {formatMoney(inst.value ?? inst.cashValue)}
+                {inst.cashValue != null &&
+                inst.defaultCashValue != null &&
+                Number(inst.cashValue) !== inst.defaultCashValue
+                  ? ' (instance override)'
+                  : inst.customDefaultValue != null
+                  ? ' (custom valuation)'
+                  : ''}
+              </span>
+            ) : (
               <div className="relative flex items-center w-48 sm:w-52">
                 <span className="absolute left-2.5 text-xs font-medium text-muted-foreground select-none pointer-events-none">
                   ₹
@@ -1040,19 +1129,28 @@ function DetailsSection({
                   )}
                 />
               </div>
-            </div>
-            {errors.cashValue && (
-              <p id={`${uid}-cashValue-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
-                {errors.cashValue}
-              </p>
             )}
           </div>
+          {editing && errors.cashValue && (
+            <p id={`${uid}-cashValue-err`} role="alert" className="text-[11px] text-destructive text-right mt-1">
+              {errors.cashValue}
+            </p>
+          )}
+        </div>
 
-          {/* Comments / Notes */}
-          <div className="py-2.5">
-            <Label htmlFor={`${uid}-comments`} className="text-muted-foreground block mb-1.5 text-xs font-normal cursor-pointer">
-              Comments / Notes
-            </Label>
+        {/* Comments / Notes */}
+        <div className="py-2.5">
+          <label
+            htmlFor={`${uid}-comments`}
+            className="text-muted-foreground block mb-1.5 text-xs select-none cursor-pointer"
+          >
+            Comments / Notes
+          </label>
+          {!editing ? (
+            <p className="text-foreground/90 whitespace-pre-wrap rounded-xl bg-muted/40 p-3 border border-border/40 text-xs leading-relaxed min-h-[60px]">
+              {inst.comments || 'No notes added'}
+            </p>
+          ) : (
             <textarea
               id={`${uid}-comments`}
               value={form.comments}
@@ -1068,39 +1166,40 @@ function DetailsSection({
                 errors.comments && 'border-destructive focus:border-destructive focus:ring-destructive/20',
               )}
             />
-            {errors.comments && (
-              <p id={`${uid}-comments-err`} role="alert" className="text-[11px] text-destructive mt-1">
-                {errors.comments}
-              </p>
-            )}
-          </div>
+          )}
+          {editing && errors.comments && (
+            <p id={`${uid}-comments-err`} role="alert" className="text-[11px] text-destructive mt-1">
+              {errors.comments}
+            </p>
+          )}
+        </div>
 
-          {/* Action buttons */}
+        {/* Action buttons at bottom */}
+        {editing && (
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/50">
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setForm(toForm(inst));
-                setEditing(false);
-                setErrors({});
-              }}
+              onClick={cancel}
               disabled={busy}
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="h-8 px-4 text-xs font-medium shadow-xs" disabled={busy}>
+            <Button
+              type="submit"
+              size="sm"
+              className="h-8 px-4 text-xs font-medium shadow-xs"
+              disabled={busy}
+            >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />} Save details
             </Button>
           </div>
+        )}
 
-          {serverError && <p role="alert" className="text-xs text-destructive mt-1">{serverError}</p>}
-        </form>
-      )}
+        {serverError && <p role="alert" className="text-xs text-destructive mt-1">{serverError}</p>}
+      </form>
     </div>
   );
 }
