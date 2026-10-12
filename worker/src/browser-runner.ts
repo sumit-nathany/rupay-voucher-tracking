@@ -6,7 +6,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
-import { decryptPaymentDetails } from '../../web/src/lib/card-payment-details';
+import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
@@ -163,6 +163,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   }
 
   console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
+
+  if (!paymentDetails || !isValidPaymentDetails(paymentDetails)) {
+    console.error(`\n[runner] ❌ Aborting run: Card "${cardRow?.cardName}" (••${cardRow?.last4}) does not have valid payment details configured.`);
+    console.error(`Automation cannot checkout without payment details (card number, expiry date, CVV). Please configure payment details on this card in the Cards section.`);
+    await client.end();
+    return;
+  }
 
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');
   const userDataDir = getAccountProfilePath(account.id);
@@ -525,9 +532,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   if (transitionResult.reachedSuccess) {
     console.log('✓ Order confirmation screen reached directly!');
     otpCompleted = true;
-  } else {
+  } else if (transitionResult.reachedOtp) {
     // Step 9: 3D-Secure Bank OTP Prompt
-    console.log('\n--- Step 9: 3D-Secure Verification / OTP ---');
+    console.log('\n--- Step 9: 3D-Secure Verification / OTP (Confirmed by LLM) ---');
 
     if (telegramChatId) {
       console.log(`[gateway] OTP recipient: Telegram Chat ${telegramChatId}`);
@@ -550,6 +557,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       },
       180000,
     );
+  } else {
+    console.log(`\n[gateway] ⚠️ Bank OTP screen was not reached (${transitionResult.reason || 'timeout'}). Skipping OTP notification.`);
   }
 
   if (otpCompleted) {

@@ -93,3 +93,16 @@ export function maskPaymentSummary(details: PaymentDetails | null) {
     nameOnCard: details.nameOnCard || null,
   };
 }
+
+export function isValidPaymentDetails(details: PaymentDetails | null | undefined): boolean {
+  if (!details) return false;
+  if (details.mode === 'saved_card') {
+    return Boolean(details.cvv && details.cvv.trim().length >= 3);
+  }
+  const cleanNum = details.cardNumber?.replace(/\D/g, '') || '';
+  return (
+    cleanNum.length >= 15 &&
+    Boolean(details.expiryMonth && details.expiryYear) &&
+    Boolean(details.cvv && details.cvv.trim().length >= 3)
+  );
+}

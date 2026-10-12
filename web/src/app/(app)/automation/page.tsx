@@ -15,12 +15,34 @@ export default async function AutomationPage() {
   ]);
 
   const holderMap = new Map(holders.map((h) => [h.id, h.name]));
-  const availableCards = rawCards.map((c) => ({
-    id: c.id,
-    name: c.displayName,
-    holderName: holderMap.get(c.holderId) ?? 'Unknown',
-    lastDigits: c.lastDigits,
-  }));
+
+  const cardsWithMappingDetails = new Set(
+    dashboard.mappings
+      .filter((m) => {
+        if (!m.paymentDetails) return false;
+        return m.paymentDetails.mode === 'saved_card'
+          ? m.paymentDetails.hasCvv
+          : Boolean(m.paymentDetails.maskedCardNumber && m.paymentDetails.hasCvv && m.paymentDetails.expirySummary);
+      })
+      .map((m) => m.cardId),
+  );
+
+  const availableCards = rawCards.map((c) => {
+    const directValid = Boolean(
+      c.paymentSummary &&
+        (c.paymentSummary.mode === 'saved_card'
+          ? c.paymentSummary.hasCvv
+          : c.paymentSummary.maskedCardNumber && c.paymentSummary.hasCvv && c.paymentSummary.expirySummary),
+    );
+    const mappingValid = cardsWithMappingDetails.has(c.id);
+    return {
+      id: c.id,
+      name: c.displayName,
+      holderName: holderMap.get(c.holderId) ?? 'Unknown',
+      lastDigits: c.lastDigits,
+      hasPaymentDetails: directValid || mappingValid,
+    };
+  });
 
   const hasAttentionAccounts =
     dashboard.accounts.some(

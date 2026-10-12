@@ -21,6 +21,7 @@ import {
   savePortalCardMapping,
   createOrderingRule,
 } from './automation';
+import { encryptPaymentDetails } from '@/lib/card-payment-details';
 import {
   runAutomationJob,
   recoverExpiredAttempts,
@@ -66,12 +67,18 @@ describe('automation worker', () => {
 
     const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Alice Smith' }).returning();
     const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'PNB Select Card', bankName: 'PNB' }).returning();
+    const cardId = crypto.randomUUID();
     const [card] = await db.insert(cards).values({
+      id: cardId,
       workspaceId,
       holderId: holder.id,
       bankCardTypeId: cardType.id,
       displayName: 'Alice PNB',
       lastDigits: '8888',
+      paymentDetailsEncrypted: encryptPaymentDetails(
+        { version: 1, mode: 'saved_card', cvv: '123' },
+        cardId,
+      ),
     }).returning();
 
     await savePortalCardMapping(ctx, {

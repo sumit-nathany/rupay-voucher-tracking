@@ -538,7 +538,7 @@ export async function resolveOtpInput(
 }
 
 export interface GatewayScreenAnalysis {
-  state: 'TOKENIZATION_MODAL' | 'BANK_OTP_SCREEN' | 'PROCESSING_OR_LOADING' | 'ORDER_SUCCESS' | 'CARD_INPUT_ERROR' | 'UNKNOWN';
+  state: 'TOKENIZATION_MODAL' | 'BANK_OTP_SCREEN' | 'CARD_INPUT_SCREEN' | 'PROCESSING_OR_LOADING' | 'ORDER_SUCCESS' | 'CARD_INPUT_ERROR' | 'UNKNOWN';
   description: string;
   action: 'click_secure_and_pay' | 'click_opt_out' | 'wait_for_otp' | 'none';
   targetButtonText?: string;
@@ -560,15 +560,17 @@ export async function analyzeGatewayScreenWithLLM(
 Analyze this screenshot of the current payment checkout screen.
 
 Classify the screen into one of these states:
-1. "TOKENIZATION_MODAL": An RBI card tokenization modal/popup is visible (e.g., "Secure your card with Rupay", "Secure & Pay", "Opt out for now", "Save this card as per RBI guidelines").
-2. "BANK_OTP_SCREEN": An authentic 3D-Secure / Bank OTP verification page is visible (asking for SMS OTP / 3DS passcode, bank logo like PNB/SBI/HDFC/Axis/ICICI, OTP input box, submit/verify button).
-3. "PROCESSING_OR_LOADING": A loading spinner, processing animation, "Please wait while we redirect you", or waiting for bank response.
-4. "ORDER_SUCCESS": Order confirmed / success page / transaction reference displayed.
-5. "CARD_INPUT_ERROR": An error banner or validation error on the card form (e.g. invalid CVV, expired card, declined).
+1. "BANK_OTP_SCREEN": An authentic 3D-Secure / Bank OTP verification page is visible (explicitly asking for SMS OTP / 3DS passcode, bank logo like PNB/SBI/HDFC/Axis/ICICI/PayU/Razorpay/Wibmo, OTP input box, submit/verify button). The page indicates that the bank is asking for OTP to authorize the transaction.
+2. "CARD_INPUT_SCREEN": The user or gateway is on the card details entry screen (entering card number, expiry, CVV, or choosing a saved debit/credit card). This is NOT an OTP screen.
+3. "TOKENIZATION_MODAL": An RBI card tokenization modal/popup is visible (e.g., "Secure your card with Rupay", "Secure & Pay", "Opt out for now", "Save this card as per RBI guidelines").
+4. "PROCESSING_OR_LOADING": A loading spinner, processing animation, "Please wait while we redirect you to your bank", or waiting for bank response.
+5. "ORDER_SUCCESS": Order confirmed / success page / transaction reference displayed.
+6. "CARD_INPUT_ERROR": An error banner or validation error on the card form (e.g. invalid CVV, expired card, declined).
+7. "UNKNOWN": Any other screen.
 
 Respond in valid JSON only with this schema:
 {
-  "state": "TOKENIZATION_MODAL" | "BANK_OTP_SCREEN" | "PROCESSING_OR_LOADING" | "ORDER_SUCCESS" | "CARD_INPUT_ERROR" | "UNKNOWN",
+  "state": "BANK_OTP_SCREEN" | "CARD_INPUT_SCREEN" | "TOKENIZATION_MODAL" | "PROCESSING_OR_LOADING" | "ORDER_SUCCESS" | "CARD_INPUT_ERROR" | "UNKNOWN",
   "description": "brief 1-sentence description of what is on screen",
   "action": "click_secure_and_pay" | "click_opt_out" | "wait_for_otp" | "none",
   "targetButtonText": "text of the button to click if state is TOKENIZATION_MODAL (e.g. 'Secure & Pay' or 'Opt out for now')"
@@ -623,8 +625,8 @@ Respond in valid JSON only with this schema:
 export async function handlePostPaymentTransition(
   page: Page,
   options?: { maxWaitSec?: number; apiKey?: string },
-): Promise<{ reachedOtp: boolean; reachedSuccess: boolean }> {
-  const maxWaitSec = options?.maxWaitSec ?? 35;
+): Promise<{ reachedOtp: boolean; reachedSuccess: boolean; reason?: string }> {
+  const maxWaitSec = options?.maxWaitSec ?? 60;
   const apiKey = options?.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
   console.log('[gateway] Monitoring post-payment state and handling tokenization modals...');
@@ -664,33 +666,7 @@ export async function handlePostPaymentTransition(
       continue;
     }
 
-    // 3. Fast-path check: Is the true Bank 3D-Secure OTP screen reached?
-    const isBankDomain = !currUrl.includes('juspay.in') && (
-      currUrl.includes('bank') ||
-      currUrl.includes('acs') ||
-      currUrl.includes('otp') ||
-      currUrl.includes('cardsecurity') ||
-      currUrl.includes('enstage') ||
-      currUrl.includes('wibmo') ||
-      currUrl.includes('pnb')
-    );
-
-    const hasOtpInput = await page.evaluate(() => {
-      const inputs = Array.from(document.querySelectorAll('input'));
-      return inputs.some((inp) => {
-        const name = (inp.name || '').toLowerCase();
-        const id = (inp.id || '').toLowerCase();
-        const ph = (inp.placeholder || '').toLowerCase();
-        return name.includes('otp') || id.includes('otp') || ph.includes('otp') || name.includes('password') || id.includes('password');
-      });
-    }).catch(() => false);
-
-    if (isBankDomain || hasOtpInput) {
-      console.log(`[gateway] ✓ Bank 3D-Secure verification page reached! (URL: ${currUrl})`);
-      return { reachedOtp: true, reachedSuccess: false };
-    }
-
-    // 4. LLM Visual Assessment via Gemini Vision
+    // 3. Primary LLM Visual Assessment via Gemini Vision
     if (apiKey) {
       try {
         console.log('[gateway-llm] 🧠 Asking Gemini Vision to inspect payment screen state...');
@@ -700,38 +676,104 @@ export async function handlePostPaymentTransition(
         if (analysis) {
           console.log(`[gateway-llm] Analysis: [${analysis.state}] - ${analysis.description}`);
 
-          if (analysis.state === 'TOKENIZATION_MODAL') {
-            const targetText = analysis.targetButtonText || 'Secure & Pay';
-            const btn = page.locator(`:is(button, [role="button"], a, div):has-text("${targetText}")`).first();
-            if (await btn.isVisible().catch(() => false)) {
-              console.log(`[gateway-llm] Clicking "${targetText}" identified by LLM...`);
-              await humanClick(btn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-            } else {
-              // fallback to secure & pay or opt out
-              if (await secureAndPayBtn.isVisible().catch(() => false)) {
-                await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-              } else if (await optOutBtn.isVisible().catch(() => false)) {
-                await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-              }
-            }
-            continue;
-          }
-
           if (analysis.state === 'BANK_OTP_SCREEN') {
             console.log('[gateway-llm] ✓ Gemini Vision confirmed Bank OTP screen!');
             return { reachedOtp: true, reachedSuccess: false };
           }
 
           if (analysis.state === 'ORDER_SUCCESS') {
+            console.log('[gateway-llm] ✓ Gemini Vision confirmed Order Success screen!');
             return { reachedOtp: false, reachedSuccess: true };
+          }
+
+          if (analysis.state === 'CARD_INPUT_SCREEN') {
+            console.log('[gateway-llm] User/gateway is on Card Input screen. Waiting for submission...');
+            continue;
+          }
+
+          if (analysis.state === 'PROCESSING_OR_LOADING') {
+            console.log('[gateway-llm] Processing / redirecting to bank ACS...');
+            continue;
+          }
+
+          if (analysis.state === 'TOKENIZATION_MODAL') {
+            const targetText = analysis.targetButtonText || 'Secure & Pay';
+            const btn = page.locator(`:is(button, [role="button"], a, div):has-text("${targetText}")`).first();
+            if (await btn.isVisible().catch(() => false)) {
+              console.log(`[gateway-llm] Clicking "${targetText}" identified by LLM...`);
+              await humanClick(btn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+            } else if (await secureAndPayBtn.isVisible().catch(() => false)) {
+              await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+            } else if (await optOutBtn.isVisible().catch(() => false)) {
+              await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+            }
+            continue;
           }
         }
       } catch (err) {
-        console.warn('[gateway-llm] Vision check failed, falling back to heuristics:', err);
+        console.warn('[gateway-llm] Vision check error:', err);
+      }
+    } else {
+      // Fallback only if no Gemini API key configured: external bank ACS domain + OTP field
+      const isExternalAcs = !currUrl.includes('juspay.in') && (
+        currUrl.includes('acs') ||
+        currUrl.includes('bank') ||
+        currUrl.includes('cardsecurity') ||
+        currUrl.includes('enstage') ||
+        currUrl.includes('wibmo')
+      );
+      const hasOtpField = await page.evaluate(() => {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        return inputs.some((inp) => {
+          const name = (inp.name || '').toLowerCase();
+          const id = (inp.id || '').toLowerCase();
+          const ph = (inp.placeholder || '').toLowerCase();
+          return name.includes('otp') || id.includes('otp') || ph.includes('otp');
+        });
+      }).catch(() => false);
+
+      if (isExternalAcs && hasOtpField) {
+        console.log(`[gateway] ✓ External bank ACS OTP page reached (URL: ${currUrl})`);
+        return { reachedOtp: true, reachedSuccess: false };
       }
     }
   }
 
-  // If timeout reached, proceed so user can inspect
-  return { reachedOtp: true, reachedSuccess: false };
+  console.log('[gateway] Timed out waiting for bank OTP screen.');
+  return { reachedOtp: false, reachedSuccess: false, reason: 'Bank OTP screen was not detected within timeout' };
+}
+
+/**
+ * Validates with Gemini Vision whether the active page is currently displaying
+ * an authentic Bank 3D-Secure OTP verification prompt.
+ */
+export async function verifyBankOtpScreenWithLLM(
+  page: Page,
+  options?: { maxWaitSec?: number; apiKey?: string },
+): Promise<boolean> {
+  const maxWaitSec = options?.maxWaitSec ?? 15;
+  const apiKey = options?.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+
+  if (!apiKey) {
+    console.warn('[gateway-llm] No GEMINI_API_KEY available for visual OTP verification.');
+    return false;
+  }
+
+  const deadline = Date.now() + maxWaitSec * 1000;
+  while (Date.now() < deadline) {
+    try {
+      const screenshotBuf = await page.screenshot();
+      const analysis = await analyzeGatewayScreenWithLLM(screenshotBuf.toString('base64'), apiKey);
+      if (analysis?.state === 'BANK_OTP_SCREEN') {
+        console.log(`[gateway-llm] ✓ LLM Vision verified authentic Bank OTP screen: "${analysis.description}"`);
+        return true;
+      }
+      console.log(`[gateway-llm] Screen verification status: [${analysis?.state ?? 'UNKNOWN'}] - ${analysis?.description ?? 'N/A'}`);
+    } catch (err) {
+      console.warn('[gateway-llm] Visual check error:', err);
+    }
+    await page.waitForTimeout(2500);
+  }
+
+  return false;
 }

@@ -15,6 +15,7 @@ export interface CardOption {
   name: string;
   holderName: string;
   lastDigits: string | null;
+  hasPaymentDetails?: boolean;
 }
 
 export function PortalCardMappingsSection({
@@ -79,7 +80,18 @@ export function PortalCardMappingsSection({
                   return (
                     <tr key={card.id} className="hover:bg-muted/20 transition-colors">
                       <td className="py-4 sm:py-5 px-5 sm:px-6">
-                        <div className="font-semibold text-sm sm:text-base text-foreground">{card.name}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm sm:text-base text-foreground">{card.name}</span>
+                          {card.hasPaymentDetails ? (
+                            <Badge variant="outline" className="text-[10px] py-0 px-2 font-medium text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
+                              Payment details ready
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] py-0 px-2 font-medium text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10">
+                              Missing payment details
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-xs sm:text-sm text-muted-foreground mt-1">
                           {card.holderName} {card.lastDigits ? `(••${card.lastDigits})` : ''}
                         </div>
@@ -281,11 +293,29 @@ export function AssignAccountsDialog({
                 {cards.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name} ({c.holderName} {c.lastDigits ? `••${c.lastDigits}` : ''})
+                    {!c.hasPaymentDetails ? ' — (Missing card details)' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {(() => {
+            const currentCard = cards.find((c) => c.id === selectedCard);
+            if (currentCard && !currentCard.hasPaymentDetails) {
+              return (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                  <div className="font-semibold text-amber-800 dark:text-amber-300">
+                    ⚠️ Payment details missing
+                  </div>
+                  <p className="text-muted-foreground text-[11px] leading-relaxed">
+                    This card does not have payment details (card number, expiry date, CVV) configured. Automation cannot checkout without payment details. Please configure payment details on this card in the Cards section before assigning it to a portal account.
+                  </p>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -361,7 +391,18 @@ export function AssignAccountsDialog({
             <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={busy}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={
+                busy ||
+                Boolean(
+                  cards.find((c) => c.id === selectedCard) &&
+                    !cards.find((c) => c.id === selectedCard)?.hasPaymentDetails &&
+                    selectedAccounts.size > 0,
+                )
+              }
+            >
               {busy ? 'Saving...' : 'Save Assignments'}
             </Button>
           </div>

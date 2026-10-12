@@ -6,7 +6,7 @@ import * as schema from '../../web/src/db/schema';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
 import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
-import { resolveAndFillCvv, resolveAndClickPay, resolveOtpInput } from './llm-gateway-agent';
+import { resolveAndFillCvv, resolveAndClickPay, resolveOtpInput, verifyBankOtpScreenWithLLM } from './llm-gateway-agent';
 
 export interface OtpPromptContext {
   db?: any;
@@ -422,8 +422,15 @@ export async function promptForOtpAndSubmit(
   contextOptions?: OtpPromptContext,
   timeoutMs: number = 180000,
 ): Promise<boolean> {
+  console.log('[gateway] Verifying active Bank OTP verification screen with Gemini Vision before notifying...');
+  const isOtpConfirmed = await verifyBankOtpScreenWithLLM(page, { maxWaitSec: 30 });
+  if (!isOtpConfirmed) {
+    console.warn('[gateway] ⚠️ LLM Vision did NOT confirm a Bank OTP screen. Suppressing OTP notifications to prevent false alert.');
+    return false;
+  }
+
   console.log(`\n======================================================`);
-  console.log(`📲 3D-SECURE BANK OTP VERIFICATION REQUIRED`);
+  console.log(`📲 3D-SECURE BANK OTP VERIFICATION REQUIRED (Verified by LLM Vision)`);
   console.log(`Current URL: ${page.url()}`);
   if (contextOptions?.telegramChatId) {
     console.log(`💬 Telegram OTP Prompt dispatched to Chat ID: ${contextOptions.telegramChatId}`);

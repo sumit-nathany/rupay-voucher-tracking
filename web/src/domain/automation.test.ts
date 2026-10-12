@@ -13,6 +13,7 @@ import {
   portalOrderAttempts,
   orderingRules,
   orderingQueueItems,
+  portalCardMappings,
 } from '@/db/schema';
 import type { Database, Ctx } from '@/lib/context';
 import {
@@ -30,6 +31,7 @@ import {
   createOrderingRule,
   findCandidatesForAccount,
 } from './automation';
+import { encryptPaymentDetails } from '@/lib/card-payment-details';
 
 describe('automation domain', () => {
   let db: Database;
@@ -111,8 +113,26 @@ describe('automation domain', () => {
     // Setup holder, card type, and 2 cards
     const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'John Doe' }).returning();
     const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'PNB Select Card', bankName: 'PNB' }).returning();
-    const [card1] = await db.insert(cards).values({ workspaceId, holderId: holder.id, bankCardTypeId: cardType.id, displayName: 'Card 1', lastDigits: '1111' }).returning();
-    const [card2] = await db.insert(cards).values({ workspaceId, holderId: holder.id, bankCardTypeId: cardType.id, displayName: 'Card 2', lastDigits: '2222' }).returning();
+    const card1Id = crypto.randomUUID();
+    const card2Id = crypto.randomUUID();
+    const [card1] = await db.insert(cards).values({
+      id: card1Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 1',
+      lastDigits: '1111',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '123' }, card1Id),
+    }).returning();
+    const [card2] = await db.insert(cards).values({
+      id: card2Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 2',
+      lastDigits: '2222',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '456' }, card2Id),
+    }).returning();
 
     // Map card 1 and card 2 to portal account
     await savePortalCardMapping(ctx, {
@@ -237,7 +257,17 @@ describe('automation domain', () => {
 
     const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder 1' }).returning();
     const [cardType] = await db.insert(bankCardTypes).values({ bankName: 'HDFC', cardType: 'Millennia', displayName: 'HDFC Millennia' }).returning();
-    const [c1] = await db.insert(cards).values({ workspaceId, holderId: holder.id, bankCardTypeId: cardType.id, lastDigits: '1111', displayName: 'Card 1', active: true }).returning();
+    const c1Id = crypto.randomUUID();
+    const [c1] = await db.insert(cards).values({
+      id: c1Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      lastDigits: '1111',
+      displayName: 'Card 1',
+      active: true,
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '789' }, c1Id),
+    }).returning();
 
     const acc = await createPortalAccount(ctx, {
       label: 'acc@test.com',
@@ -403,12 +433,15 @@ describe('automation domain', () => {
 
     const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder 1' }).returning();
     const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'Bank Card', bankName: 'Bank' }).returning();
+    const cardId = crypto.randomUUID();
     const [card] = await db.insert(cards).values({
+      id: cardId,
       workspaceId,
       holderId: holder.id,
       bankCardTypeId: cardType.id,
       displayName: 'Card 1',
       lastDigits: '4321',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '999' }, cardId),
     }).returning();
 
     // Assign to Acc 1 and Acc 2
@@ -441,5 +474,79 @@ describe('automation domain', () => {
 
     const mappings3 = await listPortalCardMappings(ctx);
     expect(mappings3.filter((m) => m.cardId === card.id).length).toBe(0);
+  });
+
+  it('prevents assigning card to portal account if card details are not configured', async () => {
+    const acc = await createPortalAccount(ctx, {
+      label: 'Acc No Details',
+      credentials: { loginId: 'no@test.com', password: 'pwd' },
+    });
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'Bank Card', bankName: 'Bank' }).returning();
+    const [cardWithoutDetails] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card Without Details',
+      lastDigits: '9999',
+    }).returning();
+
+    await expect(
+      setCardPortalAccounts(ctx, {
+        cardId: cardWithoutDetails.id,
+        portalAccountIds: [acc.id],
+      }),
+    ).rejects.toThrow('Payment details');
+  });
+
+  it('excludes cards without payment details from candidate nomination', async () => {
+    await saveAutomationSettings(ctx, { enabled: true });
+    const acc = await createPortalAccount(ctx, {
+      label: 'acc_no_pay@test.com',
+      credentials: { loginId: 'acc_no_pay@test.com', password: 'pwd' },
+    });
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder 1' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ bankName: 'HDFC', cardType: 'Millennia', displayName: 'HDFC Millennia' }).returning();
+    const [noPayCard] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      lastDigits: '0000',
+      displayName: 'No Pay Card',
+      active: true,
+    }).returning();
+
+    // Directly insert mapping bypassing assignment validation to test candidate nomination filtering
+    await db.insert(portalCardMappings).values({
+      workspaceId,
+      portalAccountId: acc.id,
+      cardId: noPayCard.id,
+      active: true,
+    });
+
+    const [b1] = await db.insert(benefits).values({ bankCardTypeId: cardType.id }).returning();
+    const [v1] = await db.insert(benefitCatalogVersions).values({
+      benefitId: b1.id,
+      benefitType: 'Spa',
+      exactBenefit: 'Spa Session',
+      frequency: 'Quarterly',
+      effectiveFrom: '2026-01-01',
+    }).returning();
+    await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: noPayCard.id,
+      benefitId: b1.id,
+      bankCardTypeId: cardType.id,
+      generatedFromVersion: v1.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-10-31',
+      orderStatus: 'Not Ordered',
+    });
+
+    // Should NOT nominate because card has no payment details
+    const cand = await findCandidatesForAccount(db, acc.id, today);
+    expect(cand).toBeNull();
   });
 });
