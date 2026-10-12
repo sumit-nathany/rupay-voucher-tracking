@@ -42,7 +42,8 @@ export const SheetContent = React.forwardRef<
       onPointerDownOutside={(e) => {
         onPointerDownOutside?.(e);
         if (e.defaultPrevented) return;
-        const target = e.target as HTMLElement | null;
+        const orig = (e as unknown as { detail?: { originalEvent?: Event } }).detail?.originalEvent;
+        const target = (orig?.target ?? e.target) as HTMLElement | null;
         if (target && !document.body.contains(target)) {
           e.preventDefault();
         }
@@ -50,7 +51,8 @@ export const SheetContent = React.forwardRef<
       onInteractOutside={(e) => {
         onInteractOutside?.(e);
         if (e.defaultPrevented) return;
-        const target = e.target as HTMLElement | null;
+        const orig = (e as unknown as { detail?: { originalEvent?: Event } }).detail?.originalEvent;
+        const target = (orig?.target ?? e.target) as HTMLElement | null;
         if (target && !document.body.contains(target)) {
           e.preventDefault();
         }

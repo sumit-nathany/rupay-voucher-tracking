@@ -87,14 +87,16 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
     }
     let current = true;
     if (prevIdRef.current !== instanceId) {
-      setInst(null);
+      if (inst?.id !== instanceId) {
+        setInst(null);
+      }
       prevIdRef.current = instanceId;
       void load(instanceId, () => current);
     }
     return () => {
       current = false;
     };
-  }, [open, instanceId, load]);
+  }, [open, instanceId, load, inst?.id]);
 
   /** After a successful mutation: adopt the returned row and tell the parent. */
   const applied = React.useCallback(
@@ -887,39 +889,47 @@ function DetailsSection({
         </div>
         {editable && (
           <div className="flex items-center gap-1.5">
-            {editing ? (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={cancel}
-                  disabled={busy}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs font-medium"
-                  onClick={(e) => void submit(e)}
-                  disabled={busy}
-                >
-                  {busy && <Loader2 className="h-3 w-3 animate-spin mr-1" />} Save
-                </Button>
-              </>
-            ) : (
+            {editing && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-                onClick={startEditing}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={cancel}
+                disabled={busy}
               >
-                <Pencil className="h-3 w-3" /> Edit
+                Cancel
               </Button>
             )}
+            <Button
+              type="button"
+              variant={editing ? 'default' : 'ghost'}
+              size="sm"
+              className={cn(
+                'h-7 text-xs transition-colors',
+                editing ? 'px-2.5 font-medium shadow-xs' : 'gap-1 px-2 text-muted-foreground hover:text-foreground',
+              )}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!editing) {
+                  startEditing(e);
+                } else {
+                  void submit(e);
+                }
+              }}
+              disabled={busy}
+            >
+              {editing ? (
+                <>
+                  {busy && <Loader2 className="h-3 w-3 animate-spin mr-1" />} Save
+                </>
+              ) : (
+                <>
+                  <Pencil className="h-3 w-3" /> Edit
+                </>
+              )}
+            </Button>
           </div>
         )}
       </div>
