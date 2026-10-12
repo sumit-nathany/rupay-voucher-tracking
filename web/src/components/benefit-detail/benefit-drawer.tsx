@@ -28,7 +28,6 @@ import {
   unskipInstanceAction,
   updateDetailsAction,
 } from '@/actions/instances';
-import { listPortalAccountsAction } from '@/actions/automation';
 import type { BenefitOptionView, InstanceView, OrderStatus, RevealedCode } from '@/domain/instances';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,6 +68,7 @@ export interface BenefitDrawerProps {
 export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title, subtitle }: BenefitDrawerProps) {
   const [inst, setInst] = React.useState<InstanceView | null>(null);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  const prevIdRef = React.useRef<string | null>(null);
 
   const load = React.useCallback(async (id: string, isCurrent: () => boolean) => {
     setLoadError(null);
@@ -81,9 +81,15 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
   }, []);
 
   React.useEffect(() => {
-    if (!open || !instanceId) return;
+    if (!open || !instanceId) {
+      prevIdRef.current = null;
+      return;
+    }
     let current = true;
-    setInst(null);
+    if (prevIdRef.current !== instanceId) {
+      setInst(null);
+      prevIdRef.current = instanceId;
+    }
     void load(instanceId, () => current);
     return () => {
       current = false;
@@ -205,7 +211,6 @@ function DrawerBody({
 
       {/* 5. Booking & Order Details (Clean read-only by default, editable on demand) */}
       <DetailsSection
-        key={`d-${String(inst.updatedAt)}`}
         inst={inst}
         editable={editable}
         applied={applied}
@@ -215,7 +220,6 @@ function DrawerBody({
       {/* 6. Sale Tracking (Collapsible) */}
       {kind === 'workflow' && (
         <SaleSection
-          key={`s-${String(inst.updatedAt)}`}
           inst={inst}
           applied={applied}
           reload={reload}
@@ -783,20 +787,16 @@ function DetailsSection({
 }) {
   const [editing, setEditing] = React.useState(false);
   const [form, setForm] = React.useState<DetailsForm>(() => toForm(inst));
-  const [accounts, setAccounts] = React.useState<Array<{ id: string; label: string; phoneNumber: string | null; status: string }>>([]);
   const [errors, setErrors] = React.useState<DetailsErrors>({});
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const uid = React.useId();
 
   React.useEffect(() => {
-    if (!editing) return;
-    void listPortalAccountsAction()
-      .then((accs) => {
-        setAccounts(accs.map((a) => ({ id: a.id, label: a.label, phoneNumber: a.phoneNumber, status: a.status })));
-      })
-      .catch(() => {});
-  }, [editing]);
+    setForm(toForm(inst));
+  }, [inst]);
+
+  const accounts = inst.availablePortalAccounts ?? [];
 
   const set = (k: keyof DetailsForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));

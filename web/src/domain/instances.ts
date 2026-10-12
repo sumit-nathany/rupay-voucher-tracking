@@ -82,6 +82,12 @@ export type InstanceView = Omit<Row, 'codeEncrypted'> & {
   benefitType: string;
   benefitProvider: string | null;
   portalAccountLabel: string | null;
+  availablePortalAccounts?: Array<{
+    id: string;
+    label: string;
+    phoneNumber: string | null;
+    status: string;
+  }>;
 };
 
 export interface RevealedCode {
@@ -103,59 +109,72 @@ async function load(ctx: Ctx, instanceId: string): Promise<Row> {
 }
 
 async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
-  const [row] = await ctx.db
-    .select({
-      instance: benefitInstances,
-      vValue: benefitCatalogVersions.defaultCashValue,
-      vName: benefitCatalogVersions.exactBenefit,
-      vType: benefitCatalogVersions.benefitType,
-      vProvider: benefitCatalogVersions.benefitProvider,
-      oValue: cardBenefitOverrides.defaultCashValue,
-      oName: cardBenefitOverrides.exactBenefit,
-      oType: cardBenefitOverrides.benefitType,
-      oProvider: cardBenefitOverrides.benefitProvider,
-      cValue: benefitOptions.cashValue,
-      cName: benefitOptions.offerName,
-      cProvider: benefitOptions.provider,
-      bvoValue: benefitValueOverrides.customValue,
-      portalAccountLabel: portalAccounts.label,
-    })
-    .from(benefitInstances)
-    .leftJoin(
-      portalAccounts,
-      and(
-        eq(portalAccounts.id, benefitInstances.portalAccountId),
-        eq(portalAccounts.workspaceId, ctx.workspaceId),
-      ),
-    )
-    .leftJoin(
-      benefitCatalogVersions,
-      or(
-        eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
+  const [rowResult, accounts] = await Promise.all([
+    ctx.db
+      .select({
+        instance: benefitInstances,
+        vValue: benefitCatalogVersions.defaultCashValue,
+        vName: benefitCatalogVersions.exactBenefit,
+        vType: benefitCatalogVersions.benefitType,
+        vProvider: benefitCatalogVersions.benefitProvider,
+        oValue: cardBenefitOverrides.defaultCashValue,
+        oName: cardBenefitOverrides.exactBenefit,
+        oType: cardBenefitOverrides.benefitType,
+        oProvider: cardBenefitOverrides.benefitProvider,
+        cValue: benefitOptions.cashValue,
+        cName: benefitOptions.offerName,
+        cProvider: benefitOptions.provider,
+        bvoValue: benefitValueOverrides.customValue,
+        portalAccountLabel: portalAccounts.label,
+      })
+      .from(benefitInstances)
+      .leftJoin(
+        portalAccounts,
         and(
-          isNull(benefitInstances.generatedFromVersion),
-          isNull(benefitInstances.overrideId),
-          eq(benefitCatalogVersions.benefitId, benefitInstances.benefitId),
+          eq(portalAccounts.id, benefitInstances.portalAccountId),
+          eq(portalAccounts.workspaceId, ctx.workspaceId),
         ),
-      ),
-    )
-    .leftJoin(benefitOptions, eq(benefitOptions.id, benefitInstances.chosenOptionId))
-    .leftJoin(
-      cardBenefitOverrides,
-      and(
-        eq(cardBenefitOverrides.id, benefitInstances.overrideId),
-        eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
-      ),
-    )
-    .leftJoin(
-      benefitValueOverrides,
-      and(
-        eq(benefitValueOverrides.workspaceId, ctx.workspaceId),
-        sql`lower(trim(${benefitValueOverrides.benefitName})) = lower(trim(coalesce(${benefitOptions.offerName}, ${cardBenefitOverrides.exactBenefit}, ${benefitCatalogVersions.exactBenefit})))`,
-      ),
-    )
-    .where(scope(ctx, instanceId));
+      )
+      .leftJoin(
+        benefitCatalogVersions,
+        or(
+          eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
+          and(
+            isNull(benefitInstances.generatedFromVersion),
+            isNull(benefitInstances.overrideId),
+            eq(benefitCatalogVersions.benefitId, benefitInstances.benefitId),
+          ),
+        ),
+      )
+      .leftJoin(benefitOptions, eq(benefitOptions.id, benefitInstances.chosenOptionId))
+      .leftJoin(
+        cardBenefitOverrides,
+        and(
+          eq(cardBenefitOverrides.id, benefitInstances.overrideId),
+          eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+        ),
+      )
+      .leftJoin(
+        benefitValueOverrides,
+        and(
+          eq(benefitValueOverrides.workspaceId, ctx.workspaceId),
+          sql`lower(trim(${benefitValueOverrides.benefitName})) = lower(trim(coalesce(${benefitOptions.offerName}, ${cardBenefitOverrides.exactBenefit}, ${benefitCatalogVersions.exactBenefit})))`,
+        ),
+      )
+      .where(scope(ctx, instanceId)),
+    ctx.db
+      .select({
+        id: portalAccounts.id,
+        label: portalAccounts.label,
+        phoneNumber: portalAccounts.phoneNumber,
+        status: portalAccounts.status,
+      })
+      .from(portalAccounts)
+      .where(eq(portalAccounts.workspaceId, ctx.workspaceId))
+      .orderBy(asc(portalAccounts.label)),
+  ]);
 
+  const [row] = rowResult;
   if (!row) throw new NotFoundError('Instance not found');
 
   const { codeEncrypted, ...rest } = row.instance;
@@ -183,6 +202,7 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
     benefitType,
     benefitProvider,
     portalAccountLabel: row.portalAccountLabel ?? null,
+    availablePortalAccounts: accounts,
   };
 }
 
