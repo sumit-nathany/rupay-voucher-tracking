@@ -50,6 +50,7 @@ From `worker/`: `npm run dev` (tsx) / `npm run build` (tsc) + `npm start`.
 - **Tenancy:** a workspace is the tenant boundary. Isolation is enforced at the application layer — query scoping (`workspace_id` from the session only) plus composite foreign keys `(workspace_id, id)` on per-workspace tables. Not Postgres RLS.
 - **Schema lockdown:** all app tables live in the non-public `app` schema (`schemaFilter: ["app"]` in drizzle.config.ts) so Supabase's PostgREST (reachable with the public anon key) sees nothing. Never create app tables in `public`.
 - **Crypto:** voucher codes are AES-256-GCM encrypted (`web/src/lib/crypto.ts`) with the instance's own id as associated data; decryption only in the explicit reveal action.
+- **Backend-Enforced Business Logic (Strict Rule):** Any business logic, domain rule, constraint, eligibility filter, or state transition MUST be implemented and strictly enforced on the backend (`web/src/domain/` and `web/src/actions/`), NEVER solely on the frontend UI. Frontend safeguards (such as disabled buttons, form client-side validations, conditional dropdown options, or warning banners) are purely user-experience conveniences and must never be relied upon as the security or integrity boundary. The domain layer must independently validate all inputs and database preconditions, reject invalid requests with explicit domain errors (e.g. `ValidationError`), and filter queries so that invalid or unconfigured entities cannot be saved, mapped, queued, or executed.
 
 ## Testing
 
