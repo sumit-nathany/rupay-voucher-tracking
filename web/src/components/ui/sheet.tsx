@@ -29,11 +29,27 @@ type SheetContentProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Co
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ className, side = 'default', children, ...props }, ref) => (
+>(({ className, side = 'default', children, onPointerDownOutside, onInteractOutside, ...props }, ref) => (
   <SheetPrimitive.Portal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
+      onPointerDownOutside={(e) => {
+        onPointerDownOutside?.(e);
+        if (e.defaultPrevented) return;
+        const target = e.target as HTMLElement | null;
+        if (target && !document.body.contains(target)) {
+          e.preventDefault();
+        }
+      }}
+      onInteractOutside={(e) => {
+        onInteractOutside?.(e);
+        if (e.defaultPrevented) return;
+        const target = e.target as HTMLElement | null;
+        if (target && !document.body.contains(target)) {
+          e.preventDefault();
+        }
+      }}
       className={cn(
         'fixed z-50 flex flex-col gap-4 overflow-y-auto bg-card p-6 shadow-[var(--shadow-stage)] focus:outline-none',
         side === 'left' &&

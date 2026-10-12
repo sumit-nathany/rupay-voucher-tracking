@@ -89,8 +89,8 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
     if (prevIdRef.current !== instanceId) {
       setInst(null);
       prevIdRef.current = instanceId;
+      void load(instanceId, () => current);
     }
-    void load(instanceId, () => current);
     return () => {
       current = false;
     };
@@ -840,7 +840,11 @@ function DetailsSection({
             variant="ghost"
             size="sm"
             className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
-            onClick={() => setEditing(true)}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+            }}
           >
             <Pencil className="h-3 w-3" /> Edit
           </Button>
@@ -1078,7 +1082,9 @@ function DetailsSection({
               variant="ghost"
               size="sm"
               className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => {
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
                 setForm(toForm(inst));
                 setEditing(false);
                 setErrors({});
