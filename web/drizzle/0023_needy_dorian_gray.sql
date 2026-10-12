@@ -1,0 +1,3 @@
+ALTER TABLE "app"."benefit_instances" ADD COLUMN "portal_account_id" uuid;--> statement-breakpoint
+ALTER TABLE "app"."benefit_instances" ADD CONSTRAINT "benefit_instances_portal_account_fkey" FOREIGN KEY ("workspace_id","portal_account_id") REFERENCES "app"."portal_accounts"("workspace_id","id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "idx_benefit_instances_portal_account" ON "app"."benefit_instances" USING btree ("workspace_id","portal_account_id");

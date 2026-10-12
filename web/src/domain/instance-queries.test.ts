@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import {
   bankCardTypes, benefitCatalogVersions, benefitInstances, benefitValueOverrides, benefits,
-  cardBenefitOverrides, cardHolders, cards, workspaces,
+  cardBenefitOverrides, cardHolders, cards, portalAccounts, workspaces,
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
 import { ValidationError } from './workspace-data';
@@ -615,6 +615,23 @@ describe('discount coupons', () => {
 
     // Clean up
     await db.delete(benefitValueOverrides).where(eq(benefitValueOverrides.id, ov.id));
+  });
+
+  it('includes portalAccountId and portalAccountLabel on listed instances', async () => {
+    const [acc] = await db.insert(portalAccounts).values({
+      workspaceId: A.workspaceId,
+      label: 'test-rupay@example.com',
+      credentialsEncrypted: 'enc',
+      status: 'connected',
+    }).returning();
+
+    await db.update(benefitInstances).set({ portalAccountId: acc.id }).where(eq(benefitInstances.id, idQ3Beta));
+
+    const rows = await listInstances(A, { view: Q3 });
+    const row = rows.find((r) => r.id === idQ3Beta);
+    expect(row).toBeDefined();
+    expect(row?.portalAccountId).toBe(acc.id);
+    expect(row?.portalAccountLabel).toBe('test-rupay@example.com');
   });
 });
 

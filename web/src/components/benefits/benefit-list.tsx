@@ -38,6 +38,7 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
         </span>
         <span className="mt-0.5 block min-w-0 truncate text-xs text-muted-foreground md:mt-0 md:text-sm">
           {cardLabel}
+          {it.portalAccountLabel ? ` · ${it.portalAccountLabel}` : ''}
           {it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}
         </span>
         <span className="hidden text-right text-sm tabular-nums md:block">{formatINR(it.value)}</span>

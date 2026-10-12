@@ -9,6 +9,7 @@ import {
   cardBenefitOverrides,
   cardHolders,
   cards,
+  portalAccounts,
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
 import { calendarQuarterForDate, expandViewedPeriod, type ViewedPeriod } from '@/lib/periods';
@@ -106,6 +107,8 @@ export interface InstanceListItem {
   cardName: string;
   cardLastDigits: string | null;
   cardTypeName: string;
+  portalAccountId: string | null;
+  portalAccountLabel: string | null;
   holderId: string;
   holderName: string;
   /** Catalog benefit id when `source === 'catalog'`. */
@@ -224,6 +227,8 @@ const selection = {
   cardName: cards.displayName,
   cardLastDigits: cards.lastDigits,
   cardTypeName: bankCardTypes.displayName,
+  portalAccountId: benefitInstances.portalAccountId,
+  portalAccountLabel: portalAccounts.label,
   holderId: cardHolders.id,
   holderName: cardHolders.name,
 };
@@ -276,6 +281,8 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     cardName: r.cardName,
     cardLastDigits: r.cardLastDigits,
     cardTypeName: r.cardTypeName,
+    portalAccountId: r.portalAccountId,
+    portalAccountLabel: r.portalAccountLabel ?? null,
     holderId: r.holderId,
     holderName: r.holderName,
     benefitId: fromOverride ? null : r.benefitId,
@@ -304,6 +311,13 @@ async function query(ctx: Ctx, where: SQL | undefined): Promise<InstanceListItem
       eq(benefitCatalogVersions.id, benefitInstances.generatedFromVersion),
     )
     .leftJoin(benefitOptions, eq(benefitOptions.id, benefitInstances.chosenOptionId))
+    .leftJoin(
+      portalAccounts,
+      and(
+        eq(portalAccounts.id, benefitInstances.portalAccountId),
+        eq(portalAccounts.workspaceId, ctx.workspaceId),
+      ),
+    )
     .leftJoin(
       cardBenefitOverrides,
       and(

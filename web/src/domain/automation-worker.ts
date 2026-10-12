@@ -216,6 +216,7 @@ export async function finalizeConfirmedOrder(
       orderStatus: 'Ordered but Coupon not received',
       orderDate,
       rupayBookingId: rupayBookingIdToSet,
+      portalAccountId: attempt.portalAccountId,
       updatedAt: now,
     })
     .where(eq(benefitInstances.id, instance.id));
@@ -351,6 +352,7 @@ export async function resolveUncertainAttempt(
         orderStatus: 'Ordered but Coupon not received',
         orderDate: ctx.today,
         rupayBookingId: ref,
+        portalAccountId: attempt.portalAccountId,
         updatedAt: now,
       })
       .where(eq(benefitInstances.id, attempt.instanceId));

@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import {
   bankCardTypes, benefitCatalogVersions, benefitInstances, benefitValueOverrides, benefits,
-  cardHolders, cards, workspaces,
+  cardHolders, cards, portalAccounts, workspaces,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import * as inst from './instances';
@@ -268,5 +268,42 @@ describe('sale and details', () => {
     expect(withOv.benefitName).toBe('₹500 Voucher');
 
     await db.delete(benefitValueOverrides).where(eq(benefitValueOverrides.id, ov.id));
+  });
+
+  it('updates portalAccountId and resolves portalAccountLabel with tenant isolation', async () => {
+    const id = await fresh();
+
+    // Create portal accounts in workspace A and workspace B
+    const [accA] = await db.insert(portalAccounts).values({
+      workspaceId: A.workspaceId,
+      label: 'account-a@example.com',
+      credentialsEncrypted: 'enc',
+      status: 'connected',
+    }).returning();
+
+    const [accB] = await db.insert(portalAccounts).values({
+      workspaceId: B.workspaceId,
+      label: 'account-b@example.com',
+      credentialsEncrypted: 'enc',
+      status: 'connected',
+    }).returning();
+
+    // Updating with workspace B account should fail (tenant isolation)
+    await expect(inst.updateDetails(A, { instanceId: id, portalAccountId: accB.id })).rejects.toBeInstanceOf(NotFoundError);
+
+    // Updating with workspace A account succeeds
+    const updated = await inst.updateDetails(A, { instanceId: id, portalAccountId: accA.id });
+    expect(updated.portalAccountId).toBe(accA.id);
+    expect(updated.portalAccountLabel).toBe('account-a@example.com');
+
+    // Fetching instance also returns portalAccountId and portalAccountLabel
+    const view = await inst.getInstance(A, id);
+    expect(view.portalAccountId).toBe(accA.id);
+    expect(view.portalAccountLabel).toBe('account-a@example.com');
+
+    // Clearing portalAccountId
+    const cleared = await inst.updateDetails(A, { instanceId: id, portalAccountId: null });
+    expect(cleared.portalAccountId).toBeNull();
+    expect(cleared.portalAccountLabel).toBeNull();
   });
 });

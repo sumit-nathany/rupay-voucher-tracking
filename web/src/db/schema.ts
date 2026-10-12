@@ -355,6 +355,34 @@ export const benefitValueOverrides = app.table(
   ],
 );
 
+export const portalAccounts = app.table(
+  "portal_accounts",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    credentialsEncrypted: text("credentials_encrypted").notNull(),
+    phoneNumber: text("phone_number"),
+    status: text("status").notNull().default("connected"),
+    lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    statusDetailCode: text("status_detail_code"),
+    cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    check(
+      "portal_accounts_status_check",
+      sql`${t.status} IN ('connected', 'paused', 'credentials_expired', 'challenge_required', 'portal_changed', 'needs_attention')`,
+    ),
+    unique("portal_accounts_workspace_id_id_key").on(t.workspaceId, t.id),
+    unique("portal_accounts_workspace_id_label_key").on(t.workspaceId, t.label),
+  ],
+);
+
 export const benefitInstances = app.table(
   "benefit_instances",
   {
@@ -376,6 +404,7 @@ export const benefitInstances = app.table(
     expiryDate: date("expiry_date", { mode: "string" }),
     orderDeadline: date("order_deadline", { mode: "string" }).notNull(),
     rupayBookingId: text("rupay_booking_id"),
+    portalAccountId: uuid("portal_account_id"),
     codeEncrypted: text("code_encrypted"),
     comments: text("comments"),
     // Which offer was taken, for a "redeem any one" benefit. Must belong to generated_from_version (checked in app).
@@ -425,6 +454,12 @@ export const benefitInstances = app.table(
       columns: [t.generatedFromVersion, t.benefitId],
       foreignColumns: [benefitCatalogVersions.id, benefitCatalogVersions.benefitId],
     }),
+    foreignKey({
+      name: "benefit_instances_portal_account_fkey",
+      columns: [t.workspaceId, t.portalAccountId],
+      foreignColumns: [portalAccounts.workspaceId, portalAccounts.id],
+    }).onDelete("set null"),
+    index("idx_benefit_instances_portal_account").on(t.workspaceId, t.portalAccountId),
   ],
 );
 
@@ -491,34 +526,6 @@ export const automationSettings = app.table("automation_settings", {
   triggerRequestedAt: timestamp("trigger_requested_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
-
-export const portalAccounts = app.table(
-  "portal_accounts",
-  {
-    id: id(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => workspaces.id, { onDelete: "cascade" }),
-    label: text("label").notNull(),
-    credentialsEncrypted: text("credentials_encrypted").notNull(),
-    phoneNumber: text("phone_number"),
-    status: text("status").notNull().default("connected"),
-    lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
-    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
-    statusDetailCode: text("status_detail_code"),
-    cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
-    createdAt: createdAt().notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (t) => [
-    check(
-      "portal_accounts_status_check",
-      sql`${t.status} IN ('connected', 'paused', 'credentials_expired', 'challenge_required', 'portal_changed', 'needs_attention')`,
-    ),
-    unique("portal_accounts_workspace_id_id_key").on(t.workspaceId, t.id),
-    unique("portal_accounts_workspace_id_label_key").on(t.workspaceId, t.label),
-  ],
-);
 
 export const portalCardMappings = app.table(
   "portal_card_mappings",

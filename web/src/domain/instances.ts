@@ -6,6 +6,7 @@ import {
   benefitOptions,
   benefitValueOverrides,
   cardBenefitOverrides,
+  portalAccounts,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import { decryptCode, encryptCode } from '@/lib/crypto';
@@ -58,6 +59,7 @@ const detailsInput = z
     expiryDate: isoDate.nullable().optional(),
     cashValue: money.nullable().optional(),
     rupayBookingId: z.string().trim().min(1).max(200).nullable().optional(),
+    portalAccountId: uuid.nullable().optional(),
     comments: z.string().max(5000).nullable().optional(),
   })
   .strict();
@@ -79,6 +81,7 @@ export type InstanceView = Omit<Row, 'codeEncrypted'> & {
   benefitName: string;
   benefitType: string;
   benefitProvider: string | null;
+  portalAccountLabel: string | null;
 };
 
 export interface RevealedCode {
@@ -115,8 +118,16 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
       cName: benefitOptions.offerName,
       cProvider: benefitOptions.provider,
       bvoValue: benefitValueOverrides.customValue,
+      portalAccountLabel: portalAccounts.label,
     })
     .from(benefitInstances)
+    .leftJoin(
+      portalAccounts,
+      and(
+        eq(portalAccounts.id, benefitInstances.portalAccountId),
+        eq(portalAccounts.workspaceId, ctx.workspaceId),
+      ),
+    )
     .leftJoin(
       benefitCatalogVersions,
       or(
@@ -171,6 +182,7 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
     benefitName,
     benefitType,
     benefitProvider,
+    portalAccountLabel: row.portalAccountLabel ?? null,
   };
 }
 
@@ -303,6 +315,7 @@ export async function updateDetails(
     expiryDate?: string | null;
     cashValue?: number | null;
     rupayBookingId?: string | null;
+    portalAccountId?: string | null;
     comments?: string | null;
   },
 ): Promise<InstanceView> {
@@ -319,6 +332,21 @@ export async function updateDetails(
   if (p.expiryDate !== undefined) patch.expiryDate = p.expiryDate;
   if (p.cashValue !== undefined) patch.cashValue = p.cashValue == null ? null : toMoney(p.cashValue);
   if (p.rupayBookingId !== undefined) patch.rupayBookingId = p.rupayBookingId;
+  if (p.portalAccountId !== undefined) {
+    if (p.portalAccountId != null) {
+      const [acc] = await ctx.db
+        .select({ id: portalAccounts.id })
+        .from(portalAccounts)
+        .where(
+          and(
+            eq(portalAccounts.id, p.portalAccountId),
+            eq(portalAccounts.workspaceId, ctx.workspaceId),
+          ),
+        );
+      if (!acc) throw new NotFoundError('Portal account not found');
+    }
+    patch.portalAccountId = p.portalAccountId;
+  }
   if (p.comments !== undefined) patch.comments = p.comments;
   return update(ctx, row, patch);
 }

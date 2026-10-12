@@ -53,6 +53,11 @@ export async function saveAutomationSettingsAction(input: z.infer<typeof saveSet
   return result;
 }
 
+export async function listPortalAccountsAction() {
+  const ctx = await getCtx();
+  return auto.listPortalAccounts(ctx);
+}
+
 const createAccountSchema = z.object({
   label: z.string().min(1, 'Label is required'),
   phoneNumber: z.string().optional().nullable(),

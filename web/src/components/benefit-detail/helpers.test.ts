@@ -43,11 +43,17 @@ describe('parseMoney', () => {
 });
 
 describe('validateDetails', () => {
-  const base = { orderDate: '', expiryDate: '', cashValue: '', rupayBookingId: '', comments: '' };
+  const base = { orderDate: '', expiryDate: '', cashValue: '', rupayBookingId: '', portalAccountId: '', comments: '' };
   it('maps blanks to null', () => {
     expect(validateDetails(base)).toEqual({
       ok: true,
-      value: { orderDate: null, expiryDate: null, cashValue: null, rupayBookingId: null, comments: null },
+      value: { orderDate: null, expiryDate: null, cashValue: null, rupayBookingId: null, portalAccountId: null, comments: null },
+    });
+  });
+  it('preserves portalAccountId when provided', () => {
+    expect(validateDetails({ ...base, portalAccountId: ' 1234-5678 ' })).toEqual({
+      ok: true,
+      value: { orderDate: null, expiryDate: null, cashValue: null, rupayBookingId: null, portalAccountId: '1234-5678', comments: null },
     });
   });
   it('rejects expiry before order and bad dates', () => {

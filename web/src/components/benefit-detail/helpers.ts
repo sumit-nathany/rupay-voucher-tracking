@@ -64,6 +64,7 @@ export interface DetailsForm {
   expiryDate: string;
   cashValue: string;
   rupayBookingId: string;
+  portalAccountId: string;
   comments: string;
 }
 export interface DetailsPayload {
@@ -71,6 +72,7 @@ export interface DetailsPayload {
   expiryDate: string | null;
   cashValue: number | null;
   rupayBookingId: string | null;
+  portalAccountId: string | null;
   comments: string | null;
 }
 export type DetailsErrors = Partial<Record<keyof DetailsForm, string>>;
@@ -97,8 +99,9 @@ export function validateDetails(
       orderDate: orderDate || null,
       expiryDate: expiryDate || null,
       cashValue: cash.value,
-      rupayBookingId: f.rupayBookingId.trim() || null,
-      comments: f.comments.trim() ? f.comments : null,
+      rupayBookingId: f.rupayBookingId?.trim() || null,
+      portalAccountId: f.portalAccountId?.trim() || null,
+      comments: f.comments?.trim() ? f.comments : null,
     },
   };
 }

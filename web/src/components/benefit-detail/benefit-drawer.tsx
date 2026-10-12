@@ -28,6 +28,7 @@ import {
   unskipInstanceAction,
   updateDetailsAction,
 } from '@/actions/instances';
+import { listPortalAccountsAction } from '@/actions/automation';
 import type { BenefitOptionView, InstanceView, OrderStatus, RevealedCode } from '@/domain/instances';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -764,6 +765,7 @@ function toForm(i: InstanceView): DetailsForm {
     expiryDate: i.expiryDate ?? '',
     cashValue: i.cashValue ?? '',
     rupayBookingId: i.rupayBookingId ?? '',
+    portalAccountId: i.portalAccountId ?? '',
     comments: i.comments ?? '',
   };
 }
@@ -781,10 +783,20 @@ function DetailsSection({
 }) {
   const [editing, setEditing] = React.useState(false);
   const [form, setForm] = React.useState<DetailsForm>(() => toForm(inst));
+  const [accounts, setAccounts] = React.useState<Array<{ id: string; label: string; phoneNumber: string | null; status: string }>>([]);
   const [errors, setErrors] = React.useState<DetailsErrors>({});
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const uid = React.useId();
+
+  React.useEffect(() => {
+    if (!editing) return;
+    void listPortalAccountsAction()
+      .then((accs) => {
+        setAccounts(accs.map((a) => ({ id: a.id, label: a.label, phoneNumber: a.phoneNumber, status: a.status })));
+      })
+      .catch(() => {});
+  }, [editing]);
 
   const set = (k: keyof DetailsForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -872,6 +884,10 @@ function DetailsSection({
             <span className="font-mono text-foreground">{inst.rupayBookingId || '—'}</span>
           </div>
           <div className="flex items-center justify-between py-1 border-b border-border/40">
+            <span className="text-muted-foreground">RuPay Account</span>
+            <span className="font-medium text-foreground">{inst.portalAccountLabel || '—'}</span>
+          </div>
+          <div className="flex items-center justify-between py-1 border-b border-border/40">
             <span className="text-muted-foreground">Cash Value</span>
             <span className="font-medium text-foreground">
               {formatMoney(inst.value ?? inst.cashValue)}
@@ -907,6 +923,32 @@ function DetailsSection({
             />,
           )}
           {field('rupayBookingId', 'Booking ID', <Input value={form.rupayBookingId} onChange={set('rupayBookingId')} maxLength={200} {...common('rupayBookingId')} />)}
+          {field(
+            'portalAccountId',
+            'RuPay Account',
+            <Select
+              value={form.portalAccountId || 'none'}
+              onValueChange={(v) => setForm((f) => ({ ...f, portalAccountId: v === 'none' ? '' : v }))}
+              disabled={!editable || busy}
+            >
+              <SelectTrigger id={`${uid}-portalAccountId`} className="h-9 text-xs">
+                <SelectValue placeholder="Select RuPay account" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None / Unassigned</SelectItem>
+                {accounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.label}
+                  </SelectItem>
+                ))}
+                {form.portalAccountId && !accounts.some((a) => a.id === form.portalAccountId) && (
+                  <SelectItem value={form.portalAccountId}>
+                    {inst.portalAccountLabel || form.portalAccountId}
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>,
+          )}
           {field('comments', 'Comments', <Textarea value={form.comments} onChange={set('comments')} maxLength={5000} {...common('comments', 'min-h-16 text-xs')} />)}
 
           <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/50">
