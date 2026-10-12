@@ -2,6 +2,7 @@ import { eq, and, gte, asc, inArray, isNull } from 'drizzle-orm';
 import type { Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
 import { resolveOfferKind } from '@/domain/benefit-offer-kind';
+import { decryptPaymentDetails, isValidPaymentDetails } from '@/lib/card-payment-details';
 
 export interface QueueItemView {
   id: string;
@@ -70,17 +71,24 @@ export async function listOrderingQueue(
 
   if (activeCards.length === 0) return [];
 
-  // 2. Fetch portal mappings for all cards in workspace
+  // 2. Fetch portal mappings for all cards in workspace (only cards with valid payment details)
   const mappings = await ctx.db
     .select({
+      id: schema.portalCardMappings.id,
       cardId: schema.portalCardMappings.cardId,
       portalAccountId: schema.portalAccounts.id,
       portalAccountLabel: schema.portalAccounts.label,
+      mappingPaymentDetailsEncrypted: schema.portalCardMappings.paymentDetailsEncrypted,
+      cardPaymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted,
     })
     .from(schema.portalCardMappings)
     .innerJoin(
       schema.portalAccounts,
       eq(schema.portalCardMappings.portalAccountId, schema.portalAccounts.id),
+    )
+    .innerJoin(
+      schema.cards,
+      eq(schema.portalCardMappings.cardId, schema.cards.id),
     )
     .where(
       and(
@@ -92,6 +100,21 @@ export async function listOrderingQueue(
   const cardToAccountsMap = new Map<string, Array<{ id: string; label: string }>>();
   const accountToCardIdsMap = new Map<string, Set<string>>();
   for (const m of mappings) {
+    let hasValid = false;
+    if (m.cardPaymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(m.cardPaymentDetailsEncrypted, m.cardId);
+        if (isValidPaymentDetails(dec)) hasValid = true;
+      } catch {}
+    }
+    if (!hasValid && m.mappingPaymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(m.mappingPaymentDetailsEncrypted, m.id);
+        if (isValidPaymentDetails(dec)) hasValid = true;
+      } catch {}
+    }
+    if (!hasValid) continue;
+
     const list = cardToAccountsMap.get(m.cardId) || [];
     list.push({ id: m.portalAccountId, label: m.portalAccountLabel });
     cardToAccountsMap.set(m.cardId, list);

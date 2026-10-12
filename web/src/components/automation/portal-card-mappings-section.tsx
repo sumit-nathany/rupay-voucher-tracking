@@ -30,8 +30,11 @@ export function PortalCardMappingsSection({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string | undefined>(undefined);
 
+  const cardsWithDetails = availableCards.filter((c) => c.hasPaymentDetails);
+
   function handleOpenAssign(cardId?: string) {
-    setSelectedCardId(cardId ?? availableCards[0]?.id);
+    const defaultId = cardId ?? cardsWithDetails[0]?.id ?? availableCards[0]?.id;
+    setSelectedCardId(defaultId);
     setDialogOpen(true);
   }
 
@@ -47,9 +50,10 @@ export function PortalCardMappingsSection({
           </p>
         </div>
         <Button
-          disabled={accounts.length === 0 || availableCards.length === 0}
+          disabled={accounts.length === 0 || cardsWithDetails.length === 0}
           onClick={() => handleOpenAssign()}
           className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto shrink-0"
+          title={cardsWithDetails.length === 0 ? 'Configure payment details on cards under Cards section first' : undefined}
         >
           <Plus className="h-4 w-4" />
           Assign Accounts
@@ -125,8 +129,10 @@ export function PortalCardMappingsSection({
                         <Button
                           variant="outline"
                           size="sm"
+                          disabled={!card.hasPaymentDetails}
                           onClick={() => handleOpenAssign(card.id)}
-                          className="h-8 gap-1.5 text-xs rounded-lg font-medium"
+                          className="h-8 gap-1.5 text-xs rounded-lg font-medium disabled:opacity-50"
+                          title={!card.hasPaymentDetails ? 'Configure payment details on this card under Cards first' : undefined}
                         >
                           <SlidersHorizontal className="h-3.5 w-3.5" />
                           Assign Accounts
@@ -209,7 +215,8 @@ export function AssignAccountsDialog({
   // Initialize or update selected accounts when card selection changes or dialog opens
   useEffect(() => {
     if (open) {
-      const activeCardId = existing?.cardId ?? defaultCardId ?? cards[0]?.id ?? '';
+      const readyCardId = cards.find((c) => c.hasPaymentDetails)?.id ?? cards[0]?.id ?? '';
+      const activeCardId = existing?.cardId ?? defaultCardId ?? readyCardId;
       setSelectedCard(activeCardId);
       const mappedAccountIds = new Set(
         mappings
@@ -257,6 +264,14 @@ export function AssignAccountsDialog({
       return;
     }
 
+    const cardObj = cards.find((c) => c.id === selectedCard);
+    if (selectedAccounts.size > 0 && !cardObj?.hasPaymentDetails) {
+      setError(
+        'Cannot assign card: Payment details (card number, expiry date, CVV) must be configured on the card before assigning it to a portal account. Please add payment details under Cards.',
+      );
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -291,9 +306,9 @@ export function AssignAccountsDialog({
               </SelectTrigger>
               <SelectContent>
                 {cards.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
+                  <SelectItem key={c.id} value={c.id} disabled={!c.hasPaymentDetails}>
                     {c.name} ({c.holderName} {c.lastDigits ? `••${c.lastDigits}` : ''})
-                    {!c.hasPaymentDetails ? ' — (Missing card details)' : ''}
+                    {!c.hasPaymentDetails ? ' — (Missing details: configure in Cards)' : ''}
                   </SelectItem>
                 ))}
               </SelectContent>

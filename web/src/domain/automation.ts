@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, isNotNull, ne, or, sql, desc, asc, gte } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, or, sql, desc, asc, gte } from 'drizzle-orm';
 import {
   automationSettings,
   portalAccounts,
@@ -472,90 +472,70 @@ export async function savePortalCardMapping(
       active: input.active ?? true,
       updatedAt: new Date(),
     };
-    if (input.paymentDetails !== undefined) {
-      patch.paymentDetailsEncrypted = input.paymentDetails
-        ? encryptPaymentDetails(input.paymentDetails, input.id)
-        : null;
+    // Verify valid payment details exist (either explicitly passed or from card)
+    let validDecryptedDetails: PaymentDetails | null = null;
+    if (input.paymentDetails && isValidPaymentDetails(input.paymentDetails)) {
+      validDecryptedDetails = input.paymentDetails;
+    } else if (c.paymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(c.paymentDetailsEncrypted, input.cardId);
+        if (isValidPaymentDetails(dec)) validDecryptedDetails = dec;
+      } catch {}
+    }
 
-      // Sync payment details across all other mappings for this card in the workspace
-      if (input.paymentDetails) {
-        const otherMappings = await ctx.db
-          .select({ id: portalCardMappings.id })
-          .from(portalCardMappings)
-          .where(
-            and(
-              eq(portalCardMappings.workspaceId, ctx.workspaceId),
-              eq(portalCardMappings.cardId, input.cardId),
-              ne(portalCardMappings.id, input.id),
-            ),
-          );
+    if (!validDecryptedDetails) {
+      throw new ValidationError(
+        'Cannot assign card: Payment details (card number, expiry date, CVV) must be configured on the card before assigning it to a portal account. Please add payment details under Cards.',
+      );
+    }
 
-        for (const om of otherMappings) {
-          const synced = encryptPaymentDetails(input.paymentDetails, om.id);
-          await ctx.db
-            .update(portalCardMappings)
-            .set({ paymentDetailsEncrypted: synced, updatedAt: new Date() })
-            .where(eq(portalCardMappings.id, om.id));
-        }
+    patch.paymentDetailsEncrypted = encryptPaymentDetails(validDecryptedDetails, input.id);
+
+    if (input.paymentDetails) {
+      const otherMappings = await ctx.db
+        .select({ id: portalCardMappings.id })
+        .from(portalCardMappings)
+        .where(
+          and(
+            eq(portalCardMappings.workspaceId, ctx.workspaceId),
+            eq(portalCardMappings.cardId, input.cardId),
+            ne(portalCardMappings.id, input.id),
+          ),
+        );
+
+      for (const om of otherMappings) {
+        const synced = encryptPaymentDetails(input.paymentDetails, om.id);
+        await ctx.db
+          .update(portalCardMappings)
+          .set({ paymentDetailsEncrypted: synced, updatedAt: new Date() })
+          .where(eq(portalCardMappings.id, om.id));
       }
     }
+
     await ctx.db
       .update(portalCardMappings)
       .set(patch)
       .where(and(eq(portalCardMappings.workspaceId, ctx.workspaceId), eq(portalCardMappings.id, input.id)));
   } else {
     const mappingId = crypto.randomUUID();
-    let paymentDetailsEncrypted = input.paymentDetails
-      ? encryptPaymentDetails(input.paymentDetails, mappingId)
-      : null;
 
-    // If no payment details provided for this mapping, inherit from card or existing mappings of this card
-    if (!paymentDetailsEncrypted) {
-      const [cardRow] = await ctx.db
-        .select({ paymentDetailsEncrypted: cards.paymentDetailsEncrypted })
-        .from(cards)
-        .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, input.cardId)));
-
-      if (cardRow?.paymentDetailsEncrypted) {
-        try {
-          const decrypted = decryptPaymentDetails(cardRow.paymentDetailsEncrypted, input.cardId);
-          if (isValidPaymentDetails(decrypted)) {
-            paymentDetailsEncrypted = encryptPaymentDetails(decrypted, mappingId);
-          }
-        } catch {}
-      }
-
-      if (!paymentDetailsEncrypted) {
-        const [existingWithDetails] = await ctx.db
-          .select({
-            id: portalCardMappings.id,
-            paymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
-          })
-          .from(portalCardMappings)
-          .where(
-            and(
-              eq(portalCardMappings.workspaceId, ctx.workspaceId),
-              eq(portalCardMappings.cardId, input.cardId),
-              isNotNull(portalCardMappings.paymentDetailsEncrypted),
-            ),
-          );
-
-        if (existingWithDetails?.paymentDetailsEncrypted) {
-          try {
-            const decrypted = decryptPaymentDetails(existingWithDetails.paymentDetailsEncrypted, existingWithDetails.id);
-            if (isValidPaymentDetails(decrypted)) {
-              paymentDetailsEncrypted = encryptPaymentDetails(decrypted, mappingId);
-            }
-          } catch {}
-        }
-      }
+    let validDecryptedDetails: PaymentDetails | null = null;
+    if (input.paymentDetails && isValidPaymentDetails(input.paymentDetails)) {
+      validDecryptedDetails = input.paymentDetails;
+    } else if (c.paymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(c.paymentDetailsEncrypted, input.cardId);
+        if (isValidPaymentDetails(dec)) validDecryptedDetails = dec;
+      } catch {}
     }
 
-    if (!paymentDetailsEncrypted) {
+    if (!validDecryptedDetails) {
       throw new ValidationError(
         'Cannot assign card: Payment details (card number, expiry date, CVV) must be configured on the card before assigning it to a portal account. Please add payment details under Cards.',
       );
     }
+
+    const paymentDetailsEncrypted = encryptPaymentDetails(validDecryptedDetails, mappingId);
 
     await ctx.db
       .insert(portalCardMappings)
@@ -657,48 +637,18 @@ export async function setCardPortalAccounts(
       throw new NotFoundError('One or more portal accounts not found in workspace');
     }
 
-    // Guardrail: Validate card has payment details configured
-    let hasValid = false;
+    // Strict Guardrail: Validate card has valid payment details configured
     let validDecryptedDetails: PaymentDetails | null = null;
     if (c.paymentDetailsEncrypted) {
       try {
         const decrypted = decryptPaymentDetails(c.paymentDetailsEncrypted, cardId);
         if (isValidPaymentDetails(decrypted)) {
-          hasValid = true;
           validDecryptedDetails = decrypted;
         }
       } catch {}
     }
 
-    if (!hasValid) {
-      const existingMappings = await ctx.db
-        .select({
-          id: portalCardMappings.id,
-          paymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
-        })
-        .from(portalCardMappings)
-        .where(
-          and(
-            eq(portalCardMappings.workspaceId, ctx.workspaceId),
-            eq(portalCardMappings.cardId, cardId),
-            isNotNull(portalCardMappings.paymentDetailsEncrypted),
-          ),
-        );
-      for (const m of existingMappings) {
-        if (m.paymentDetailsEncrypted) {
-          try {
-            const decrypted = decryptPaymentDetails(m.paymentDetailsEncrypted, m.id);
-            if (isValidPaymentDetails(decrypted)) {
-              hasValid = true;
-              validDecryptedDetails = decrypted;
-              break;
-            }
-          } catch {}
-        }
-      }
-    }
-
-    if (!hasValid) {
+    if (!validDecryptedDetails) {
       throw new ValidationError(
         'Cannot assign card: Payment details (card number, expiry date, CVV) must be configured on the card before assigning it to a portal account. Please add payment details under Cards.',
       );
@@ -1085,6 +1035,7 @@ export async function findCandidatesForAccount(
   // 4. Fetch active card mappings for this account
   const mappings = await db
     .select({
+      id: portalCardMappings.id,
       cardId: portalCardMappings.cardId,
       portalCardId: portalCardMappings.portalCardId,
       portalCardbinId: portalCardMappings.portalCardbinId,
@@ -1111,7 +1062,7 @@ export async function findCandidatesForAccount(
     }
     if (m.mappingPaymentDetailsEncrypted) {
       try {
-        const dec = decryptPaymentDetails(m.mappingPaymentDetailsEncrypted, m.cardId);
+        const dec = decryptPaymentDetails(m.mappingPaymentDetailsEncrypted, m.id);
         if (isValidPaymentDetails(dec)) return true;
       } catch {}
     }
