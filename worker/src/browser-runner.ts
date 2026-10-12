@@ -1,7 +1,7 @@
 import path from 'path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
@@ -139,7 +139,28 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .where(eq(schema.cards.id, candidate.cardId));
 
   let paymentDetails = null;
-  if (cardRecord?.paymentDetailsEncrypted) {
+
+  // 1. Try current account mapping first
+  const [currentAccountMapping] = await db
+    .select()
+    .from(schema.portalCardMappings)
+    .where(
+      and(
+        eq(schema.portalCardMappings.cardId, candidate.cardId),
+        eq(schema.portalCardMappings.portalAccountId, account.id),
+      ),
+    );
+
+  if (currentAccountMapping?.paymentDetailsEncrypted) {
+    try {
+      paymentDetails = decryptPaymentDetails(currentAccountMapping.paymentDetailsEncrypted, currentAccountMapping.id);
+    } catch (err) {
+      console.warn('Could not decrypt payment details from account mapping:', err);
+    }
+  }
+
+  // 2. Try cards table
+  if (!paymentDetails && cardRecord?.paymentDetailsEncrypted) {
     try {
       paymentDetails = decryptPaymentDetails(cardRecord.paymentDetailsEncrypted, candidate.cardId);
     } catch (err) {
@@ -147,17 +168,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     }
   }
 
+  // 3. Fallback to any mapping for this card
   if (!paymentDetails) {
-    const [mapping] = await db
+    const allMappings = await db
       .select()
       .from(schema.portalCardMappings)
       .where(eq(schema.portalCardMappings.cardId, candidate.cardId));
 
-    if (mapping?.paymentDetailsEncrypted) {
-      try {
-        paymentDetails = decryptPaymentDetails(mapping.paymentDetailsEncrypted, mapping.id);
-      } catch (err) {
-        console.warn('Could not decrypt payment details from mapping table:', err);
+    for (const m of allMappings) {
+      if (m.paymentDetailsEncrypted) {
+        try {
+          paymentDetails = decryptPaymentDetails(m.paymentDetailsEncrypted, m.id);
+          if (paymentDetails) break;
+        } catch {}
       }
     }
   }
@@ -300,15 +323,24 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   await humanHesitate(1200, 2000);
 
-  console.log('\n--- Step 3: Selecting PNB Card ---');
-  const activeCardText = await page.locator('button.nav-dropdown-trigger').first().textContent().catch(() => '');
-  if (!activeCardText?.includes('PNB')) {
-    console.log('Selecting PNB card in dropdown...');
-    await humanClick(page.locator('button.nav-dropdown-trigger').first(), { hesitateBeforeMs: 500, pauseAfterMs: 800 });
-    const cardItem = page.locator('a.dropdown-item:has-text("PNB Salary Imperial")').first();
-    await humanClick(cardItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+  console.log(`\n--- Step 3: Selecting Card for ${cardRow?.cardName || 'PNB'} (••${cardRow?.last4}) ---`);
+  const cardDropdownTrigger = page.locator('button.nav-dropdown-trigger').first();
+  const currentCardHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
+  const targetBinKeyword = cardRow?.cardName?.includes('PNB') ? 'PNB' : (cardRow?.cardName?.includes('India') ? 'Bank of India' : 'PNB');
+
+  if (!currentCardHeader.toLowerCase().includes(targetBinKeyword.toLowerCase())) {
+    console.log(`Current card is "${currentCardHeader}", switching to "${targetBinKeyword}"...`);
+    await humanClick(cardDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
+    const targetCardItem = page.locator(`a.dropdown-item:has-text("${targetBinKeyword}")`).first();
+    await targetCardItem.waitFor({ state: 'visible', timeout: 5000 });
+    await humanClick(targetCardItem, { hesitateBeforeMs: 500, pauseAfterMs: 2500 });
+    // Wait for card benefits to finish loading
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForTimeout(2000);
+    const newHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
+    console.log(`✓ Active card dropdown updated to: "${newHeader}"`);
   } else {
-    console.log('✓ PNB Salary Imperial card already selected.');
+    console.log(`✓ Target card "${currentCardHeader}" already selected.`);
   }
 
   const targetCategory = benefitDetails.benefitType || 'Gym Access';
@@ -373,11 +405,21 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
   await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
 
-  console.log('\n--- Step 6: Clicking Redeem Now on Benefit Page ---');
+  console.log('\n--- Step 6: Checking Benefit Page / Payment Modal ---');
   await humanHesitate(1800, 2800);
-  const redeemNowBtn = page.locator('button:has-text("Redeem Now")').first();
-  await redeemNowBtn.waitFor({ state: 'visible', timeout: 8000 });
-  await humanClick(redeemNowBtn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
+  const continueDirectly = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible').first();
+  if (await continueDirectly.isVisible({ timeout: 2000 })) {
+    console.log('[step 6] "Continue to Payment" already visible; skipping separate "Redeem Now" step.');
+  } else {
+    const redeemNowBtn = page.locator('button:has-text("Redeem Now"), a:has-text("Redeem Now"), button.btn-redeem-now:visible').first();
+    if (await redeemNowBtn.isVisible({ timeout: 4000 })) {
+      console.log('[step 6] Found "Redeem Now" button, clicking...');
+      await humanClick(redeemNowBtn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
+    } else {
+      console.log('[step 6] "Redeem Now" not present or already on payment step, checking for confirmation modal...');
+      await page.screenshot({ path: 'step6-debug.png' }).catch(() => {});
+    }
+  }
 
   console.log('\n--- Step 7: Payment Confirmation Modal ---');
   await humanHesitate(2000, 3200); // Allow modal animation to complete and simulate human reading
@@ -408,6 +450,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await continueToPaymentBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
 
   console.log('Waiting for response / gateway redirect...');
+  let isEmbeddedGateway = false;
   for (let sec = 0; sec < 30; sec++) {
     if (popupTracker.page) {
       console.log(`[gateway] Detected payment popup page: ${popupTracker.page.url()}`);
@@ -417,10 +460,22 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       console.log(`[gateway] Main page redirected to gateway: ${page.url()}`);
       break;
     }
+    // Check if an embedded gateway iframe (Razorpay, Juspay, etc.) has appeared on the page
+    const frames = page.frames();
+    const paymentFrame = frames.find((f) => {
+      const u = f.url().toLowerCase();
+      return u.includes('razorpay') || u.includes('juspay') || u.includes('payu') || u.includes('billdesk');
+    });
+    const razorpayIframeEl = page.locator('iframe[src*="razorpay"], iframe.razorpay-checkout-frame, iframe[src*="juspay"]');
+    if (paymentFrame || (await razorpayIframeEl.isVisible().catch(() => false))) {
+      console.log(`[gateway] Embedded payment gateway detected (frame: ${paymentFrame?.url() ?? 'iframe in DOM'})`);
+      isEmbeddedGateway = true;
+      break;
+    }
     if (cooldownDetectedUntil) {
       break;
     }
-    // Re-click if still on truztee after 4 seconds
+    // Re-click if still on truztee after 4 seconds and no gateway visible
     if (sec === 4 && page.url().includes('rupayselect.truztee.com')) {
       try {
         const btn = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible').first();
@@ -446,7 +501,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   }
 
   const activePaymentPage: Page = popupTracker.page ?? page;
-  if (activePaymentPage.url().includes('rupayselect.truztee.com')) {
+  if (!isEmbeddedGateway && activePaymentPage.url().includes('rupayselect.truztee.com')) {
     console.error('[gateway] Fatal: Gateway did not redirect/open within 30s. Saving screenshot...');
     await activePaymentPage.screenshot({ path: 'gateway-redirect-failed.png' });
     await context.close();
@@ -459,6 +514,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await activePaymentPage.waitForLoadState('domcontentloaded').catch(() => {});
   await activePaymentPage.waitForTimeout(3000); // Allow gateway and iframes to render
   console.log(`Payment Page Title: ${await activePaymentPage.title()}`);
+
+  // Resolve notification recipient & contact info before Step 8
+  const [settings] = await db
+    .select()
+    .from(schema.automationSettings)
+    .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
+
+  const telegramChatId = settings?.telegramChatId || null;
+  const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
 
   // Inspect payment form elements (inputs, iframes)
   const formAnalysis = await activePaymentPage.evaluate(() => {
@@ -488,7 +552,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   // Step 8: Static Payment Gateway Automation
   if (paymentDetails && (paymentDetails.mode === 'full' || paymentDetails.mode === 'saved_card')) {
     console.log('\n--- Step 8: Executing Static Gateway Automation ---');
-    const filled = await fillCardDetailsOnGateway(activePaymentPage, paymentDetails);
+    const filled = await fillCardDetailsOnGateway(activePaymentPage, paymentDetails, {
+      phoneNumber: targetPhoneNumber,
+      email: account.label,
+    });
     if (filled) {
       console.log('✓ Card details filled! Clicking primary Make Payment / Proceed button...');
       await clickPayButton(activePaymentPage);
@@ -506,15 +573,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const cardLast4 = cardRecord?.lastDigits ?? '1746';
 
   let otpCompleted = false;
-
-  // Resolve notification recipient: Telegram preferred, fallback to WhatsApp phone
-  const [settings] = await db
-    .select()
-    .from(schema.automationSettings)
-    .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
-
-  const telegramChatId = settings?.telegramChatId || null;
-  const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
 
   // Create portal order attempt record to track this execution
   const [attempt] = await db

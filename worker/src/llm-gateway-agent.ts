@@ -645,26 +645,31 @@ export async function handlePostPaymentTransition(
       }
     }
 
-    // 2. Fast-path check: Is the RBI Tokenization Modal visible in DOM?
-    const secureAndPayBtn = page.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
-    const optOutBtn = page.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
-    const modalHeader = page.locator(':is(h1, h2, h3, h4, div, span):has-text("Secure your card")').first();
+    // 2. Fast-path check: Is the RBI Tokenization Modal visible in DOM across frames?
+    let modalHandled = false;
+    for (const t of [page, ...page.frames()]) {
+      const secureAndPayBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
+      const optOutBtn = t.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
+      const modalHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Secure your card")').first();
 
-    const isModalVisible =
-      (await secureAndPayBtn.isVisible().catch(() => false)) ||
-      (await modalHeader.isVisible().catch(() => false));
+      const isModalVisible =
+        (await secureAndPayBtn.isVisible().catch(() => false)) ||
+        (await modalHeader.isVisible().catch(() => false));
 
-    if (isModalVisible) {
-      console.log('[gateway] 🛡️ Detected RBI Tokenization Modal ("Secure your card with Rupay").');
-      if (await secureAndPayBtn.isVisible().catch(() => false)) {
-        console.log('[gateway] Clicking "Secure & Pay" with human cursor...');
-        await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-      } else if (await optOutBtn.isVisible().catch(() => false)) {
-        console.log('[gateway] Clicking "Opt out for now" with human cursor...');
-        await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+      if (isModalVisible) {
+        console.log('[gateway] 🛡️ Detected RBI Tokenization Modal ("Secure your card with Rupay").');
+        if (await secureAndPayBtn.isVisible().catch(() => false)) {
+          console.log('[gateway] Clicking "Secure & Pay" with human cursor...');
+          await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+        } else if (await optOutBtn.isVisible().catch(() => false)) {
+          console.log('[gateway] Clicking "Opt out for now" with human cursor...');
+          await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+        }
+        modalHandled = true;
+        break;
       }
-      continue;
     }
+    if (modalHandled) continue;
 
     // 3. Primary LLM Visual Assessment via Gemini Vision
     if (apiKey) {
@@ -698,16 +703,28 @@ export async function handlePostPaymentTransition(
 
           if (analysis.state === 'TOKENIZATION_MODAL') {
             const targetText = analysis.targetButtonText || 'Secure & Pay';
-            const btn = page.locator(`:is(button, [role="button"], a, div):has-text("${targetText}")`).first();
-            if (await btn.isVisible().catch(() => false)) {
-              console.log(`[gateway-llm] Clicking "${targetText}" identified by LLM...`);
-              await humanClick(btn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-            } else if (await secureAndPayBtn.isVisible().catch(() => false)) {
-              await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-            } else if (await optOutBtn.isVisible().catch(() => false)) {
-              await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+            let clicked = false;
+            for (const t of [page, ...page.frames()]) {
+              const btn = t.locator(`:is(button, [role="button"], a, div):has-text("${targetText}")`).first();
+              const secureBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
+              const optOut = t.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
+
+              if (await btn.isVisible().catch(() => false)) {
+                console.log(`[gateway-llm] Clicking "${targetText}" identified by LLM...`);
+                await humanClick(btn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+                clicked = true;
+                break;
+              } else if (await secureBtn.isVisible().catch(() => false)) {
+                await humanClick(secureBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+                clicked = true;
+                break;
+              } else if (await optOut.isVisible().catch(() => false)) {
+                await humanClick(optOut, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+                clicked = true;
+                break;
+              }
             }
-            continue;
+            if (clicked) continue;
           }
         }
       } catch (err) {

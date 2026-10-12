@@ -30,16 +30,76 @@ export interface PaymentAutomationResult {
 /**
  * Detects the active payment gateway from URL and page structure.
  */
-export function detectGateway(url: string): string {
+export function detectGateway(url: string, page?: Page): string {
   if (url.includes('ccavenue.com')) return 'CCAvenue';
   if (url.includes('razorpay.com')) return 'Razorpay';
   if (url.includes('payu.in')) return 'PayU';
   if (url.includes('billdesk.com')) return 'BillDesk';
+  if (page) {
+    const frames = page.frames();
+    if (frames.some((f) => f.url().includes('razorpay.com'))) return 'Razorpay';
+    if (frames.some((f) => f.url().includes('juspay.in'))) return 'Juspay';
+    if (frames.some((f) => f.url().includes('payu.in'))) return 'PayU';
+  }
   return 'Generic';
 }
 
 function resolvePage(target: Page | Frame): Page {
   return 'page' in target ? (target as Frame).page() : (target as Page);
+}
+
+/**
+ * Checks for contact details prompts (e.g. Razorpay Standard Checkout asking for mobile number)
+ * and fills them to advance to the card entry screen.
+ */
+export async function handleContactDetailsIfPresent(
+  target: Page | Frame,
+  options?: { phoneNumber?: string | null; email?: string | null },
+): Promise<boolean> {
+  const page = resolvePage(target);
+  let phone = options?.phoneNumber?.replace(/^\+91/, '').replace(/\D/g, '') || '';
+  if (!phone || phone.length < 10) {
+    phone = '8792839087';
+  }
+  const email = options?.email || 'coolfriendamit0506@gmail.com';
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const targets = getAllTargets(target);
+    for (const t of targets) {
+      try {
+        const phoneInput = t
+          .locator('input[type="tel"], input[placeholder*="mobile" i], input[placeholder*="phone" i], #contact, input#phone')
+          .first();
+        if (await phoneInput.isVisible({ timeout: 600 }).catch(() => false)) {
+          console.log(`[gateway] Detected Contact Details screen. Filling mobile number (${phone})...`);
+          await humanType(phoneInput, phone, { minCharDelayMs: 60, maxCharDelayMs: 120 });
+          await page.waitForTimeout(400);
+
+          const emailInput = t
+            .locator('input[type="email"], input[placeholder*="email" i], input[name="email"]')
+            .first();
+          if (await emailInput.isVisible({ timeout: 500 }).catch(() => false)) {
+            console.log(`[gateway] Filling email address (${email})...`);
+            await emailInput.fill(email);
+            await page.waitForTimeout(400);
+          }
+
+          const continueBtn = t
+            .locator('button:has-text("Continue"), button:has-text("Proceed"), button[type="submit"]')
+            .first();
+          if (await continueBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            console.log('[gateway] Clicking Continue on contact details modal...');
+            await humanClick(continueBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+            await continueBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+            await page.waitForTimeout(2000);
+            return true;
+          }
+        }
+      } catch {}
+    }
+    await page.waitForTimeout(500);
+  }
+  return false;
 }
 
 /**
@@ -82,10 +142,14 @@ function getAllTargets(target: Page | Frame): (Page | Frame)[] {
 export async function fillCardDetailsOnGateway(
   target: Page | Frame,
   details: PaymentDetails,
+  options?: { phoneNumber?: string | null; email?: string | null },
 ): Promise<boolean> {
   const page = resolvePage(target);
-  const gateway = detectGateway(page.url());
+  const gateway = detectGateway(page.url(), page);
   console.log(`[gateway] Detected gateway: ${gateway} (${page.url()})`);
+
+  // Step 0: Check for Contact Details modal (common in Razorpay Standard Checkout)
+  await handleContactDetailsIfPresent(target, options);
 
   // Step 1: Ensure Card tab is active
   await ensureCardTabSelected(target);
@@ -105,8 +169,6 @@ export async function fillCardDetailsOnGateway(
             t.getByText(last4).first(),
             t.locator(`:has-text("${last4}")`).last(),
             t.locator(`text=${last4}`).first(),
-            t.locator('text=PNB Debit').first(),
-            t.locator(':has-text("PNB Debit")').last(),
           ];
           for (const loc of locators) {
             if (await loc.isVisible({ timeout: 400 })) {
