@@ -29,12 +29,12 @@ import {
   updateDetailsAction,
 } from '@/actions/instances';
 import type { BenefitOptionView, InstanceView, OrderStatus, RevealedCode } from '@/domain/instances';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
 import {
   AUTO_HIDE_MS,
   CODE_MASK,
@@ -825,14 +825,6 @@ function DetailsSection({
     }
   }
 
-  const common = (k: keyof DetailsForm, customClass = 'h-7 text-xs') => ({
-    id: `${uid}-${k}`,
-    disabled: !editable || busy,
-    className: customClass,
-    'aria-invalid': errors[k] ? (true as const) : undefined,
-    'aria-describedby': errors[k] ? `${uid}-${k}-err` : undefined,
-  });
-
   return (
     <div className="rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-xs">
       <div className="flex items-center justify-between">
@@ -856,24 +848,24 @@ function DetailsSection({
       </div>
 
       {!editing ? (
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center justify-between py-1 border-b border-border/40">
+        <div className="space-y-0 text-xs">
+          <div className="flex items-center justify-between py-2 border-b border-border/40">
             <span className="text-muted-foreground">Order Date</span>
             <span className="font-medium text-foreground">{inst.orderDate ? formatDate(inst.orderDate) : '—'}</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/40">
+          <div className="flex items-center justify-between py-2 border-b border-border/40">
             <span className="text-muted-foreground">Expiry Date</span>
             <span className="font-medium text-foreground">{inst.expiryDate ? formatDate(inst.expiryDate) : '—'}</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/40">
+          <div className="flex items-center justify-between py-2 border-b border-border/40">
             <span className="text-muted-foreground">RuPay Booking ID</span>
             <span className="font-mono text-foreground">{inst.rupayBookingId || '—'}</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/40">
+          <div className="flex items-center justify-between py-2 border-b border-border/40">
             <span className="text-muted-foreground">RuPay Account</span>
             <span className="font-medium text-foreground">{inst.portalAccountLabel || '—'}</span>
           </div>
-          <div className="flex items-center justify-between py-1 border-b border-border/40">
+          <div className="flex items-center justify-between py-2 border-b border-border/40">
             <span className="text-muted-foreground">Cash Value</span>
             <span className="font-medium text-foreground">
               {formatMoney(inst.value ?? inst.cashValue)}
@@ -884,26 +876,33 @@ function DetailsSection({
                 : ''}
             </span>
           </div>
-          <div className="py-1">
-            <span className="text-muted-foreground block mb-1">Comments / Notes</span>
-            <p className="text-foreground/90 whitespace-pre-wrap rounded-lg bg-muted/40 p-2.5 border border-border/40 text-[11px] leading-relaxed">
+          <div className="py-2.5">
+            <span className="text-muted-foreground block mb-1.5">Comments / Notes</span>
+            <p className="text-foreground/90 whitespace-pre-wrap rounded-xl bg-muted/40 p-3 border border-border/40 text-xs leading-relaxed">
               {inst.comments || 'No notes added'}
             </p>
           </div>
         </div>
       ) : (
-        <form aria-label="Details" className="space-y-2 text-xs" noValidate onSubmit={(e) => void submit(e)}>
+        <form aria-label="Details" className="space-y-0 text-xs" noValidate onSubmit={(e) => void submit(e)}>
           {/* Order Date */}
-          <div className="py-1 border-b border-border/40">
+          <div className="py-2 border-b border-border/40">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={`${uid}-orderDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
                 Order Date
               </Label>
-              <Input
+              <input
                 type="date"
                 value={form.orderDate}
                 onChange={set('orderDate')}
-                {...common('orderDate', 'h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]')}
+                id={`${uid}-orderDate`}
+                disabled={!editable || busy}
+                aria-invalid={errors.orderDate ? true : undefined}
+                aria-describedby={errors.orderDate ? `${uid}-orderDate-err` : undefined}
+                className={cn(
+                  'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2.5 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:hover:opacity-100',
+                  errors.orderDate && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                )}
               />
             </div>
             {errors.orderDate && (
@@ -914,16 +913,23 @@ function DetailsSection({
           </div>
 
           {/* Expiry Date */}
-          <div className="py-1 border-b border-border/40">
+          <div className="py-2 border-b border-border/40">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={`${uid}-expiryDate`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
                 Expiry Date
               </Label>
-              <Input
+              <input
                 type="date"
                 value={form.expiryDate}
                 onChange={set('expiryDate')}
-                {...common('expiryDate', 'h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]')}
+                id={`${uid}-expiryDate`}
+                disabled={!editable || busy}
+                aria-invalid={errors.expiryDate ? true : undefined}
+                aria-describedby={errors.expiryDate ? `${uid}-expiryDate-err` : undefined}
+                className={cn(
+                  'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2.5 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 [&::-webkit-calendar-picker-indicator]:hover:opacity-100',
+                  errors.expiryDate && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                )}
               />
             </div>
             {errors.expiryDate && (
@@ -934,17 +940,25 @@ function DetailsSection({
           </div>
 
           {/* RuPay Booking ID */}
-          <div className="py-1 border-b border-border/40">
+          <div className="py-2 border-b border-border/40">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={`${uid}-rupayBookingId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
                 RuPay Booking ID
               </Label>
-              <Input
+              <input
+                type="text"
                 value={form.rupayBookingId}
                 onChange={set('rupayBookingId')}
                 maxLength={200}
                 placeholder="e.g. RUPS-..."
-                {...common('rupayBookingId', 'h-7 text-xs font-mono text-right max-w-[170px] sm:max-w-[200px]')}
+                id={`${uid}-rupayBookingId`}
+                disabled={!editable || busy}
+                aria-invalid={errors.rupayBookingId ? true : undefined}
+                aria-describedby={errors.rupayBookingId ? `${uid}-rupayBookingId-err` : undefined}
+                className={cn(
+                  'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2.5 text-xs font-mono font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-muted-foreground/50 placeholder:font-sans',
+                  errors.rupayBookingId && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                )}
               />
             </div>
             {errors.rupayBookingId && (
@@ -955,7 +969,7 @@ function DetailsSection({
           </div>
 
           {/* RuPay Account */}
-          <div className="py-1 border-b border-border/40">
+          <div className="py-2 border-b border-border/40">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={`${uid}-portalAccountId`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
                 RuPay Account
@@ -965,7 +979,13 @@ function DetailsSection({
                 onValueChange={(v) => setForm((f) => ({ ...f, portalAccountId: v === 'none' ? '' : v }))}
                 disabled={!editable || busy}
               >
-                <SelectTrigger id={`${uid}-portalAccountId`} className="h-7 text-xs text-right max-w-[170px] sm:max-w-[200px]">
+                <SelectTrigger
+                  id={`${uid}-portalAccountId`}
+                  className={cn(
+                    'h-8 w-48 sm:w-52 rounded-lg border border-border/60 bg-muted/30 px-2.5 text-xs font-medium text-foreground shadow-none outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50',
+                    errors.portalAccountId && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                  )}
+                >
                   <SelectValue placeholder="Select account" />
                 </SelectTrigger>
                 <SelectContent>
@@ -991,19 +1011,29 @@ function DetailsSection({
           </div>
 
           {/* Cash Value */}
-          <div className="py-1 border-b border-border/40">
+          <div className="py-2 border-b border-border/40">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={`${uid}-cashValue`} className="text-xs font-normal text-muted-foreground shrink-0 cursor-pointer">
                 Cash Value
               </Label>
-              <div className="relative flex items-center max-w-[170px] sm:max-w-[200px] w-full justify-end">
-                <span className="absolute left-2.5 text-xs text-muted-foreground">₹</span>
-                <Input
+              <div className="relative flex items-center w-48 sm:w-52">
+                <span className="absolute left-2.5 text-xs font-medium text-muted-foreground select-none pointer-events-none">
+                  ₹
+                </span>
+                <input
                   inputMode="decimal"
+                  type="text"
                   value={form.cashValue}
                   onChange={set('cashValue')}
                   placeholder={inst.defaultCashValue != null ? String(inst.defaultCashValue) : '500'}
-                  {...common('cashValue', 'h-7 text-xs pl-6 text-right font-medium w-full')}
+                  id={`${uid}-cashValue`}
+                  disabled={!editable || busy}
+                  aria-invalid={errors.cashValue ? true : undefined}
+                  aria-describedby={errors.cashValue ? `${uid}-cashValue-err` : undefined}
+                  className={cn(
+                    'h-8 w-full rounded-lg border border-border/60 bg-muted/30 pl-6 pr-2.5 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-muted-foreground/50',
+                    errors.cashValue && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                  )}
                 />
               </div>
             </div>
@@ -1015,16 +1045,24 @@ function DetailsSection({
           </div>
 
           {/* Comments / Notes */}
-          <div className="py-1">
-            <Label htmlFor={`${uid}-comments`} className="text-muted-foreground block mb-1 text-xs font-normal cursor-pointer">
+          <div className="py-2.5">
+            <Label htmlFor={`${uid}-comments`} className="text-muted-foreground block mb-1.5 text-xs font-normal cursor-pointer">
               Comments / Notes
             </Label>
-            <Textarea
+            <textarea
+              id={`${uid}-comments`}
               value={form.comments}
               onChange={set('comments')}
               placeholder="No notes added"
               maxLength={5000}
-              {...common('comments', 'min-h-16 text-xs leading-relaxed bg-muted/40 border-border/40')}
+              disabled={!editable || busy}
+              rows={3}
+              aria-invalid={errors.comments ? true : undefined}
+              aria-describedby={errors.comments ? `${uid}-comments-err` : undefined}
+              className={cn(
+                'w-full min-h-[72px] rounded-xl border border-border/60 bg-muted/30 p-3 text-xs leading-relaxed text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-muted-foreground/50 resize-y',
+                errors.comments && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+              )}
             />
             {errors.comments && (
               <p id={`${uid}-comments-err`} role="alert" className="text-[11px] text-destructive mt-1">
@@ -1034,12 +1072,12 @@ function DetailsSection({
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/50">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 text-xs"
+              className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setForm(toForm(inst));
                 setEditing(false);
@@ -1049,12 +1087,12 @@ function DetailsSection({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="h-8 text-xs font-medium" disabled={busy}>
-              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save details
+            <Button type="submit" size="sm" className="h-8 px-4 text-xs font-medium shadow-xs" disabled={busy}>
+              {busy && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />} Save details
             </Button>
           </div>
 
-          {serverError && <p role="alert" className="text-xs text-destructive">{serverError}</p>}
+          {serverError && <p role="alert" className="text-xs text-destructive mt-1">{serverError}</p>}
         </form>
       )}
     </div>
