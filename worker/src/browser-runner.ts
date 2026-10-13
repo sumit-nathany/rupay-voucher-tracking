@@ -324,14 +324,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await humanHesitate(1200, 2000);
 
   console.log(`\n--- Step 3: Selecting Card for ${cardRow?.cardName || 'PNB'} (••${cardRow?.last4}) ---`);
-  const cardDropdownTrigger = page.locator('button.nav-dropdown-trigger').first();
+  // The first dropdown trigger in the navbar is the Card selector
+  const cardDropdownTrigger = page.locator(':is(button, a)[id*="card" i], button.nav-dropdown-trigger:not(:has-text("Explore Benefits")), :is(button, a):has-text("RuPay Select")').first();
   const currentCardHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
   const targetBinKeyword = cardRow?.cardName?.includes('PNB') ? 'PNB' : (cardRow?.cardName?.includes('India') ? 'Bank of India' : 'PNB');
 
   if (!currentCardHeader.toLowerCase().includes(targetBinKeyword.toLowerCase())) {
     console.log(`Current card is "${currentCardHeader}", switching to "${targetBinKeyword}"...`);
     await humanClick(cardDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
-    const targetCardItem = page.locator(`a.dropdown-item:has-text("${targetBinKeyword}")`).first();
+    const targetCardItem = page.locator(`.dropdown-menu.show a.dropdown-item:has-text("${targetBinKeyword}"), a.dropdown-item:has-text("${targetBinKeyword}")`).first();
     await targetCardItem.waitFor({ state: 'visible', timeout: 5000 });
     await humanClick(targetCardItem, { hesitateBeforeMs: 500, pauseAfterMs: 2500 });
     // Wait for card benefits to finish loading
@@ -346,9 +347,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const targetCategory = benefitDetails.benefitType || 'Gym Access';
   console.log(`\n--- Step 4: Navigating to ${targetCategory} ---`);
   await humanHesitate(1000, 1800);
-  await humanClick(page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits")'), { hesitateBeforeMs: 500, pauseAfterMs: 700 });
+  const exploreDropdownTrigger = page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits"), :is(button, a):has-text("Explore Benefits")').first();
+  await humanClick(exploreDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
 
-  const dropdownTexts = await page.locator('a.dropdown-item').allTextContents().catch(() => []);
+  const dropdownTexts = await page.locator('.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible').allTextContents().catch(() => []);
   console.log(`[dropdown] Available categories: ${dropdownTexts.map((t) => t.trim()).filter(Boolean).join(', ')}`);
 
   const targetLower = targetCategory.toLowerCase();
@@ -384,11 +386,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   if (await categoryItem.isVisible({ timeout: 2000 })) {
     console.log(`Clicking matched category: "${await categoryItem.textContent().catch(() => '')}"`);
     await humanClick(categoryItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+    await categoryItem.evaluate((el: HTMLElement) => el.click()).catch(() => {});
   } else {
     console.log(`Dropdown item for "${targetCategory}" not found directly. Checking first available item...`);
-    const fallbackItem = page.locator(`a.dropdown-item`).first();
+    const fallbackItem = page.locator(`.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible`).first();
     await humanClick(fallbackItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+    await fallbackItem.evaluate((el: HTMLElement) => el.click()).catch(() => {});
   }
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForTimeout(2000);
 
   console.log(`\n--- Step 5: Clicking Redeem on Category Page (${benefitDetails.exactBenefit}) ---`);
   await humanHesitate(1500, 2500);
