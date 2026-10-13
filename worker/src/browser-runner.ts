@@ -727,8 +727,27 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         }
       }
     }
+
+    // If loop finished without finding a booking reference, check if order is still pending or failed
+    const finalUrl = activePaymentPage.url();
+    const finalPageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
+    const isDefinitiveFailure =
+      finalPageText.includes('Transaction Failed') ||
+      finalPageText.includes('Payment Failed') ||
+      finalPageText.includes('Transaction Cancelled') ||
+      finalUrl.includes('failure') ||
+      finalUrl.includes('cancel');
+
+    if (isDefinitiveFailure) {
+      console.log(`\n❌ Payment definitive failure detected in browser.`);
+      await db
+        .update(schema.portalOrderAttempts)
+        .set({ state: 'failed_post_submit', failureCode: 'gateway_declined', finishedAt: new Date() })
+        .where(eq(schema.portalOrderAttempts.id, attempt.id));
+    }
   }
 
+  // Never kill the browser context abruptly: keep open for inspection if unresolved
   await activePaymentPage.waitForTimeout(10000);
   await context.close();
   await client.end();
