@@ -817,10 +817,11 @@ Rules:
    DO NOT dismiss or close the modal! Select the "Continue", "Proceed", or phone input button/field to enter phone number and continue.
 4. If this screen is blocked by an Offers Popup (e.g. "Save more with payment offers"), promo modal, or offer limit error:
    The promo offer limit has been exceeded, so we must PROCEED WITHOUT THE OFFER or REMOVE/DISMISS the offer.
-   Identify which candidate index from the list MUST be clicked to continue without offer, remove offer, or close the modal (e.g. "Continue without offer", "Pay without offer", "Remove", click the checked offer tile to deselect, or close "×").
+   Identify which candidate index from the list MUST be clicked to continue without offer, remove offer, or close the popup (e.g. "Continue without offer", "Pay without offer", "Remove", click the checked offer tile to deselect, or close "×" on the offer popup).
    Set "screenType": "MODAL_OR_FORM", "action": "click_element", "targetIndex": <number>.
-5. If this screen is the Payment Gateway form or review screen with a "Pay ₹1", "Pay ₹2", "Pay Now", "Make Payment", or "Pay" button:
-   Select that candidate index to click the Pay button and submit payment.
+5. If this screen is the Card Details or Payment Gateway form (or review screen) with a "Continue", "Pay ₹1", "Pay ₹2", "Pay Now", "Make Payment", or "Pay" button:
+   Select the "Continue" or "Pay" button candidate index to submit payment.
+   NEVER click the close/X/cancel button on the card or payment dialog! Always choose "Continue" or "Pay".
    Set "screenType": "MODAL_OR_FORM", "action": "click_element", "targetIndex": <number>.
 6. If this screen is an RBI Tokenization modal ("Secure your card with Rupay" / "Secure & Pay" / "Opt out"):
    Select the candidate index for "Secure & Pay" or "Opt out for now".
@@ -988,97 +989,9 @@ export async function handlePostPaymentTransition(
       return { reachedOtp: true, reachedSuccess: false };
     }
 
-    // 2. Fast check: Contact Details popup (Enter mobile number to continue)
-    // CRITICAL: NEVER dismiss this popup! Enter the RuPay account phone number and click Continue.
-    const contactHandled = await handleContactDetailsIfPresent(page, {
-      phoneNumber: options?.phoneNumber,
-      email: options?.email,
-    });
-    if (contactHandled) {
-      console.log('[gateway] Contact details submitted. Continuing transition...');
-      continue;
-    }
-
-    // 2. Fast-path check: Is the RBI Tokenization Modal or Offers Popup visible in DOM across frames?
-    let modalHandled = false;
-    for (const t of [page, ...page.frames()]) {
-      const secureAndPayBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
-      const optOutBtn = t.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
-      const modalHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Secure your card")').first();
-
-      const isModalVisible =
-        (await secureAndPayBtn.isVisible().catch(() => false)) ||
-        (await modalHeader.isVisible().catch(() => false));
-
-      if (isModalVisible) {
-        console.log('[gateway] 🛡️ Detected RBI Tokenization Modal ("Secure your card with Rupay").');
-        if (await secureAndPayBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking "Secure & Pay" with human cursor...');
-          await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-        } else if (await optOutBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking "Opt out for now" with human cursor...');
-          await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-        }
-        modalHandled = true;
-        break;
-      }
-    }
-    if (modalHandled) continue;
-
-    // 2b. Check for Razorpay "Save more with payment offers" popup or offer limit error
-    for (const t of [page, ...page.frames()]) {
-      const offersHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Save more with payment offers")').first();
-      const hasOfferError = await page.evaluate(() => {
-        const text = document.body.innerText || '';
-        return text.includes('exceeded the limit to use this offer') || text.includes('Save more with payment offers');
-      }).catch(() => false);
-
-      if (hasOfferError || (await offersHeader.isVisible().catch(() => false))) {
-        console.log('[gateway] Detected Razorpay offer limit notice / offers popup.');
-        
-        // 1. If "Continue without offer" or "Pay without offer" is visible, click it!
-        const continueWithoutOffer = t.locator(':is(button, [role="button"], a):has-text("Continue without offer"), :is(button, [role="button"], a):has-text("Pay without offer")').first();
-        if (await continueWithoutOffer.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking "Continue without offer"...');
-          await humanClick(continueWithoutOffer, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-          modalHandled = true;
-          break;
-        }
-
-        // 2. Dismiss offers popup via close button
-        const closeBtn = t.locator('button[aria-label*="Close" i], button.btn-close, button.close, :is(button, [role="button"]):has-text("✕"), :is(button, [role="button"]):has-text("×")').first();
-        if (await closeBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Dismissing offers popup...');
-          await humanClick(closeBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1200 });
-          await closeBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
-        }
-
-        // 3. Remove/uncheck the applied offer under "Available Offers" so payment proceeds cleanly
-        const offerCard = t.locator(':is([data-testid*="offer" i], [class*="offer" i], div):has-text("RuPay Select Program")').first();
-        const removeOfferBtn = t.locator(':is(button, a, span):has-text("Remove offer"), :is(button, a, span):has-text("Remove")').first();
-        if (await removeOfferBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking "Remove offer"...');
-          await humanClick(removeOfferBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1000 });
-        } else if (await offerCard.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking selected offer card to deselect it...');
-          await humanClick(offerCard, { hesitateBeforeMs: 300, pauseAfterMs: 1000 });
-          await offerCard.evaluate((el: HTMLElement) => el.click()).catch(() => {});
-        }
-
-        // 4. Re-click the Pay / Continue button to proceed with payment
-        const payBtn = t.locator(':is(button, [role="button"]):has-text("Continue"), :is(button, [role="button"]):has-text("Pay")').first();
-        if (await payBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Clicking "Continue" / "Pay" button to proceed with payment...');
-          await humanClick(payBtn, { hesitateBeforeMs: 600, pauseAfterMs: 2500 });
-          await payBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
-        }
-        modalHandled = true;
-        break;
-      }
-    }
-    if (modalHandled) continue;
-
-    // 3. Primary Autonomous LLM Visual Assessment & Click Action
+    // 2. Primary Autonomous LLM Visual Assessment & Click Action
+    // The LLM inspects the screenshot and the list of clickable candidates in the DOM
+    // to choose what to click to move the flow forward (Continue, Secure & Pay, etc.)
     if (apiKey) {
       const decision = await askLlmToAdvancePayment(page, apiKey, {
         phoneNumber: options?.phoneNumber,
@@ -1093,10 +1006,43 @@ export async function handlePostPaymentTransition(
         return { reachedOtp: false, reachedSuccess: true };
       }
       if (decision.handled) {
-        continue; // Successfully clicked element to dismiss blocker / advance flow
+        continue; // Successfully executed LLM recommended action!
       }
-    } else {
-      // Fallback only if no Gemini API key configured: external bank ACS domain + OTP field
+    }
+
+    // 2b. Heuristic fallback ONLY if Gemini API key is not configured or LLM returned nothing
+    let modalHandled = false;
+    for (const t of [page, ...page.frames()]) {
+      const secureAndPayBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
+      const optOutBtn = t.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
+      const modalHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Secure your card")').first();
+
+      const isModalVisible =
+        (await secureAndPayBtn.isVisible().catch(() => false)) ||
+        (await modalHeader.isVisible().catch(() => false));
+
+      if (isModalVisible) {
+        console.log('[gateway] 🛡️ Detected RBI Tokenization Modal fallback.');
+        if (await secureAndPayBtn.isVisible().catch(() => false)) {
+          await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+        } else if (await optOutBtn.isVisible().catch(() => false)) {
+          await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
+        }
+        modalHandled = true;
+        break;
+      }
+    }
+    if (modalHandled) continue;
+
+    // Fast check: Contact Details popup fallback
+    const contactHandled = await handleContactDetailsIfPresent(page, {
+      phoneNumber: options?.phoneNumber,
+      email: options?.email,
+    });
+    if (contactHandled) continue;
+
+    // Fallback only if no Gemini API key configured: external bank ACS domain + OTP field
+    if (!apiKey) {
       const isExternalAcs = !currUrl.includes('juspay.in') && (
         currUrl.includes('acs') ||
         currUrl.includes('bank') ||
