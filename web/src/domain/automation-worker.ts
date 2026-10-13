@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import {
   automationSettings,
   portalAccounts,
@@ -203,10 +203,29 @@ export async function finalizeConfirmedOrder(
 
   // Check if tracker already has a conflicting manual rupay_booking_id
   let hasConflict = false;
-  let rupayBookingIdToSet = bookingReference;
+  let rupayBookingIdToSet: string | null = bookingReference;
   if (instance.rupayBookingId && instance.rupayBookingId.trim() !== bookingReference.trim()) {
     hasConflict = true;
     rupayBookingIdToSet = instance.rupayBookingId; // Preserve human-entered value
+  }
+
+  // Check if another instance in this workspace already has this booking reference
+  const [duplicateInstance] = await db
+    .select({ id: benefitInstances.id })
+    .from(benefitInstances)
+    .where(
+      and(
+        eq(benefitInstances.workspaceId, attempt.workspaceId),
+        ne(benefitInstances.id, instance.id),
+        sql`lower(${benefitInstances.rupayBookingId}) = lower(${bookingReference.trim()})`,
+      ),
+    )
+    .limit(1);
+
+  if (duplicateInstance) {
+    hasConflict = true;
+    // Don't overwrite with a duplicate booking ID to respect the unique constraint
+    rupayBookingIdToSet = instance.rupayBookingId ?? null;
   }
 
   // Update instance status to Ordered but Coupon not received
@@ -343,6 +362,22 @@ export async function resolveUncertainAttempt(
     const ref = input.bookingReference?.trim();
     if (!ref) {
       throw new Error('Booking reference is required when confirming an order');
+    }
+
+    const [dup] = await ctx.db
+      .select({ id: benefitInstances.id })
+      .from(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, attempt.workspaceId),
+          ne(benefitInstances.id, attempt.instanceId),
+          sql`lower(${benefitInstances.rupayBookingId}) = lower(${ref})`,
+        ),
+      )
+      .limit(1);
+
+    if (dup) {
+      throw new Error(`Booking reference "${ref}" is already assigned to another benefit instance`);
     }
 
     // Set instance to Ordered but Coupon not received

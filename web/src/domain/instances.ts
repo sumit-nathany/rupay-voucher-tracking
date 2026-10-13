@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   benefitCatalogVersions,
@@ -351,7 +351,30 @@ export async function updateDetails(
   if (p.orderDate !== undefined) patch.orderDate = p.orderDate;
   if (p.expiryDate !== undefined) patch.expiryDate = p.expiryDate;
   if (p.cashValue !== undefined) patch.cashValue = p.cashValue == null ? null : toMoney(p.cashValue);
-  if (p.rupayBookingId !== undefined) patch.rupayBookingId = p.rupayBookingId;
+  if (p.rupayBookingId !== undefined) {
+    if (p.rupayBookingId != null && p.rupayBookingId.trim().length > 0) {
+      const trimmed = p.rupayBookingId.trim();
+      const [dup] = await ctx.db
+        .select({ id: benefitInstances.id })
+        .from(benefitInstances)
+        .where(
+          and(
+            eq(benefitInstances.workspaceId, ctx.workspaceId),
+            ne(benefitInstances.id, p.instanceId),
+            sql`lower(${benefitInstances.rupayBookingId}) = lower(${trimmed})`,
+          ),
+        )
+        .limit(1);
+      if (dup) {
+        throw new InstanceStateError(
+          `Booking ID "${trimmed}" is already assigned to another benefit instance`,
+        );
+      }
+      patch.rupayBookingId = trimmed;
+    } else {
+      patch.rupayBookingId = null;
+    }
+  }
   if (p.portalAccountId !== undefined) {
     if (p.portalAccountId != null) {
       const [acc] = await ctx.db

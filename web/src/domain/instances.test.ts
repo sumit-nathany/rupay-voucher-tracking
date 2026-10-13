@@ -210,6 +210,30 @@ describe('sale and details', () => {
     await expect(inst.updateDetails(A, { instanceId: id, workspaceId: 'x' } as never)).rejects.toThrow();
   });
 
+  it('enforces that the same rupayBookingId cannot exist on more than one benefit instance', async () => {
+    const id1 = await fresh();
+    const id2 = await fresh();
+    await inst.updateDetails(A, { instanceId: id1, rupayBookingId: 'RUPS-UNIQUE-101' });
+
+    // Same booking ID (even case-insensitive) on another instance must be rejected by domain
+    await expect(
+      inst.updateDetails(A, { instanceId: id2, rupayBookingId: 'RUPS-UNIQUE-101' }),
+    ).rejects.toThrow(/already assigned to another benefit instance/);
+    await expect(
+      inst.updateDetails(A, { instanceId: id2, rupayBookingId: 'rups-unique-101' }),
+    ).rejects.toThrow(/already assigned to another benefit instance/);
+
+    // Updating the same instance with its own booking ID is permitted
+    await expect(
+      inst.updateDetails(A, { instanceId: id1, rupayBookingId: 'RUPS-UNIQUE-101', comments: 'same id update' }),
+    ).resolves.toBeDefined();
+
+    // Direct DB update violating unique index must fail
+    await expect(
+      db.update(benefitInstances).set({ rupayBookingId: 'RUPS-UNIQUE-101' }).where(eq(benefitInstances.id, id2)),
+    ).rejects.toThrow();
+  });
+
   it('populates defaultCashValue and effective value on InstanceView', async () => {
     // b has catalog version with defaultCashValue
     const [bRow] = await db.insert(benefits).values({ bankCardTypeId: typeId }).returning();

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "benefit_instances_workspace_booking_unique" ON "app"."benefit_instances" USING btree ("workspace_id","rupay_booking_id") WHERE "app"."benefit_instances"."rupay_booking_id" IS NOT NULL;

@@ -24,6 +24,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -425,6 +426,9 @@ export const benefitInstances = app.table(
     unique("benefit_instances_identity_key")
       .on(t.cardId, t.benefitId, t.overrideId, t.periodStart, t.instanceNumber)
       .nullsNotDistinct(),
+    uniqueIndex("benefit_instances_workspace_booking_unique")
+      .on(t.workspaceId, t.rupayBookingId)
+      .where(sql`${t.rupayBookingId} IS NOT NULL`),
     foreignKey({
       name: "benefit_instances_workspace_id_card_id_fkey",
       columns: [t.workspaceId, t.cardId],
