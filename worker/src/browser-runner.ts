@@ -127,8 +127,20 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     }
   }
 
+  if (candidate.chosenOptionId) {
+    const [opt] = await db
+      .select()
+      .from(schema.benefitOptions)
+      .where(eq(schema.benefitOptions.id, candidate.chosenOptionId));
+    if (opt) {
+      benefitDetails.benefitProvider = opt.provider;
+      benefitDetails.exactBenefit = opt.offerName;
+      if (opt.cashValue) benefitDetails.cashValue = opt.cashValue;
+    }
+  }
+
   console.log(`Card: ${cardRow?.cardName} (••${cardRow?.last4})`);
-  console.log(`Benefit: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue})`);
+  console.log(`Benefit: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (${benefitDetails.benefitProvider}) (₹${benefitDetails.cashValue})`);
 
   const [cardRecord] = await db
     .select({
