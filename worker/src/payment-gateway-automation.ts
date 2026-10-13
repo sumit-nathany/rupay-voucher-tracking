@@ -616,13 +616,14 @@ export async function promptForOtpAndSubmit(
 
       // 2. Check if user typed and submitted directly in the browser window
       const currUrl = page.url();
-      if (
+      const isPostPaymentSuccess =
         currUrl.includes('success') ||
         currUrl.includes('confirm') ||
         currUrl.includes('truztee.com/#/offers') ||
-        currUrl.includes('truztee.com')
-      ) {
-        console.log(`\n✓ Detected gateway completion in browser!`);
+        (currUrl.includes('rupayselect.truztee.com') && !currUrl.includes('/Payment/OfflinePayment'));
+
+      if (isPostPaymentSuccess) {
+        console.log(`\n✓ Detected gateway completion in browser! (URL: ${currUrl})`);
         clearInterval(pollInterval);
         cleanup();
         resolve(true);

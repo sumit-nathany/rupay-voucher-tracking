@@ -634,10 +634,17 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   if (otpCompleted) {
     console.log('Monitoring transaction completion & booking reference...');
-    for (let sec = 0; sec < 30; sec++) {
+    for (let sec = 0; sec < 45; sec++) {
       await activePaymentPage.waitForTimeout(1000);
       const currUrl = activePaymentPage.url();
-      if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com')) {
+      const isPostPaymentSuccess =
+        currUrl.includes('success') ||
+        currUrl.includes('confirm') ||
+        currUrl.includes('booking') ||
+        currUrl.includes('truztee.com/#/offers') ||
+        (currUrl.includes('rupayselect.truztee.com') && !currUrl.includes('/Payment/OfflinePayment'));
+
+      if (isPostPaymentSuccess) {
         const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
         
         // Exclude common non-ID generic English words
