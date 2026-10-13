@@ -6,7 +6,13 @@ import * as schema from '../../web/src/db/schema';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
 import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
-import { resolveAndFillCvv, resolveAndClickPay, resolveOtpInput, verifyBankOtpScreenWithLLM } from './llm-gateway-agent';
+import {
+  handleContactDetailsIfPresent,
+  resolveAndFillCvv,
+  resolveAndClickPay,
+  resolveOtpInput,
+  verifyBankOtpScreenWithLLM,
+} from './llm-gateway-agent';
 
 export interface OtpPromptContext {
   db?: any;
@@ -47,60 +53,7 @@ export function detectGateway(url: string, page?: Page): string {
 function resolvePage(target: Page | Frame): Page {
   return 'page' in target ? (target as Frame).page() : (target as Page);
 }
-
-/**
- * Checks for contact details prompts (e.g. Razorpay Standard Checkout asking for mobile number)
- * and fills them to advance to the card entry screen.
- */
-export async function handleContactDetailsIfPresent(
-  target: Page | Frame,
-  options?: { phoneNumber?: string | null; email?: string | null },
-): Promise<boolean> {
-  const page = resolvePage(target);
-  let phone = options?.phoneNumber?.replace(/^\+91/, '').replace(/\D/g, '') || '';
-  if (!phone || phone.length < 10) {
-    phone = '8792839087';
-  }
-  const email = options?.email || 'coolfriendamit0506@gmail.com';
-
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const targets = getAllTargets(target);
-    for (const t of targets) {
-      try {
-        const phoneInput = t
-          .locator('input[type="tel"], input[placeholder*="mobile" i], input[placeholder*="phone" i], #contact, input#phone')
-          .first();
-        if (await phoneInput.isVisible({ timeout: 600 }).catch(() => false)) {
-          console.log(`[gateway] Detected Contact Details screen. Filling mobile number (${phone})...`);
-          await humanType(phoneInput, phone, { minCharDelayMs: 60, maxCharDelayMs: 120 });
-          await page.waitForTimeout(400);
-
-          const emailInput = t
-            .locator('input[type="email"], input[placeholder*="email" i], input[name="email"]')
-            .first();
-          if (await emailInput.isVisible({ timeout: 500 }).catch(() => false)) {
-            console.log(`[gateway] Filling email address (${email})...`);
-            await emailInput.fill(email);
-            await page.waitForTimeout(400);
-          }
-
-          const continueBtn = t
-            .locator('button:has-text("Continue"), button:has-text("Proceed"), button[type="submit"]')
-            .first();
-          if (await continueBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-            console.log('[gateway] Clicking Continue on contact details modal...');
-            await humanClick(continueBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-            await continueBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
-            await page.waitForTimeout(2000);
-            return true;
-          }
-        }
-      } catch {}
-    }
-    await page.waitForTimeout(500);
-  }
-  return false;
-}
+export { handleContactDetailsIfPresent } from './llm-gateway-agent';
 
 /**
  * Ensures the "Card" payment method tab is selected if the gateway presents multiple payment options.

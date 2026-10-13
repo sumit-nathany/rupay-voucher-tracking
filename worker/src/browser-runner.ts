@@ -279,7 +279,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log('   The automation is standing by and will automatically proceed once completed.');
     console.log('======================================================\n');
 
-    for (let sec = 0; sec < 180; sec++) {
+    for (let sec = 0; sec < 300; sec++) {
       await page.waitForTimeout(1000);
       const updatedCookies = await context.cookies();
       jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
@@ -522,7 +522,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
 
   const telegramChatId = settings?.telegramChatId || null;
-  const targetPhoneNumber = settings?.whatsappPhoneNumber || account.phoneNumber;
+  const rupayAccountPhone = account.phoneNumber || settings?.whatsappPhoneNumber || '8792839087';
+  const targetPhoneNumber = rupayAccountPhone;
 
   // Inspect payment form elements (inputs, iframes)
   const formAnalysis = await activePaymentPage.evaluate(() => {
@@ -569,7 +570,11 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   // Step 8b: Handle RBI Tokenization Modal & Post-Payment Gateway Transition with LLM
   console.log('\n--- Step 8b: Monitoring Post-Payment Gateway Transition with LLM ---');
-  const transitionResult = await handlePostPaymentTransition(activePaymentPage, { maxWaitSec: 40 });
+  const transitionResult = await handlePostPaymentTransition(activePaymentPage, {
+    maxWaitSec: 40,
+    phoneNumber: targetPhoneNumber,
+    email: account.label,
+  });
   const cardLast4 = cardRecord?.lastDigits ?? '1746';
 
   let otpCompleted = false;
@@ -617,6 +622,14 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     );
   } else {
     console.log(`\n[gateway] ⚠️ Bank OTP screen was not reached (${transitionResult.reason || 'timeout'}). Skipping OTP notification.`);
+    await db
+      .update(schema.portalOrderAttempts)
+      .set({
+        state: 'failed_pre_submit',
+        finishedAt: new Date(),
+        failureCode: 'otp_screen_not_reached',
+      })
+      .where(eq(schema.portalOrderAttempts.id, attempt.id));
   }
 
   if (otpCompleted) {

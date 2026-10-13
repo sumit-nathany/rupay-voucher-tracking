@@ -13,6 +13,7 @@
     "login:preprod": "tsx --env-file ../web/.env.preprod src/login-helper.ts",
     "browser:preprod": "tsx --env-file ../web/.env.preprod src/browser-runner.ts",
     "browser:local": "tsx --env-file ../web/.env.local src/browser-runner.ts",
+    "browser:prod": "tsx --env-file ../web/.env.local src/browser-runner.ts",
     "test:live": "tsx --env-file ../web/.env.local src/browser-runner.ts"
   },
   "dependencies": {
