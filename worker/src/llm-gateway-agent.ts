@@ -37,14 +37,48 @@ export function getAllTargets(target: Page | Frame): (Page | Frame)[] {
 }
 
 /**
+ * Checks if the current page or any frame is displaying an OTP / 3DS verification screen.
+ */
+export async function isOtpScreenPresent(target: Page | Frame): Promise<boolean> {
+  const page = resolvePage(target);
+  const targets = getAllTargets(page);
+  for (const t of targets) {
+    try {
+      const hasOtpPrompt = await t.evaluate(() => {
+        const text = (document.body?.innerText || '').toLowerCase();
+        const inputs = Array.from(document.querySelectorAll('input'));
+        const hasOtpText = text.includes('enter otp') || text.includes('one time password') || text.includes('resend otp') || text.includes('3d secure');
+        const hasOtpInput = inputs.some((inp) => {
+          const p = (inp.placeholder || '').toLowerCase();
+          const n = (inp.name || '').toLowerCase();
+          const id = (inp.id || '').toLowerCase();
+          const ac = (inp.getAttribute('autocomplete') || '').toLowerCase();
+          return p.includes('otp') || n.includes('otp') || id.includes('otp') || ac.includes('one-time-code');
+        });
+        return hasOtpText && (hasOtpInput || text.includes('enter otp to complete payment'));
+      }).catch(() => false);
+      if (hasOtpPrompt) return true;
+    } catch {}
+  }
+  return false;
+}
+
+/**
  * Checks for contact details prompts (e.g. Razorpay Standard Checkout asking for mobile number)
  * and fills them to advance to the card entry screen. Never dismisses!
+ * Never executes if the screen is an OTP screen!
  */
 export async function handleContactDetailsIfPresent(
   target: Page | Frame,
   options?: { phoneNumber?: string | null; email?: string | null },
 ): Promise<boolean> {
   const page = resolvePage(target);
+
+  // If already on an OTP screen, never treat it as contact details!
+  if (await isOtpScreenPresent(page)) {
+    return false;
+  }
+
   let phone = options?.phoneNumber?.replace(/^\+91/, '').replace(/\D/g, '') || '';
   if (!phone || phone.length < 10) {
     phone = '8792839087';
@@ -61,11 +95,11 @@ export async function handleContactDetailsIfPresent(
           )
           .first();
         if (await phoneInput.isVisible({ timeout: 400 }).catch(() => false)) {
-          const isCardField = await phoneInput.evaluate((el: HTMLInputElement) => {
+          const isCardOrOtpField = await phoneInput.evaluate((el: HTMLInputElement) => {
             const str = (el.name + ' ' + el.id + ' ' + el.placeholder + ' ' + (el.getAttribute('autocomplete') || '')).toLowerCase();
-            return str.includes('card') || str.includes('cno') || str.includes('cc-') || str.includes('cvv') || str.includes('exp');
+            return str.includes('card') || str.includes('cno') || str.includes('cc-') || str.includes('cvv') || str.includes('exp') || str.includes('otp') || str.includes('passcode');
           }).catch(() => false);
-          if (isCardField) continue;
+          if (isCardOrOtpField) continue;
 
           const currentVal = await phoneInput.inputValue().catch(() => '');
           if (!currentVal || currentVal.replace(/\D/g, '').length < 10) {
@@ -168,180 +202,176 @@ export async function scanCandidates(
     const frameUrl = 'url' in target ? target.url() : page.url();
 
     try {
-      const candidates = await target.evaluate((type) => {
-        const isVisible = (el: HTMLElement) => {
-          const style = window.getComputedStyle(el);
-          return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
-        };
-
-        const results: Array<{
-          tag: string;
-          type?: string;
-          id?: string;
-          name?: string;
-          placeholder?: string;
-          text?: string;
-          ariaLabel?: string;
-          selector: string;
-          boundingBox?: { x: number; y: number; width: number; height: number } | null;
-        }> = [];
-
-        if (type === 'cvv') {
-          const inputs = Array.from(document.querySelectorAll('input'));
-          for (const el of inputs) {
-            if (!isVisible(el)) continue;
-            const inputType = el.getAttribute('type') || 'text';
-            const name = el.getAttribute('name') || '';
-            const id = el.getAttribute('id') || '';
-            const placeholder = el.getAttribute('placeholder') || '';
-            const maxLen = el.getAttribute('maxlength') || '';
-            const labelText = el.closest('label')?.textContent || '';
-
-            const isCvvCandidate =
-              /cvv|cvc|security|code|verification/i.test(name) ||
-              /cvv|cvc|security|code/i.test(id) ||
-              /cvv|cvc/i.test(placeholder) ||
-              /cvv|cvc/i.test(labelText) ||
-              (maxLen === '3' || maxLen === '4') ||
-              (inputType === 'password' && (maxLen === '3' || maxLen === '4' || placeholder.length <= 4));
-
-            if (isCvvCandidate) {
-              let sel = '';
-              if (id) sel = `#${id}`;
-              else if (name) sel = `input[name="${name}"]`;
-              else if (placeholder) sel = `input[placeholder="${placeholder}"]`;
-              else sel = 'input[type="password"]';
-
-              results.push({
-                tag: 'INPUT',
-                type: inputType,
-                id,
-                name,
-                placeholder,
-                text: labelText.trim(),
-                selector: sel,
-              });
-            }
+      const candidates = await target.evaluate(`
+        (function(type) {
+          function isVisible(el) {
+            var style = window.getComputedStyle(el);
+            return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
           }
-        } else if (type === 'pay_button') {
-          const clickables = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"], a.btn'));
-          for (const el of clickables) {
-            if (!isVisible(el as HTMLElement)) continue;
-            const text = el.textContent?.trim() || (el as HTMLInputElement).value || '';
-            const id = el.getAttribute('id') || '';
-            const isPay =
-              /pay|proceed|continue|submit|make\s*payment|₹|inr/i.test(text) ||
-              /pay|proceed|submit/i.test(id) ||
-              /pay/i.test(el.className);
 
-            if (isPay) {
-              let sel = '';
-              if (id) sel = `#${id}`;
-              else if (text) sel = `${el.tagName.toLowerCase()}:has-text("${text.slice(0, 20)}")`;
-              else sel = el.tagName.toLowerCase();
+          var results = [];
 
+          if (type === 'cvv') {
+            var inputs = Array.from(document.querySelectorAll('input'));
+            for (var i = 0; i < inputs.length; i++) {
+              var el = inputs[i];
+              if (!isVisible(el)) continue;
+              var inputType = el.getAttribute('type') || 'text';
+              var name = el.getAttribute('name') || '';
+              var id = el.getAttribute('id') || '';
+              var placeholder = el.getAttribute('placeholder') || '';
+              var maxLen = el.getAttribute('maxlength') || '';
+              var labelText = el.closest('label') ? (el.closest('label').textContent || '') : '';
+
+              var isCvvCandidate =
+                /cvv|cvc|security|code|verification/i.test(name) ||
+                /cvv|cvc|security|code/i.test(id) ||
+                /cvv|cvc/i.test(placeholder) ||
+                /cvv|cvc/i.test(labelText) ||
+                (maxLen === '3' || maxLen === '4') ||
+                (inputType === 'password' && (maxLen === '3' || maxLen === '4' || placeholder.length <= 4));
+
+              if (isCvvCandidate) {
+                var sel = '';
+                if (id) sel = '#' + id;
+                else if (name) sel = 'input[name="' + name + '"]';
+                else if (placeholder) sel = 'input[placeholder="' + placeholder + '"]';
+                else sel = 'input[type="password"]';
+
+                results.push({
+                  tag: 'INPUT',
+                  type: inputType,
+                  id: id,
+                  name: name,
+                  placeholder: placeholder,
+                  text: labelText.trim(),
+                  selector: sel,
+                });
+              }
+            }
+          } else if (type === 'pay_button') {
+            var clickables = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"], a.btn'));
+            for (var j = 0; j < clickables.length; j++) {
+              var el = clickables[j];
+              if (!isVisible(el)) continue;
+              var text = (el.textContent || el.value || '').trim();
+              var id = el.getAttribute('id') || '';
+              var isPay =
+                /pay|proceed|continue|submit|make\\s*payment|₹|inr/i.test(text) ||
+                /pay|proceed|submit/i.test(id) ||
+                /pay/i.test(el.className);
+
+              if (isPay) {
+                var sel = '';
+                if (id) sel = '#' + id;
+                else if (text) sel = el.tagName.toLowerCase() + ':has-text("' + text.slice(0, 20) + '")';
+                else sel = el.tagName.toLowerCase();
+
+                results.push({
+                  tag: el.tagName,
+                  id: id,
+                  text: text,
+                  selector: sel,
+                });
+              }
+            }
+          } else if (type === 'otp_input') {
+            var inputs = Array.from(document.querySelectorAll('input'));
+            for (var k = 0; k < inputs.length; k++) {
+              var el = inputs[k];
+              if (!isVisible(el)) continue;
+              var inputType = el.getAttribute('type') || 'text';
+              var name = el.getAttribute('name') || '';
+              var id = el.getAttribute('id') || '';
+              var placeholder = el.getAttribute('placeholder') || '';
+              var autocomplete = el.getAttribute('autocomplete') || '';
+
+              var isOtp =
+                /otp|passcode|code|pin|one\\s*time/i.test(name) ||
+                /otp|passcode|code|pin/i.test(id) ||
+                /otp|passcode|code|pin/i.test(placeholder) ||
+                autocomplete.includes('one-time-code') ||
+                inputType === 'password';
+
+              if (isOtp) {
+                var sel = '';
+                if (id) sel = '#' + id;
+                else if (name) sel = 'input[name="' + name + '"]';
+                else if (placeholder) sel = 'input[placeholder="' + placeholder + '"]';
+                else sel = 'input[type="' + inputType + '"]';
+
+                results.push({
+                  tag: 'INPUT',
+                  type: inputType,
+                  id: id,
+                  name: name,
+                  placeholder: placeholder,
+                  selector: sel,
+                });
+              }
+            }
+          } else if (type === 'otp_submit') {
+            var buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a.btn'));
+            for (var m = 0; m < buttons.length; m++) {
+              var el = buttons[m];
+              if (!isVisible(el)) continue;
+              var text = (el.textContent || el.value || '').trim();
+              var id = el.getAttribute('id') || '';
+
+              var isSubmit =
+                /submit|verify|confirm|proceed|pay|continue/i.test(text) ||
+                /submit|verify|confirm/i.test(id);
+
+              if (isSubmit) {
+                var sel = '';
+                if (id) sel = '#' + id;
+                else if (text) sel = el.tagName.toLowerCase() + ':has-text("' + text.slice(0, 20) + '")';
+                else sel = el.tagName.toLowerCase();
+
+                results.push({
+                  tag: el.tagName,
+                  id: id,
+                  text: text,
+                  selector: sel,
+                });
+              }
+            }
+          } else if (type === 'advance_payment') {
+            var clickables = Array.from(
+              document.querySelectorAll(
+                'button, [role="button"], input[type="submit"], input[type="button"], a, [data-dismiss], [aria-label*="close" i], [aria-label*="dismiss" i], .close, .btn-close, [onclick], [tabindex="0"], [data-testid*="offer" i], [class*="offer" i], [class*="card" i]'
+              )
+            );
+            for (var idx = 0; idx < clickables.length; idx++) {
+              var el = clickables[idx];
+              if (!isVisible(el)) continue;
+              var text = (el.textContent || el.value || '').trim().replace(/\\s+/g, ' ');
+              var id = el.getAttribute('id') || '';
+              var ariaLabel = el.getAttribute('aria-label') || '';
+              var title = el.getAttribute('title') || '';
+              var candAttr = 'cand-' + idx;
+              el.setAttribute('data-llm-cand-id', candAttr);
+
+              var rect = el.getBoundingClientRect();
               results.push({
                 tag: el.tagName,
-                id,
-                text,
-                selector: sel,
+                id: id,
+                text: text.slice(0, 80),
+                ariaLabel: (ariaLabel || title).slice(0, 80),
+                selector: '[data-llm-cand-id="' + candAttr + '"]',
+                boundingBox: {
+                  x: Math.round(rect.x),
+                  y: Math.round(rect.y),
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                },
               });
             }
           }
-        } else if (type === 'otp_input') {
-          const inputs = Array.from(document.querySelectorAll('input'));
-          for (const el of inputs) {
-            if (!isVisible(el)) continue;
-            const inputType = el.getAttribute('type') || 'text';
-            const name = el.getAttribute('name') || '';
-            const id = el.getAttribute('id') || '';
-            const placeholder = el.getAttribute('placeholder') || '';
-            const autocomplete = el.getAttribute('autocomplete') || '';
 
-            const isOtp =
-              /otp|passcode|code|pin|one\s*time/i.test(name) ||
-              /otp|passcode|code|pin/i.test(id) ||
-              /otp|passcode|code|pin/i.test(placeholder) ||
-              autocomplete.includes('one-time-code') ||
-              inputType === 'password';
-
-            if (isOtp) {
-              let sel = '';
-              if (id) sel = `#${id}`;
-              else if (name) sel = `input[name="${name}"]`;
-              else if (placeholder) sel = `input[placeholder="${placeholder}"]`;
-              else sel = `input[type="${inputType}"]`;
-
-              results.push({
-                tag: 'INPUT',
-                type: inputType,
-                id,
-                name,
-                placeholder,
-                selector: sel,
-              });
-            }
-          }
-        } else if (type === 'otp_submit') {
-          const buttons = Array.from(document.querySelectorAll('button, input[type="submit"], a.btn'));
-          for (const el of buttons) {
-            if (!isVisible(el as HTMLElement)) continue;
-            const text = el.textContent?.trim() || (el as HTMLInputElement).value || '';
-            const id = el.getAttribute('id') || '';
-
-            const isSubmit =
-              /submit|verify|confirm|proceed|pay|continue/i.test(text) ||
-              /submit|verify|confirm/i.test(id);
-
-            if (isSubmit) {
-              let sel = '';
-              if (id) sel = `#${id}`;
-              else if (text) sel = `${el.tagName.toLowerCase()}:has-text("${text.slice(0, 20)}")`;
-              else sel = el.tagName.toLowerCase();
-
-              results.push({
-                tag: el.tagName,
-                id,
-                text,
-                selector: sel,
-              });
-            }
-          }
-        } else if (type === 'advance_payment') {
-          const clickables = Array.from(
-            document.querySelectorAll(
-              'button, [role="button"], input[type="submit"], input[type="button"], a, [data-dismiss], [aria-label*="close" i], [aria-label*="dismiss" i], .close, .btn-close, [onclick], [tabindex="0"], [data-testid*="offer" i], [class*="offer" i], [class*="card" i]'
-            )
-          );
-          for (let idx = 0; idx < clickables.length; idx++) {
-            const el = clickables[idx] as HTMLElement;
-            if (!isVisible(el)) continue;
-            const text = (el.textContent?.trim() || (el as HTMLInputElement).value || '').replace(/\s+/g, ' ');
-            const id = el.getAttribute('id') || '';
-            const ariaLabel = el.getAttribute('aria-label') || '';
-            const title = el.getAttribute('title') || '';
-            const candAttr = `cand-${idx}`;
-            el.setAttribute('data-llm-cand-id', candAttr);
-
-            const rect = el.getBoundingClientRect();
-            results.push({
-              tag: el.tagName,
-              id,
-              text: text.slice(0, 80),
-              ariaLabel: (ariaLabel || title).slice(0, 80),
-              selector: `[data-llm-cand-id="${candAttr}"]`,
-              boundingBox: {
-                x: Math.round(rect.x),
-                y: Math.round(rect.y),
-                width: Math.round(rect.width),
-                height: Math.round(rect.height),
-              },
-            });
-          }
-        }
-
-        return results;
-      }, actionType);
+          return results;
+        })('${actionType}')
+      `) as any;
 
       for (const c of candidates) {
         allCandidates.push({
@@ -667,7 +697,7 @@ export async function analyzeGatewayScreenWithLLM(
   screenshotBase64: string,
   apiKey: string,
 ): Promise<GatewayScreenAnalysis | null> {
-  const models = ['gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.7-flash'];
+  const models = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash'];
 
   for (const model of models) {
     try {
@@ -807,7 +837,7 @@ Respond ONLY in valid JSON matching this schema:
   "reasoning": "why clicking this element moves the payment forward"
 }`;
 
-  const models = ['gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.7-flash'];
+  const models = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash'];
   for (const model of models) {
     try {
       console.log(`[llm-agent] 🧠 Consulting Gemini Vision (${model}) to advance payment...`);
@@ -950,6 +980,12 @@ export async function handlePostPaymentTransition(
         console.log('[gateway] ✓ Order confirmation already reached!');
         return { reachedOtp: false, reachedSuccess: true };
       }
+    }
+
+    // 1b. Fast check: Bank 3D-Secure OTP screen is already reached!
+    if (await isOtpScreenPresent(page)) {
+      console.log('[gateway] ✓ Bank 3D-Secure OTP screen detected via DOM indicators!');
+      return { reachedOtp: true, reachedSuccess: false };
     }
 
     // 2. Fast check: Contact Details popup (Enter mobile number to continue)

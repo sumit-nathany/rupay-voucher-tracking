@@ -384,11 +384,14 @@ export async function clickPayButton(target: Page | Frame): Promise<boolean> {
  */
 export async function findOtpInput(page: Page): Promise<{ target: Page | Frame; locator: Locator } | null> {
   const otpSelectors = [
-    'input[name*="otp" i]',
-    'input[id*="otp" i]',
+    'input[placeholder*="Enter OTP" i]',
     'input[placeholder*="OTP" i]',
     'input[placeholder*="One Time Password" i]',
+    'input[name*="otp" i]',
+    'input[id*="otp" i]',
     'input[autocomplete*="one-time-code" i]',
+    'input[type="tel"][maxlength="6"]',
+    'input[type="tel"][maxlength="4"]',
     'input[type="password"]',
     '#otp',
     '#otpPassword',
@@ -545,6 +548,7 @@ export async function promptForOtpAndSubmit(
         console.log('[gateway] OTP filled! Clicking Submit/Verify button...');
 
         const submitSelectors = [
+          'button:has-text("Continue")',
           'button:has-text("Submit")',
           'input[type="submit"]',
           'button:has-text("Verify")',
