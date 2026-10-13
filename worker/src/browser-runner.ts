@@ -742,7 +742,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       console.log(`\n❌ Payment definitive failure detected in browser.`);
       await db
         .update(schema.portalOrderAttempts)
-        .set({ state: 'failed_post_submit', failureCode: 'gateway_declined', finishedAt: new Date() })
+        .set({ state: 'uncertain', failureCode: 'gateway_declined', finishedAt: new Date() })
         .where(eq(schema.portalOrderAttempts.id, attempt.id));
     }
   }
