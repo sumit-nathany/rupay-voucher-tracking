@@ -333,6 +333,8 @@ export async function fillCardDetailsOnGateway(
  */
 export async function clickPayButton(target: Page | Frame): Promise<boolean> {
   const payBtnSelectors = [
+    'button:has-text("Continue")',
+    ':is(button, [role="button"]):has-text("Continue")',
     'button:has-text("Pay ₹1")',
     'button:has-text("Pay ₹2")',
     'button:has-text("Pay Rs. 1")',
@@ -342,7 +344,6 @@ export async function clickPayButton(target: Page | Frame): Promise<boolean> {
     'button:has-text("Make Payment")',
     'button:has-text("Proceed")',
     'button:has-text("Pay")',
-    'button:has-text("Continue")',
     ':is(button, [role="button"], a):has-text("Pay")',
     ':is(button, [role="button"], a):has-text("Proceed")',
     '#pay_button',

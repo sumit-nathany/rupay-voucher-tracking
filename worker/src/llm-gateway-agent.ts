@@ -1065,10 +1065,10 @@ export async function handlePostPaymentTransition(
           await offerCard.evaluate((el: HTMLElement) => el.click()).catch(() => {});
         }
 
-        // 4. Re-click the Pay button without the expired promo offer
-        const payBtn = t.locator(':is(button, [role="button"]):has-text("Pay")').first();
+        // 4. Re-click the Pay / Continue button to proceed with payment
+        const payBtn = t.locator(':is(button, [role="button"]):has-text("Continue"), :is(button, [role="button"]):has-text("Pay")').first();
         if (await payBtn.isVisible().catch(() => false)) {
-          console.log('[gateway] Re-clicking "Pay" without the exceeded promo offer...');
+          console.log('[gateway] Clicking "Continue" / "Pay" button to proceed with payment...');
           await humanClick(payBtn, { hesitateBeforeMs: 600, pauseAfterMs: 2500 });
           await payBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
         }
