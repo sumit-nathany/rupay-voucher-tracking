@@ -792,7 +792,7 @@ export async function askLlmToAdvancePayment(
   } catch {}
 
   const candidates = await scanCandidates(page, 'advance_payment');
-  const simplifiedCandidates = candidates.slice(0, 65).map((c, i) => ({
+  const simplifiedCandidates = candidates.slice(0, 100).map((c, i) => ({
     index: i,
     tag: c.tag,
     id: c.id || undefined,
@@ -815,9 +815,13 @@ Rules:
    Set "screenType": "ORDER_SUCCESS", "action": "order_confirmed".
 3. If this screen is asking for Contact details (e.g. mobile number, phone number, email, or "Enter mobile number to continue"):
    DO NOT dismiss or close the modal! Select the "Continue", "Proceed", or phone input button/field to enter phone number and continue.
-4. If this screen is blocked by an Offers Popup (e.g. "Save more with payment offers"), promo modal, or offer limit error:
-   The promo offer limit has been exceeded, so we must PROCEED WITHOUT THE OFFER or REMOVE/DISMISS the offer.
-   Identify which candidate index from the list MUST be clicked to continue without offer, remove offer, or close the popup (e.g. "Continue without offer", "Pay without offer", "Remove", click the checked offer tile to deselect, or close "×" on the offer popup).
+4. If an offer limit error occurs (e.g. "You have exceeded the limit to use this offer", "Payment could not be completed"), or if an offer popup/Available Offers section is visible with an applied offer:
+   The promo offer limit has been exceeded! We MUST pay WITHOUT the offer.
+   Look closely at the screen:
+   a. If there is a "Continue without offer", "Pay without offer", or "Remove offer" button/link: click it!
+   b. If there is an offer error modal with a button, click the button that dismisses or allows proceeding.
+   c. CRITICAL: On the card form, look under "Available Offers" (e.g. "RuPay Select Program" with a green checkmark/selected state). You MUST click that offer card/checkbox/remove button to DESELECT / REMOVE the applied offer so that the price becomes standard and we can proceed without the offer!
+   d. DO NOT just keep clicking "Continue" while the invalid offer is still selected, because Razorpay will reject it with the same 400 error!
    Set "screenType": "MODAL_OR_FORM", "action": "click_element", "targetIndex": <number>.
 5. If this screen is the Card Details or Payment Gateway form (or review screen) with a "Continue", "Pay ₹1", "Pay ₹2", "Pay Now", "Make Payment", or "Pay" button:
    Select the "Continue" or "Pay" button candidate index to submit payment.
