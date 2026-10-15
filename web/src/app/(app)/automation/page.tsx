@@ -64,7 +64,6 @@ export default async function AutomationPage() {
         accounts={dashboard.accounts}
         mappings={dashboard.mappings}
         availableCards={availableCards}
-        rules={dashboard.rules}
         queue={dashboard.queue}
         attempts={dashboard.attempts}
         whatsappPhoneNumber={dashboard.settings.whatsappPhoneNumber}

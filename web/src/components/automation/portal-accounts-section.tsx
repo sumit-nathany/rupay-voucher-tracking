@@ -45,7 +45,7 @@ import {
   deletePortalAccountAction,
   deletePortalCardMappingAction,
 } from '@/actions/automation';
-import { MappingDialog, type CardOption } from './portal-card-mappings-section';
+import { MappingDialog, type CardOption } from './mapping-dialogs';
 
 export function PortalAccountsSection({
   accounts,
@@ -207,7 +207,6 @@ function AccountCard({
                   <CreditCard className="h-3.5 w-3.5 opacity-70" aria-hidden />
                   {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'}
                 </Badge>
-                <span>{account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}</span>
                 {isCooldown && formattedCooldownTime && (
                   <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
                     · Unlocks {formattedCooldownTime} IST
@@ -463,12 +462,6 @@ function PortalAccountDetailSheet({
                     <span className="text-muted-foreground">Mapped Cards</span>
                     <span className="font-medium text-foreground">
                       {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
-                    <span className="text-muted-foreground">Ordering Rules</span>
-                    <span className="font-medium text-foreground">
-                      {account.rulesCount} {account.rulesCount === 1 ? 'rule' : 'rules'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">

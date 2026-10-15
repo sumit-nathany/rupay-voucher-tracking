@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, X, Check, SlidersHorizontal } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
-import { setCardPortalAccountsAction, deletePortalCardMappingAction } from '@/actions/automation';
+import { setCardPortalAccountsAction } from '@/actions/automation';
 
 export interface CardOption {
   id: string;
@@ -16,174 +16,6 @@ export interface CardOption {
   holderName: string;
   lastDigits: string | null;
   hasPaymentDetails?: boolean;
-}
-
-export function PortalCardMappingsSection({
-  mappings,
-  accounts,
-  availableCards,
-}: {
-  mappings: PortalCardMappingView[];
-  accounts: PortalAccountView[];
-  availableCards: CardOption[];
-}) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedCardId, setSelectedCardId] = useState<string | undefined>(undefined);
-
-  const cardsWithDetails = availableCards.filter((c) => c.hasPaymentDetails);
-
-  function handleOpenAssign(cardId?: string) {
-    const defaultId = cardId ?? cardsWithDetails[0]?.id ?? availableCards[0]?.id;
-    setSelectedCardId(defaultId);
-    setDialogOpen(true);
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-            RuPay Card Assignments
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Central list of your RuPay cards and the connected RuPay portal accounts they are assigned to.
-          </p>
-        </div>
-        <Button
-          disabled={accounts.length === 0 || cardsWithDetails.length === 0}
-          onClick={() => handleOpenAssign()}
-          className="gap-2 text-sm font-medium h-10 px-4 rounded-xl self-start sm:self-auto shrink-0"
-          title={cardsWithDetails.length === 0 ? 'Configure payment details on cards under Cards section first' : undefined}
-        >
-          <Plus className="h-4 w-4" />
-          Assign Accounts
-        </Button>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs mt-6">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-muted/30 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
-              <tr>
-                <th className="py-3.5 sm:py-4 px-5 sm:px-6">Tracker RuPay Card</th>
-                <th className="py-3.5 sm:py-4 px-5 sm:px-6">Assigned RuPay Accounts</th>
-                <th className="py-3.5 sm:py-4 px-5 sm:px-6 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {availableCards.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="py-8 px-6 text-center text-sm text-muted-foreground">
-                    No RuPay cards found in workspace. Add cards in the Cards section first.
-                  </td>
-                </tr>
-              ) : (
-                availableCards.map((card) => {
-                  const cardMappings = mappings.filter((m) => m.cardId === card.id);
-
-                  return (
-                    <tr key={card.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="py-4 sm:py-5 px-5 sm:px-6">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm sm:text-base text-foreground">{card.name}</span>
-                          {card.hasPaymentDetails ? (
-                            <Badge variant="outline" className="text-[10px] py-0 px-2 font-medium text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
-                              Payment details ready
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[10px] py-0 px-2 font-medium text-amber-600 dark:text-amber-400 border-amber-500/30 bg-amber-500/10">
-                              Missing payment details
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          {card.holderName} {card.lastDigits ? `(••${card.lastDigits})` : ''}
-                        </div>
-                      </td>
-
-                      <td className="py-4 sm:py-5 px-5 sm:px-6">
-                        {cardMappings.length === 0 ? (
-                          <span className="text-xs sm:text-sm text-muted-foreground italic">
-                            Not assigned to any account
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {cardMappings.map((m) => {
-                              const acc = accounts.find((a) => a.id === m.portalAccountId);
-                              return (
-                                <Badge
-                                  key={m.id}
-                                  variant="secondary"
-                                  className="gap-1.5 text-xs py-1 px-2.5 font-medium border border-border/60"
-                                >
-                                  <span>{acc?.label ?? 'Account'}</span>
-                                  <UnmapMiniButton id={m.id} cardName={card.name} />
-                                </Badge>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </td>
-
-                      <td className="py-4 sm:py-5 px-5 sm:px-6 text-right">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={!card.hasPaymentDetails}
-                          onClick={() => handleOpenAssign(card.id)}
-                          className="h-8 gap-1.5 text-xs rounded-lg font-medium disabled:opacity-50"
-                          title={!card.hasPaymentDetails ? 'Configure payment details on this card under Cards first' : undefined}
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5" />
-                          Assign Accounts
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <AssignAccountsDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        cards={availableCards}
-        accounts={accounts}
-        mappings={mappings}
-        defaultCardId={selectedCardId}
-      />
-    </div>
-  );
-}
-
-function UnmapMiniButton({ id, cardName }: { id: string; cardName: string }) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleRemove(e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!confirm(`Unassign "${cardName}" from this account?`)) return;
-    setBusy(true);
-    try {
-      await deletePortalCardMappingAction({ id });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={(e) => void handleRemove(e)}
-      className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
-      title="Unassign from this account"
-    >
-      <X className="h-3 w-3" />
-    </button>
-  );
 }
 
 export interface AssignAccountsDialogProps {

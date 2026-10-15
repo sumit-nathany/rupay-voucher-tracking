@@ -113,7 +113,7 @@ export function OtpChannelsSection({
     <div className="space-y-6">
       <div className="space-y-1">
         <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
-          3DS Bank OTP Delivery Channels
+          OTP Delivery Channels
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed">
           Automated voucher checkouts require 3D-Secure bank OTP verification. Connect your preferred channel to receive instant prompts and reply with your 6-digit OTP.
