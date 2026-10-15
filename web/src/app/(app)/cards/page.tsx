@@ -65,6 +65,7 @@ export default async function CardsPage() {
                     active: c.active ?? true,
                     inactiveFrom: c.inactiveFrom,
                     paymentSummary: c.paymentSummary,
+                    paymentDetailsCorrupted: c.paymentDetailsCorrupted,
                   }}
                   holder={holder ? { id: holder.id, name: holder.name } : undefined}
                   bankCardType={

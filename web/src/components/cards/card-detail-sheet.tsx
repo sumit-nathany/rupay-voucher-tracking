@@ -177,6 +177,12 @@ export function CardDetailSheet({
                         Active
                       </Badge>
                     )}
+                    {card.paymentDetailsCorrupted && (
+                      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-normal text-xs leading-none flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />
+                        Payment details need re-entry
+                      </Badge>
+                    )}
                     {bankCardType && <CurationBadge status={bankCardType.curationStatus} />}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -355,6 +361,16 @@ export function CardDetailSheet({
                           <span className="font-medium text-foreground">{card.paymentSummary.nameOnCard}</span>
                         </div>
                       )}
+                    </div>
+                  ) : card.paymentDetailsCorrupted ? (
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-1">
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                        Payment details corrupted — re-enter required
+                      </p>
+                      <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                        Encrypted credentials exist but cannot be decrypted with the current key (likely saved under a different environment&apos;s key). Edit this card and re-enter card number, expiry and CVV to fix automated ordering.
+                      </p>
                     </div>
                   ) : (
                     <div className="rounded-lg border border-dashed border-border/80 p-3 text-center">

@@ -243,15 +243,20 @@ export async function listCards(ctx: Ctx, input?: unknown) {
 
   return rows.map((r) => {
     let paymentSummary = null;
+    let paymentDetailsCorrupted = false;
     if (r.paymentDetailsEncrypted) {
       try {
         const decrypted = decryptPaymentDetails(r.paymentDetailsEncrypted, r.id);
         paymentSummary = maskPaymentSummary(decrypted);
-      } catch {}
+      } catch (err) {
+        console.error(`[listCards] Failed to decrypt payment details for card ${r.id} (••${r.lastDigits}):`, err instanceof Error ? err.message : String(err));
+        paymentDetailsCorrupted = true;
+      }
     }
     return {
       ...r,
       paymentSummary,
+      paymentDetailsCorrupted,
     };
   });
 }
@@ -264,15 +269,20 @@ export async function getCard(ctx: Ctx, input: unknown) {
     .where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)));
   if (!row) throw new NotFoundError('Card not found');
   let paymentSummary = null;
+  let paymentDetailsCorrupted = false;
   if (row.paymentDetailsEncrypted) {
     try {
       const decrypted = decryptPaymentDetails(row.paymentDetailsEncrypted, row.id);
       paymentSummary = maskPaymentSummary(decrypted);
-    } catch {}
+    } catch (err) {
+      console.error(`[getCard] Failed to decrypt payment details for card ${row.id} (••${row.lastDigits}):`, err instanceof Error ? err.message : String(err));
+      paymentDetailsCorrupted = true;
+    }
   }
   return {
     ...row,
     paymentSummary,
+    paymentDetailsCorrupted,
   };
 }
 

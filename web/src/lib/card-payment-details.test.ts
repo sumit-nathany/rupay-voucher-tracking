@@ -81,4 +81,23 @@ describe('card-payment-details crypto', () => {
       'Failed to decrypt card payment details',
     );
   });
+
+  it('decrypts seamlessly using fallback keyring when active key changes', () => {
+    const details: PaymentDetails = {
+      version: 1,
+      mode: 'full',
+      cardNumber: '6521509999995110',
+      cvv: '123',
+    };
+    // Encrypted with KEY
+    const cipher = encryptPaymentDetails(details, mappingId);
+
+    // Rotate primary key to a new key, putting KEY in ENCRYPTION_KEYRING
+    const newKey = randomBytes(32).toString('base64');
+    process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY = newKey;
+    process.env.ENCRYPTION_KEYRING = KEY;
+
+    const decrypted = decryptPaymentDetails(cipher, mappingId);
+    expect(decrypted).toEqual(details);
+  });
 });

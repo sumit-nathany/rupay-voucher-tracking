@@ -27,6 +27,8 @@ export interface CardRow {
     hasCvv: boolean;
     nameOnCard: string | null;
   } | null;
+  /** True when payment_details_encrypted exists in the DB but failed to decrypt (key mismatch / corruption). */
+  paymentDetailsCorrupted?: boolean;
 }
 export interface VariantOption {
   id: string;
