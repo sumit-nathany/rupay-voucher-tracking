@@ -9,10 +9,22 @@ import type { PortalAccountView } from '@/domain/automation';
 export const dynamic = 'force-dynamic';
 
 export default async function AccountsPage() {
-  const accounts = await listPortalAccountsAction();
+  let accounts: PortalAccountView[] = [];
+  let error: string | null = null;
+  try {
+    accounts = await listPortalAccountsAction();
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
+    console.error('Accounts page error:', err);
+  }
 
   return (
     <ContentStage className="max-w-3xl [.nav-unpinned_&]:max-w-4xl">
+      {error && (
+        <div className="p-4 mb-4 rounded-md bg-destructive/10 text-destructive">
+          Error loading accounts: {error}
+        </div>
+      )}
       <PageHeader
         eyebrow="Accounts"
         title="RuPay Accounts"
