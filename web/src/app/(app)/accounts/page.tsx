@@ -8,10 +8,24 @@ import type { PortalAccountView } from '@/domain/automation';
 
 export const dynamic = 'force-dynamic';
 
+import { listPortalAccountsAction } from '@/actions/automation';
+import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet';
+import { AccountFormSheet } from '@/components/accounts/account-form-sheet';
+import { ContentStage } from '@/components/layout/content-stage';
+import { EmptyState } from '@/components/layout/empty-state';
+import { PageHeader } from '@/components/layout/page-header';
+import type { PortalAccountView } from '@/domain/automation';
+import { getCtx } from '@/lib/session';
+
+export const dynamic = 'force-dynamic';
+
 export default async function AccountsPage() {
   let accounts: PortalAccountView[] = [];
   let error: string | null = null;
+  let ctxInfo: string | null = null;
   try {
+    const ctx = await getCtx();
+    ctxInfo = `userId: ${ctx.userId}, workspaceId: ${ctx.workspaceId}`;
     accounts = await listPortalAccountsAction();
   } catch (err) {
     error = err instanceof Error ? err.message : String(err);
@@ -20,6 +34,11 @@ export default async function AccountsPage() {
 
   return (
     <ContentStage className="max-w-3xl [.nav-unpinned_&]:max-w-4xl">
+      {ctxInfo && (
+        <div className="p-4 mb-4 rounded-md bg-primary/10 text-primary">
+          Debug: {ctxInfo}
+        </div>
+      )}
       {error && (
         <div className="p-4 mb-4 rounded-md bg-destructive/10 text-destructive">
           Error loading accounts: {error}
