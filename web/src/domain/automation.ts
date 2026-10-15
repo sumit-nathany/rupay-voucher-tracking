@@ -200,14 +200,12 @@ export async function saveAutomationSettings(
 // ── Portal Accounts ─────────────────────────────────────────────────────────
 
 export async function listPortalAccounts(ctx: Ctx): Promise<PortalAccountView[]> {
-  console.log('listPortalAccounts called for workspaceId:', ctx.workspaceId);
   const accounts = await ctx.db
     .select()
     .from(portalAccounts)
     .where(eq(portalAccounts.workspaceId, ctx.workspaceId))
     .orderBy(asc(portalAccounts.label));
 
-  console.log('listPortalAccounts raw count:', accounts.length);
   if (accounts.length === 0) return [];
 
   const mappings = await ctx.db
