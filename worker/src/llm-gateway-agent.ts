@@ -79,11 +79,8 @@ export async function handleContactDetailsIfPresent(
     return false;
   }
 
-  let phone = options?.phoneNumber?.replace(/^\+91/, '').replace(/\D/g, '') || '';
-  if (!phone || phone.length < 10) {
-    phone = '8792839087';
-  }
-  const email = options?.email || 'coolfriendamit0506@gmail.com';
+  const phone = options?.phoneNumber?.replace(/^\+91/, '').replace(/\D/g, '') || '';
+  const email = options?.email || '';
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const targets = getAllTargets(target);
@@ -102,12 +99,12 @@ export async function handleContactDetailsIfPresent(
           if (isCardOrOtpField) continue;
 
           const currentVal = await phoneInput.inputValue().catch(() => '');
-          if (!currentVal || currentVal.replace(/\D/g, '').length < 10) {
-            console.log(`[gateway] Detected Contact Details screen. Filling mobile number of Rupay account (${phone})...`);
+          if (phone && phone.length >= 10 && currentVal.replace(/\D/g, '') !== phone) {
+            console.log(`[gateway] Setting mobile number to account registered mobile (${phone})...`);
             await phoneInput.click().catch(() => {});
-            await humanType(phoneInput, phone, { minCharDelayMs: 60, maxCharDelayMs: 120 });
+            await humanType(phoneInput, phone, { clearFirst: true, minCharDelayMs: 30, maxCharDelayMs: 70 });
             await page.waitForTimeout(400);
-          } else {
+          } else if (currentVal) {
             console.log(`[gateway] Mobile number already populated (${currentVal}). Proceeding...`);
           }
 

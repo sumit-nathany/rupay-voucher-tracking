@@ -3,7 +3,7 @@ import { Page, Locator } from 'playwright';
 /**
  * Returns a promise that resolves after a randomized delay between minMs and maxMs.
  */
-export async function humanDelay(minMs: number = 800, maxMs: number = 2000): Promise<void> {
+export async function humanDelay(minMs: number = 200, maxMs: number = 600): Promise<void> {
   const delay = Math.floor(minMs + Math.random() * (maxMs - minMs));
   return new Promise((resolve) => setTimeout(resolve, delay));
 }
@@ -18,16 +18,16 @@ export async function humanHesitate(
   maxMs?: number,
 ): Promise<void> {
   let page: Page | undefined;
-  let min = 1200;
-  let max = 2800;
+  let min = 400;
+  let max = 900;
 
   if (typeof targetOrMin === 'object' && targetOrMin !== null && 'mouse' in targetOrMin) {
     page = targetOrMin as Page;
-    min = minOrMaxMs ?? 1200;
-    max = maxMs ?? 2800;
+    min = minOrMaxMs ?? 400;
+    max = maxMs ?? 900;
   } else {
-    min = (targetOrMin as number) ?? 1200;
-    max = minOrMaxMs ?? 2800;
+    min = (targetOrMin as number) ?? 400;
+    max = minOrMaxMs ?? 900;
   }
 
   if (page) {
@@ -36,7 +36,7 @@ export async function humanHesitate(
       const cur = cursorPositions.get(page) || { x: 450, y: 350 };
       const jitterX = Math.max(100, Math.min(1000, cur.x + (Math.random() - 0.5) * 90));
       const jitterY = Math.max(100, Math.min(650, cur.y + (Math.random() - 0.5) * 70));
-      await humanMoveMouse(page, jitterX, jitterY, 14);
+      await humanMoveMouse(page, jitterX, jitterY, 8);
     } catch {}
   }
 
@@ -160,7 +160,7 @@ export async function humanMoveMouse(
   page: Page,
   targetX: number,
   targetY: number,
-  steps: number = 20,
+  steps: number = 8,
 ): Promise<void> {
   await installVisualMouseCursor(page);
   const currentPos = cursorPositions.get(page) || { x: 300, y: 300 };
@@ -168,7 +168,7 @@ export async function humanMoveMouse(
 
   for (const pt of points) {
     await page.mouse.move(pt.x, pt.y);
-    await humanDelay(12, 26);
+    await humanDelay(4, 10);
   }
 
   cursorPositions.set(page, { x: targetX, y: targetY });
@@ -190,7 +190,7 @@ export async function humanClick(
   },
 ): Promise<void> {
   await locator.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
-  await humanDelay(200, 500);
+  await humanDelay(60, 150);
 
   const box = await locator.boundingBox();
   if (box) {
@@ -199,25 +199,25 @@ export async function humanClick(
     const targetX = box.x + box.width * (0.3 + Math.random() * 0.4);
     const targetY = box.y + box.height * (0.3 + Math.random() * 0.4);
 
-    await humanMoveMouse(page, targetX, targetY);
+    await humanMoveMouse(page, targetX, targetY, 8);
 
     if (options?.hesitateBeforeMs) {
-      await humanDelay(options.hesitateBeforeMs, options.hesitateBeforeMs + 400);
+      await humanDelay(Math.min(options.hesitateBeforeMs, 200), Math.min(options.hesitateBeforeMs + 80, 300));
     } else {
-      await humanDelay(150, 400);
+      await humanDelay(40, 100);
     }
 
     // Realistic click with click delay
     await page.mouse.click(targetX, targetY, {
-      delay: Math.floor(60 + Math.random() * 80),
+      delay: Math.floor(30 + Math.random() * 50),
     });
   } else {
     // Fallback if bounding box isn't available
     await locator.click({ timeout: 5000 });
   }
 
-  const postDelay = options?.pauseAfterMs ?? 600;
-  await humanDelay(postDelay, postDelay + 500);
+  const postDelay = options?.pauseAfterMs ? Math.min(options.pauseAfterMs, 300) : 150;
+  await humanDelay(postDelay, postDelay + 150);
 }
 
 /**
@@ -246,8 +246,8 @@ export async function humanType(
     await humanDelay(200, 400);
   }
 
-  const minDelay = options?.minCharDelayMs ?? 80;
-  const maxDelay = options?.maxCharDelayMs ?? 180;
+  const minDelay = options?.minCharDelayMs ?? 25;
+  const maxDelay = options?.maxCharDelayMs ?? 60;
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -258,11 +258,11 @@ export async function humanType(
 
     // Slight extra pause between words or punctuation
     if (char === ' ' || char === '@' || char === '.') {
-      charDelay += Math.floor(150 + Math.random() * 200);
+      charDelay += Math.floor(40 + Math.random() * 50);
     }
 
     await new Promise((resolve) => setTimeout(resolve, charDelay));
   }
 
-  await humanDelay(300, 700);
+  await humanDelay(100, 250);
 }

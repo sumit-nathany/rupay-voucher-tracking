@@ -211,7 +211,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
   const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
     headless: options?.headless ?? false,
-    slowMo: 60,
+    slowMo: 15,
     viewport: { width: 1366, height: 860 },
   });
 
@@ -245,6 +245,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const json = JSON.parse(text);
         const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
         const msg = inner?.message || json?.message;
+        const resData = inner?.response || json?.response;
+        if (resData && (resData.billing_tel || resData.mobile || resData.phone)) {
+          const detectedPhone = String(resData.billing_tel || resData.mobile || resData.phone).trim();
+          if (detectedPhone && detectedPhone.length >= 10 && !account.phoneNumber) {
+            console.log(`[portal] 📱 Auto-detected account phone number from portal transaction: ${detectedPhone}`);
+            account.phoneNumber = detectedPhone;
+            await db
+              .update(schema.portalAccounts)
+              .set({ phoneNumber: detectedPhone, updatedAt: new Date() })
+              .where(eq(schema.portalAccounts.id, account.id))
+              .catch(() => {});
+          }
+        }
         if (msg && isPortalCooldownMessage(msg)) {
           console.log('\n⚠️ Portal Cooldown / Limit Detected in API response:', msg);
           const parsed = parsePortalCooldown(msg);
@@ -540,8 +553,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
 
   const telegramChatId = settings?.telegramChatId || null;
-  const rupayAccountPhone = account.phoneNumber || settings?.whatsappPhoneNumber || '8792839087';
-  const targetPhoneNumber = rupayAccountPhone;
+  // Strictly use the portal account's own registered mobile number when available.
+  const portalAccountPhone = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
+  const targetPhoneNumber = portalAccountPhone || settings?.whatsappPhoneNumber || null;
+  console.log(`[gateway] Portal account mobile number for payment gateway contact: ${targetPhoneNumber || '(not configured, relying on prefill)'}`);
 
   // Inspect payment form elements (inputs, iframes)
   const formAnalysis = await activePaymentPage.evaluate(() => {
