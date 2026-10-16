@@ -1,18 +1,61 @@
-import { listPortalAccountsAction } from '@/actions/automation';
+import { listPortalAccountsAction, listPortalCardMappingsAction } from '@/actions/automation';
+import { listCards } from '@/actions/cards';
+import { listHolders } from '@/actions/holders';
 import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet';
 import { AccountFormSheet } from '@/components/accounts/account-form-sheet';
 import { ContentStage } from '@/components/layout/content-stage';
 import { EmptyState } from '@/components/layout/empty-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { ErrorPanel } from '@/components/dashboard/error-panel';
-import type { PortalAccountView } from '@/domain/automation';
+import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
+import type { CardOption } from '@/components/automation/mapping-dialogs';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AccountsPage() {
   let accounts: PortalAccountView[] = [];
+  let mappings: PortalCardMappingView[] = [];
+  let availableCards: CardOption[] = [];
+
   try {
-    accounts = await listPortalAccountsAction();
+    const [fetchedAccounts, fetchedMappings, rawCards, holders] = await Promise.all([
+      listPortalAccountsAction(),
+      listPortalCardMappingsAction(),
+      listCards(),
+      listHolders(),
+    ]);
+
+    accounts = fetchedAccounts;
+    mappings = fetchedMappings;
+
+    const holderMap = new Map(holders.map((h) => [h.id, h.name]));
+    const cardsWithMappingDetails = new Set(
+      mappings
+        .filter((m) => {
+          if (!m.paymentDetails) return false;
+          return m.paymentDetails.mode === 'saved_card'
+            ? m.paymentDetails.hasCvv
+            : Boolean(m.paymentDetails.maskedCardNumber && m.paymentDetails.hasCvv && m.paymentDetails.expirySummary);
+        })
+        .map((m) => m.cardId),
+    );
+
+    availableCards = rawCards.map((c) => {
+      const directValid = Boolean(
+        c.paymentSummary &&
+          (c.paymentSummary.mode === 'saved_card'
+            ? c.paymentSummary.hasCvv
+            : c.paymentSummary.maskedCardNumber && c.paymentSummary.hasCvv && c.paymentSummary.expirySummary),
+      );
+      const mappingValid = cardsWithMappingDetails.has(c.id);
+      return {
+        id: c.id,
+        name: c.displayName,
+        holderName: holderMap.get(c.holderId) ?? 'Unknown',
+        lastDigits: c.lastDigits,
+        hasPaymentDetails: directValid || mappingValid,
+      };
+    });
   } catch (err) {
     console.error('[AccountsPage]', err);
     return (
@@ -43,7 +86,12 @@ export default async function AccountsPage() {
         <ul className="grid gap-3 sm:grid-cols-2">
           {accounts.map((account: PortalAccountView) => (
             <li key={account.id}>
-              <AccountDetailSheet account={account} />
+              <AccountDetailSheet
+                account={account}
+                allAccounts={accounts}
+                mappings={mappings}
+                availableCards={availableCards}
+              />
             </li>
           ))}
         </ul>

@@ -58,6 +58,11 @@ export async function listPortalAccountsAction() {
   return auto.listPortalAccounts(ctx);
 }
 
+export async function listPortalCardMappingsAction(): Promise<auto.PortalCardMappingView[]> {
+  const ctx = await getCtx();
+  return auto.listPortalCardMappings(ctx);
+}
+
 const createAccountSchema = z.object({
   label: z.string().min(1, 'Label is required'),
   phoneNumber: z.string().optional().nullable(),
@@ -147,12 +152,14 @@ export async function savePortalCardMappingAction(input: z.infer<typeof saveMapp
   const parsed = saveMappingSchema.parse(input);
   await auto.savePortalCardMapping(ctx, parsed);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 export async function deletePortalCardMappingAction(input: { id: string }) {
   const ctx = await getCtx();
   await auto.deletePortalCardMapping(ctx, input.id);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 const setCardPortalAccountsSchema = z.object({
@@ -165,6 +172,7 @@ export async function setCardPortalAccountsAction(input: z.infer<typeof setCardP
   const parsed = setCardPortalAccountsSchema.parse(input);
   await auto.setCardPortalAccounts(ctx, parsed);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 const ruleSchema = z.object({
