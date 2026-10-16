@@ -227,34 +227,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const userDataDir = getAccountProfilePath(account.id);
   console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
 
-  // Detect NopeCHA extension
-  const extensionPath = process.cwd().endsWith('worker')
-    ? path.resolve(process.cwd(), 'extensions/nopecha')
-    : path.resolve(process.cwd(), 'worker/extensions/nopecha');
-  const hasExtension = fs.existsSync(extensionPath);
-
-  const launchArgs: string[] = [];
-  if (hasExtension) {
-    console.log(`[runner] 🧩 Loading CAPTCHA extension from: ${extensionPath}`);
-    try {
-      const manifestPath = path.join(extensionPath, 'manifest.json');
-      if (fs.existsSync(manifestPath)) {
-        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-        const nopeKey = process.env.NOPECHA_API_KEY || '';
-        if (manifest.nopecha && manifest.nopecha.key !== nopeKey) {
-          manifest.nopecha.key = nopeKey;
-          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
-        }
-      }
-    } catch {}
-    launchArgs.push(`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`);
-  }
-
   const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
     headless: options?.headless ?? false,
     slowMo: 15,
     viewport: { width: 1366, height: 860 },
-    args: launchArgs,
   });
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();

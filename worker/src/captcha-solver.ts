@@ -109,7 +109,7 @@ export async function solveWithNopeCHA(
 ): Promise<string | null> {
   console.log('[captcha] Requesting NopeCHA token for sitekey:', siteKey);
   try {
-    const res = await fetch('https://api.nopecha.com/token/', {
+    const res = await fetch('https://api.nopecha.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -120,11 +120,26 @@ export async function solveWithNopeCHA(
       }),
     });
     const data = (await res.json()) as { data?: string; error?: number; message?: string };
-    if (data.data) {
-      console.log('[captcha] NopeCHA solved successfully!');
-      return data.data;
+    if (!data.data) {
+      console.warn('[captcha] NopeCHA job submission error:', data.message || data.error);
+      return null;
     }
-    console.warn('[captcha] NopeCHA returned:', data.message || data.error);
+
+    const jobId = data.data;
+    console.log(`[captcha] NopeCHA task submitted (ID: ${jobId}). Polling for solution...`);
+
+    // Poll every 2s for up to 60s
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const pollRes = await fetch(
+        `https://api.nopecha.com/token?key=${encodeURIComponent(apiKey)}&id=${encodeURIComponent(jobId)}`,
+      );
+      const pollData = (await pollRes.json()) as { data?: string; error?: number; message?: string };
+      if (pollData.data && typeof pollData.data === 'string' && pollData.data.length > 30) {
+        console.log('[captcha] NopeCHA solved successfully!');
+        return pollData.data;
+      }
+    }
   } catch (err) {
     console.error('[captcha] NopeCHA network error:', err);
   }
