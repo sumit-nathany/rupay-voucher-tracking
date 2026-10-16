@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -7,6 +8,7 @@ import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
+import { autoSolveRecaptcha } from './captcha-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
@@ -224,10 +226,35 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');
   const userDataDir = getAccountProfilePath(account.id);
   console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
+
+  // Detect NopeCHA extension
+  const extensionPath = process.cwd().endsWith('worker')
+    ? path.resolve(process.cwd(), 'extensions/nopecha')
+    : path.resolve(process.cwd(), 'worker/extensions/nopecha');
+  const hasExtension = fs.existsSync(extensionPath);
+
+  const launchArgs: string[] = [];
+  if (hasExtension) {
+    console.log(`[runner] 🧩 Loading CAPTCHA extension from: ${extensionPath}`);
+    try {
+      const manifestPath = path.join(extensionPath, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+        const nopeKey = process.env.NOPECHA_API_KEY || '';
+        if (manifest.nopecha && manifest.nopecha.key !== nopeKey) {
+          manifest.nopecha.key = nopeKey;
+          fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+        }
+      }
+    } catch {}
+    launchArgs.push(`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`);
+  }
+
   const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
     headless: options?.headless ?? false,
     slowMo: 15,
     viewport: { width: 1366, height: 860 },
+    args: launchArgs,
   });
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
@@ -315,9 +342,11 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
     console.log('\n======================================================');
     console.log('🧩 reCAPTCHA verification required on login screen.');
-    console.log('👉 Please complete the CAPTCHA in the open browser.');
-    console.log('   The automation is standing by and will automatically proceed once completed.');
+    console.log('🤖 Initiating unattended automated CAPTCHA solver...');
     console.log('======================================================\n');
+
+    let autoSolveInitiated = false;
+    let clickedSignIn = false;
 
     for (let sec = 0; sec < 300; sec++) {
       await page.waitForTimeout(1000);
@@ -325,16 +354,31 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
       if (jwtCookie) break;
 
+      // Start autoSolveRecaptcha after brief pause once credentials are input
+      if (!autoSolveInitiated && sec >= 1) {
+        autoSolveInitiated = true;
+        autoSolveRecaptcha(page)
+          .then((success) => {
+            if (success) {
+              console.log('[captcha] ✓ Auto-solver finished successfully!');
+            }
+          })
+          .catch((err) => {
+            console.warn('[captcha] Auto-solver error:', err);
+          });
+      }
+
       const captchaSolved = await page.evaluate(() => {
         const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
         return Boolean(textarea && textarea.value.length > 0);
       });
 
-      if (captchaSolved) {
+      if (captchaSolved && !clickedSignIn) {
         try {
           const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
           if (await submitButton.isVisible()) {
-            console.log('[captcha] CAPTCHA completed! Clicking Sign In...');
+            clickedSignIn = true;
+            console.log('[captcha] ✓ CAPTCHA solved! Automatically clicking Sign In...');
             await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
             await page.waitForTimeout(2000);
           }

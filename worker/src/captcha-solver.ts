@@ -100,13 +100,45 @@ export async function solveWithCapSolver(
 }
 
 /**
+ * Solves reCAPTCHA v2 using NopeCHA Token API.
+ */
+export async function solveWithNopeCHA(
+  apiKey: string,
+  siteKey: string,
+  pageUrl: string,
+): Promise<string | null> {
+  console.log('[captcha] Requesting NopeCHA token for sitekey:', siteKey);
+  try {
+    const res = await fetch('https://api.nopecha.com/token/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: apiKey,
+        type: 'recaptcha2',
+        sitekey: siteKey,
+        url: pageUrl,
+      }),
+    });
+    const data = (await res.json()) as { data?: string; error?: number; message?: string };
+    if (data.data) {
+      console.log('[captcha] NopeCHA solved successfully!');
+      return data.data;
+    }
+    console.warn('[captcha] NopeCHA returned:', data.message || data.error);
+  } catch (err) {
+    console.error('[captcha] NopeCHA network error:', err);
+  }
+  return null;
+}
+
+/**
  * Transcribes an audio buffer using Gemini multimodal API.
  */
 export async function transcribeAudioWithGemini(
   audioBuffer: Buffer,
   apiKey: string,
 ): Promise<string | null> {
-  const models = ['gemini-flash-latest', 'gemini-3.5-transcribe', 'gemini-3.8-flash'];
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
   const base64Audio = audioBuffer.toString('base64');
 
   for (const model of models) {
@@ -230,17 +262,17 @@ export async function solveRecaptchaViaAudio(
     await humanDelay(1500, 2500);
 
     // Check if Google blocked audio queries ("Your computer or network may be sending automated queries")
-    const blockedMsg = await bframe.locator('.rc-d mosaic-warning, .rc-audiochallenge-error-message').first().textContent().catch(() => '');
+    const blockedMsg = await bframe.locator('.rc-dostitle, .rc-audiochallenge-error-message, div:has-text("automated queries")').first().textContent().catch(() => '');
     if (blockedMsg?.includes('automated queries')) {
       console.warn('[captcha] Google blocked audio challenge:', blockedMsg.trim());
       return false;
     }
 
     // 3. Obtain audio download link
-    const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link').first();
+    const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link, a[href*="audio.mp3"]').first();
     let audioUrl = await downloadLink.getAttribute('href').catch(() => null);
     if (!audioUrl) {
-      const audioElement = bframe.locator('audio#player, audio[src]').first();
+      const audioElement = bframe.locator('audio#player, audio[src], source[src]').first();
       audioUrl = await audioElement.getAttribute('src').catch(() => null);
     }
 
@@ -250,8 +282,8 @@ export async function solveRecaptchaViaAudio(
     }
 
     console.log('[captcha] Downloading audio challenge file...');
-    const audioRes = await fetch(audioUrl);
-    const audioBuf = Buffer.from(await audioRes.arrayBuffer());
+    const audioRes = await page.request.get(audioUrl);
+    const audioBuf = await audioRes.body();
 
     // 4. Transcribe audio
     const transcription = await transcribeAudioWithGemini(audioBuf, geminiApiKey);
@@ -341,7 +373,18 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 
   const pageUrl = page.url();
 
-  // 3. Strategy A: 2Captcha API
+  // 3. Strategy 1: NopeCHA Token API
+  const nopechaKey = process.env.NOPECHA_API_KEY;
+  if (nopechaKey && siteKey) {
+    console.log('[captcha] Using NopeCHA Token service...');
+    const token = await solveWithNopeCHA(nopechaKey, siteKey, pageUrl);
+    if (token) {
+      await injectRecaptchaToken(page, token);
+      return true;
+    }
+  }
+
+  // 4. Strategy 2: 2Captcha API
   const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY;
   if (twoCaptchaKey && siteKey) {
     console.log('[captcha] Using 2Captcha service...');
