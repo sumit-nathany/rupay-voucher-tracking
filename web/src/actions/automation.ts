@@ -320,3 +320,14 @@ export async function reorderQueueAction(input: z.infer<typeof reorderQueueSchem
   revalidatePath('/automation');
 }
 
+const moveQueueItemToTopSchema = z.object({
+  instanceId: z.string().uuid(),
+});
+
+export async function moveQueueItemToTopAction(input: z.infer<typeof moveQueueItemToTopSchema>) {
+  const ctx = await getCtx();
+  const parsed = moveQueueItemToTopSchema.parse(input);
+  await queueDomain.moveQueueItemToTop(ctx, parsed.instanceId);
+  revalidatePath('/automation');
+}
+

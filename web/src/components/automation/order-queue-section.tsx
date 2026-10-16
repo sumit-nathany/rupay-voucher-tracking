@@ -10,6 +10,8 @@ import {
   RefreshCw,
   ArrowUp,
   ArrowDown,
+  ArrowUpToLine,
+  Filter,
   KeyRound,
   CheckCircle2,
   ChevronDown,
@@ -30,6 +32,7 @@ import {
   populateAndSortQueueAction,
   updateQueueItemAction,
   reorderQueueAction,
+  moveQueueItemToTopAction,
   listOrderingQueueAction,
 } from '@/actions/automation';
 
@@ -85,10 +88,8 @@ export function OrderQueueSection({
   const handleAutoSort = (strategy: 'nearest_expiring' | 'highest_value') => {
     startTransition(async () => {
       try {
-        const filter =
-          selectedAccountId !== 'all' ? { portalAccountId: selectedAccountId } : undefined;
-
-        await populateAndSortQueueAction({ strategy, filter });
+        // Auto-sort operates on the global queue so rank ordering remains clean
+        await populateAndSortQueueAction({ strategy });
         const fresh = await listOrderingQueueAction();
         setItems(fresh);
       } catch (err) {
@@ -97,28 +98,54 @@ export function OrderQueueSection({
     });
   };
 
-  const handleMove = (instanceId: string, direction: 'up' | 'down') => {
-    const idx = displayedItems.findIndex((i) => i.instanceId === instanceId);
-    if (idx === -1) return;
+  const handleMoveToTop = (instanceId: string) => {
+    const target = items.find((i) => i.instanceId === instanceId);
+    if (!target || target.position === 1) return;
 
-    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= displayedItems.length) return;
+    // Optimistically promote target to index 0 of global list
+    const others = items.filter((i) => i.instanceId !== instanceId);
+    const nextAll = [target, ...others].map((item, i) => ({
+      ...item,
+      position: i + 1,
+    }));
+
+    setItems(nextAll);
+
+    startTransition(async () => {
+      try {
+        await moveQueueItemToTopAction({ instanceId });
+      } catch (err) {
+        console.error('Failed to move item to top:', err);
+        setItems(initialQueue);
+      }
+    });
+  };
+
+  const handleMove = (instanceId: string, direction: 'up' | 'down') => {
+    const dispIdx = displayedItems.findIndex((i) => i.instanceId === instanceId);
+    if (dispIdx === -1) return;
+
+    const targetDispIdx = direction === 'up' ? dispIdx - 1 : dispIdx + 1;
+    if (targetDispIdx < 0 || targetDispIdx >= displayedItems.length) return;
 
     // Expand visibleCount if moving an item down past current visible threshold so it stays in view
-    if (targetIdx >= visibleCount) {
-      setVisibleCount(targetIdx + 1);
+    if (targetDispIdx >= visibleCount) {
+      setVisibleCount(targetDispIdx + 1);
     }
 
-    // Optimistically reorder displayed items
-    const reorderedDisplayed = [...displayedItems];
-    const temp = reorderedDisplayed[idx];
-    reorderedDisplayed[idx] = reorderedDisplayed[targetIdx];
-    reorderedDisplayed[targetIdx] = temp;
+    const currentItem = displayedItems[dispIdx];
+    const targetItem = displayedItems[targetDispIdx];
 
-    // Build the updated global items array
-    const displayedIdSet = new Set(reorderedDisplayed.map((d) => d.instanceId));
-    const nonDisplayed = items.filter((i) => !displayedIdSet.has(i.instanceId));
-    const nextAll = [...reorderedDisplayed, ...nonDisplayed].map((item, i) => ({
+    // Reorder within the full global array
+    const globalWithoutCurrent = items.filter((i) => i.instanceId !== currentItem.instanceId);
+    const targetGlobalIdx = globalWithoutCurrent.findIndex((i) => i.instanceId === targetItem.instanceId);
+    if (targetGlobalIdx === -1) return;
+
+    const insertIdx = direction === 'up' ? targetGlobalIdx : targetGlobalIdx + 1;
+    const nextAllRaw = [...globalWithoutCurrent];
+    nextAllRaw.splice(insertIdx, 0, currentItem);
+
+    const nextAll = nextAllRaw.map((item, i) => ({
       ...item,
       position: i + 1,
     }));
@@ -198,20 +225,21 @@ export function OrderQueueSection({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
-          {/* Scope: All / per RuPay account */}
-          <div className="w-56">
+          {/* Account Filter */}
+          <div className="flex items-center gap-1.5">
             <Select
               value={selectedAccountId}
               onValueChange={setSelectedAccountId}
               disabled={isPending}
             >
-              <SelectTrigger className="h-9 text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80">
-                <KeyRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <SelectValue placeholder="Scope..." />
+              <SelectTrigger className="h-9 min-w-[210px] sm:min-w-[250px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+                <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground text-xs font-normal">Account:</span>
+                <SelectValue placeholder="All Accounts" />
               </SelectTrigger>
               <SelectContent className="rounded-xl">
-                <SelectItem value="all" className="text-xs sm:text-sm">
-                  All Accounts ({items.length} vouchers)
+                <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+                  All Accounts ({items.length})
                 </SelectItem>
                 {accounts.map((acc) => {
                   const count = items.filter(
@@ -227,16 +255,27 @@ export function OrderQueueSection({
                 })}
               </SelectContent>
             </Select>
+            {selectedAccountId !== 'all' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedAccountId('all')}
+                className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                title="Reset account filter to show all accounts"
+              >
+                Reset
+              </Button>
+            )}
           </div>
 
           {/* Quick Auto-Sort */}
-          <div className="w-52">
+          <div className="w-48 sm:w-52">
             <Select
               defaultValue="nearest_expiring"
               onValueChange={(v) => handleAutoSort(v as 'nearest_expiring' | 'highest_value')}
               disabled={isPending}
             >
-              <SelectTrigger className="h-9 text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80">
+              <SelectTrigger className="h-9 text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
                 <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
                 <SelectValue placeholder="Auto-Sort..." />
               </SelectTrigger>
@@ -286,8 +325,9 @@ export function OrderQueueSection({
       ) : (
         <div className="space-y-3">
           {visibleItems.map((item, index) => {
-            const isFirst = index === 0;
-            const isLast = index === displayedItems.length - 1;
+            const isFirstInDisplay = index === 0;
+            const isLastInDisplay = index === displayedItems.length - 1;
+            const isGlobalFirst = item.position === 1;
             const isUrgent = item.daysRemaining <= 7;
             const hasOptions = item.availableOptions.length > 0;
             const optionNeeded = hasOptions && !item.chosenOptionId;
@@ -297,7 +337,7 @@ export function OrderQueueSection({
                 key={item.instanceId}
                 className={`relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border transition-all ${
                   item.enabled
-                    ? isFirst
+                    ? isGlobalFirst
                       ? 'bg-primary/5 border-primary/30 shadow-xs ring-1 ring-primary/20'
                       : 'bg-card border-border/80 hover:border-border shadow-xs'
                     : 'bg-muted/30 border-dashed border-border/60 opacity-60'
@@ -305,15 +345,25 @@ export function OrderQueueSection({
               >
                 {/* Left: Reorder Controls + Rank + Info */}
                 <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  {/* Position Badge & Reorder Arrows */}
-                  <div className="flex flex-col sm:flex-row items-center gap-1 shrink-0">
-                    <div className="flex flex-col items-center justify-center">
+                  {/* Position Badge & Reorder Controls */}
+                  <div className="flex flex-col sm:flex-row items-center gap-1.5 shrink-0">
+                    <div className="flex items-center sm:flex-col justify-center gap-0.5">
                       <Button
                         variant="ghost"
                         size="icon"
-                        disabled={isFirst || isPending}
+                        disabled={isGlobalFirst || isPending}
+                        onClick={() => handleMoveToTop(item.instanceId)}
+                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+                        title="Move to Top of Global Queue (Rank #1)"
+                      >
+                        <ArrowUpToLine className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={isFirstInDisplay || isPending}
                         onClick={() => handleMove(item.instanceId, 'up')}
-                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed"
+                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                         title="Move Up in Queue"
                       >
                         <ArrowUp className="h-3.5 w-3.5" />
@@ -321,9 +371,9 @@ export function OrderQueueSection({
                       <Button
                         variant="ghost"
                         size="icon"
-                        disabled={isLast || isPending}
+                        disabled={isLastInDisplay || isPending}
                         onClick={() => handleMove(item.instanceId, 'down')}
-                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed"
+                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
                         title="Move Down in Queue"
                       >
                         <ArrowDown className="h-3.5 w-3.5" />
@@ -331,13 +381,14 @@ export function OrderQueueSection({
                     </div>
 
                     <div
-                      className={`flex items-center justify-center h-8 w-8 rounded-xl font-bold text-xs sm:text-sm ${
-                        isFirst && item.enabled
+                      className={`flex items-center justify-center h-8 px-2 min-w-8 rounded-xl font-bold text-xs sm:text-sm tracking-tight ${
+                        isGlobalFirst && item.enabled
                           ? 'bg-primary text-primary-foreground shadow-xs'
                           : 'bg-muted text-muted-foreground'
                       }`}
+                      title={`Global Queue Position #${item.position}`}
                     >
-                      #{index + 1}
+                      #{item.position}
                     </div>
                   </div>
 
@@ -359,21 +410,58 @@ export function OrderQueueSection({
 
                     {/* Metadata: one quiet line */}
                     <div className="flex items-center gap-x-3 gap-y-1 text-xs text-muted-foreground flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <CreditCard className="h-3 w-3" />
+                      <span className="flex items-center gap-1 font-medium text-foreground/80">
+                        <CreditCard className="h-3 w-3 text-muted-foreground" />
                         <span>{item.cardName} ••{item.cardLast4} · {item.holderName}</span>
                       </span>
 
-                      {item.portalAccountLabel ? (
-                        <span className="flex items-center gap-1">
-                          <KeyRound className="h-3 w-3" />
-                          <span>{item.portalAccountLabel}</span>
-                        </span>
-                      ) : (
-                        <span className="text-amber-600 dark:text-amber-400 font-medium">
-                          Not mapped to a RuPay account
-                        </span>
-                      )}
+                      {/* Portal Account Indicator */}
+                      {(() => {
+                        if (selectedAccountId !== 'all') {
+                          const matched = item.portalAccounts.find((a) => a.id === selectedAccountId);
+                          const accountLabel = matched?.label ?? accounts.find((a) => a.id === selectedAccountId)?.label ?? item.portalAccountLabel;
+                          const otherCount = item.portalAccounts.length - 1;
+                          return (
+                            <span
+                              className="flex items-center gap-1 text-primary dark:text-primary font-medium"
+                              title={item.portalAccounts.length > 1 ? `Mapped to: ${item.portalAccounts.map((a) => a.label).join(', ')}` : undefined}
+                            >
+                              <KeyRound className="h-3 w-3 shrink-0" />
+                              <span>{accountLabel}</span>
+                              {otherCount > 0 && (
+                                <span className="text-[10px] text-muted-foreground font-normal">
+                                  (+{otherCount} other)
+                                </span>
+                              )}
+                            </span>
+                          );
+                        }
+
+                        if (item.portalAccounts.length > 0) {
+                          const primaryLabel = item.portalAccountLabel ?? item.portalAccounts[0]?.label;
+                          const otherCount = item.portalAccounts.length - 1;
+                          return (
+                            <span
+                              className="flex items-center gap-1"
+                              title={item.portalAccounts.length > 1 ? `Mapped to: ${item.portalAccounts.map((a) => a.label).join(', ')}` : undefined}
+                            >
+                              <KeyRound className="h-3 w-3 shrink-0" />
+                              <span>{primaryLabel}</span>
+                              {otherCount > 0 && (
+                                <span className="text-[10px] text-muted-foreground font-medium">
+                                  (+{otherCount} more)
+                                </span>
+                              )}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">
+                            Not mapped to a RuPay account
+                          </span>
+                        );
+                      })()}
 
                       <span
                         className={`flex items-center gap-1 ${

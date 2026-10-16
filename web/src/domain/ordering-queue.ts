@@ -262,6 +262,12 @@ async function fetchRawQueueCandidates(
     const cashVal = row.cashValue ? parseFloat(row.cashValue) : 0;
     const daysRemaining = computeDaysRemaining(row.orderDeadline, ctx.today);
 
+    // If filter specified a portalAccountId, ensure that account is picked as primary
+    const matchedAccount = filter?.portalAccountId
+      ? mappedAccounts.find((a) => a.id === filter.portalAccountId)
+      : null;
+    const primaryAccount = matchedAccount ?? mappedAccounts[0];
+
     candidates.push({
       hasStoredPosition: row.queuePosition !== null && row.queuePosition !== undefined,
       item: {
@@ -271,8 +277,8 @@ async function fetchRawQueueCandidates(
         cardName: row.cardDisplayName,
         cardLast4: row.cardLastDigits,
         holderName: row.holderName,
-        portalAccountId: mappedAccounts[0]?.id ?? null,
-        portalAccountLabel: mappedAccounts[0]?.label ?? null,
+        portalAccountId: primaryAccount?.id ?? null,
+        portalAccountLabel: primaryAccount?.label ?? null,
         portalAccounts: mappedAccounts,
         benefitType,
         exactBenefit,
@@ -425,12 +431,12 @@ export async function populateAndSortQueue(
   strategy: QueueSortStrategy = 'nearest_expiring',
   filter?: QueueFilter,
 ): Promise<QueueItemView[]> {
-  // Sync first to ensure all eligible instances are present
+  // Always sort the full global queue so global positions 1..N remain contiguous and valid
   await syncGlobalOrderingQueue(ctx);
-  const current = await listOrderingQueue(ctx, filter);
-  if (current.length === 0) return [];
+  const all = await listOrderingQueue(ctx);
+  if (all.length === 0) return [];
 
-  current.sort((a, b) => {
+  all.sort((a, b) => {
     if (strategy === 'nearest_expiring') {
       if (a.orderDeadline !== b.orderDeadline) {
         return a.orderDeadline.localeCompare(b.orderDeadline);
@@ -449,9 +455,9 @@ export async function populateAndSortQueue(
     return a.instanceId.localeCompare(b.instanceId);
   });
 
-  // Persist sequential positions in ordering_queue_items
-  for (let idx = 0; idx < current.length; idx++) {
-    const item = current[idx];
+  // Persist sequential positions in ordering_queue_items for all items in workspace
+  for (let idx = 0; idx < all.length; idx++) {
+    const item = all[idx];
     const newPos = idx + 1;
     item.position = newPos;
 
@@ -474,7 +480,20 @@ export async function populateAndSortQueue(
       });
   }
 
-  return current;
+  if (!filter || (!filter.cardId && !filter.portalAccountId)) {
+    return all;
+  }
+
+  return all.filter((i) => {
+    if (filter.cardId && i.cardId !== filter.cardId) return false;
+    if (filter.portalAccountId) {
+      const matches =
+        i.portalAccountId === filter.portalAccountId ||
+        i.portalAccounts.some((a) => a.id === filter.portalAccountId);
+      if (!matches) return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -577,5 +596,25 @@ export async function moveQueueItem(
   nextIds[targetIndex] = temp;
 
   await reorderQueue(ctx, nextIds);
+  return listOrderingQueue(ctx);
+}
+
+/**
+ * Moves an item directly to the top (Position #1) in the Global Order Queue.
+ */
+export async function moveQueueItemToTop(
+  ctx: Ctx,
+  instanceId: string,
+): Promise<QueueItemView[]> {
+  const all = await listOrderingQueue(ctx);
+  const target = all.find((i) => i.instanceId === instanceId);
+  if (!target || target.position === 1) return all;
+
+  const others = all.filter((i) => i.instanceId !== instanceId);
+  const reordered = [target, ...others];
+  await reorderQueue(
+    ctx,
+    reordered.map((i) => i.instanceId),
+  );
   return listOrderingQueue(ctx);
 }

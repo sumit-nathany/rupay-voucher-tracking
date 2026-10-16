@@ -8,6 +8,7 @@ import {
   populateAndSortQueue,
   updateQueueItem,
   moveQueueItem,
+  moveQueueItemToTop,
 } from './ordering-queue';
 
 describe('ordering-queue domain', () => {
@@ -262,6 +263,21 @@ describe('ordering-queue domain', () => {
     const afterDown = await moveQueueItem(ctxA, swiggyItem.instanceId, 'down');
     expect(afterDown[0].benefitProvider).toBe('Cult.fit');
     expect(afterDown[1].benefitProvider).toBe('Swiggy');
+  });
+
+  it('allows moving any item to top of the global queue', async () => {
+    // Current order: Cult.fit (1), Swiggy (2), Uber (3)
+    const uberItem = (await listOrderingQueue(ctxA)).find((q) => q.benefitProvider === 'Uber')!;
+    expect(uberItem.position).toBe(3);
+
+    // Promote Uber to Top
+    const afterTop = await moveQueueItemToTop(ctxA, uberItem.instanceId);
+    expect(afterTop[0].benefitProvider).toBe('Uber');
+    expect(afterTop[0].position).toBe(1);
+    expect(afterTop[1].benefitProvider).toBe('Cult.fit');
+    expect(afterTop[1].position).toBe(2);
+    expect(afterTop[2].benefitProvider).toBe('Swiggy');
+    expect(afterTop[2].position).toBe(3);
   });
 
   it('allows toggling enabled on queue items', async () => {
