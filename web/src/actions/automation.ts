@@ -73,6 +73,7 @@ export async function createPortalAccountAction(input: z.infer<typeof createAcco
   const parsed = createAccountSchema.parse(input);
   const result = await auto.createPortalAccount(ctx, parsed);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
   return result;
 }
 
@@ -94,6 +95,7 @@ export async function updatePortalAccountAction(input: z.infer<typeof updateAcco
   const parsed = updateAccountSchema.parse(input);
   const result = await auto.updatePortalAccount(ctx, parsed);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
   return result;
 }
 
@@ -101,18 +103,21 @@ export async function pausePortalAccountAction(input: { id: string }) {
   const ctx = await getCtx();
   await auto.pausePortalAccount(ctx, input.id);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 export async function resumePortalAccountAction(input: { id: string }) {
   const ctx = await getCtx();
   await auto.resumePortalAccount(ctx, input.id);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 export async function deletePortalAccountAction(input: { id: string }) {
   const ctx = await getCtx();
   await auto.deletePortalAccount(ctx, input.id);
   revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 const saveMappingSchema = z.object({

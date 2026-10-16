@@ -24,7 +24,7 @@ function AccountFormBody({
   account?: AccountRow;
   close: () => void;
 }) {
-   const { run, pending, error, setError } = useRunAction();
+   const { run, pending, error } = useRunAction();
   const [label, setLabel] = React.useState(account?.label ?? '');
   const [phoneNumber, setPhoneNumber] = React.useState(account?.phoneNumber ?? '');
   const [loginId, setLoginId] = React.useState(account ? '' : ''); // empty when creating, but we don't show existing loginId for security
@@ -52,13 +52,13 @@ function AccountFormBody({
               label: label || undefined,
               phoneNumber: phoneNumber || null,
               credentials:
-                loginId || password || pin
+                loginId.trim() && password.trim()
                   ? {
-                      loginId,
-                      password,
-                      extra: pin ? { pin } : undefined,
+                      loginId: loginId.trim(),
+                      password: password.trim(),
+                      extra: pin.trim() ? { pin: pin.trim() } : undefined,
                     }
-                  : undefined, // only update if at least one field is filled
+                  : undefined,
             }),
       isCreate
         ? 'Could not create account. Check the label is unique and the credentials are valid.'
