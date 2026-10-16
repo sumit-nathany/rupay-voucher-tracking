@@ -14,6 +14,7 @@ import {
   orderingRules,
   orderingQueueItems,
   portalCardMappings,
+  portalAccounts,
 } from '@/db/schema';
 import type { Database, Ctx } from '@/lib/context';
 import {
@@ -30,6 +31,7 @@ import {
   setCardPortalAccounts,
   createOrderingRule,
   findCandidatesForAccount,
+  findCandidateFromGlobalQueue,
 } from './automation';
 import { encryptPaymentDetails } from '@/lib/card-payment-details';
 
@@ -548,5 +550,150 @@ describe('automation domain', () => {
     // Should NOT nominate because card has no payment details
     const cand = await findCandidatesForAccount(db, acc.id, today);
     expect(cand).toBeNull();
+  });
+
+  it('nominates candidates from Global Order Queue across accounts, respecting re-ordering and cooldowns', async () => {
+    // 1. Setup workspace with automation enabled
+    await saveAutomationSettings(ctx, { enabled: true });
+
+    // 2. Create Account 1 and Account 2 (Account 1 created first)
+    const acc1 = await createPortalAccount(ctx, {
+      label: 'Account 1',
+      credentials: { loginId: 'acc1@test.com', password: 'password1' },
+    });
+    const acc2 = await createPortalAccount(ctx, {
+      label: 'Account 2',
+      credentials: { loginId: 'acc2@test.com', password: 'password2' },
+    });
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'John Doe' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'HDFC RuPay', bankName: 'HDFC' }).returning();
+
+    // 3. Card 1 mapped to Account 1
+    const card1Id = crypto.randomUUID();
+    const [card1] = await db.insert(cards).values({
+      id: card1Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 1',
+      lastDigits: '1111',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '111' }, card1Id),
+    }).returning();
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc1.id,
+      cardId: card1.id,
+      portalCardId: '101',
+      portalCardbinId: '201',
+    });
+
+    // 4. Card 2 mapped to Account 2
+    const card2Id = crypto.randomUUID();
+    const [card2] = await db.insert(cards).values({
+      id: card2Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 2',
+      lastDigits: '2222',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '222' }, card2Id),
+    }).returning();
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc2.id,
+      cardId: card2.id,
+      portalCardId: '102',
+      portalCardbinId: '202',
+    });
+
+    // 5. Create benefits and instances
+    const [b1] = await db.insert(benefits).values({ bankCardTypeId: cardType.id, benefitType: 'OTT' }).returning();
+    const [v1] = await db.insert(benefitCatalogVersions).values({
+      benefitId: b1.id,
+      benefitType: 'OTT',
+      benefitProvider: 'Prime Video',
+      exactBenefit: 'Amazon Prime 12M',
+      defaultCashValue: '1499.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-01-01',
+      frequency: 'Annual',
+    }).returning();
+    const [inst1] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card1.id,
+      bankCardTypeId: cardType.id,
+      benefitId: b1.id,
+      generatedFromVersion: v1.id,
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      periodLabel: '2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '1499.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    const [b2] = await db.insert(benefits).values({ bankCardTypeId: cardType.id, benefitType: 'Music' }).returning();
+    const [v2] = await db.insert(benefitCatalogVersions).values({
+      benefitId: b2.id,
+      benefitType: 'Music',
+      benefitProvider: 'Spotify',
+      exactBenefit: 'Spotify Premium 12M',
+      defaultCashValue: '999.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-01-01',
+      frequency: 'Annual',
+    }).returning();
+    const [inst2] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card2.id,
+      bankCardTypeId: cardType.id,
+      benefitId: b2.id,
+      generatedFromVersion: v2.id,
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      periodLabel: '2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '999.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    // 6. Set explicit queue positions:
+    // Position 1: inst2 (Card 2 on Account 2)
+    // Position 2: inst1 (Card 1 on Account 1)
+    await db.insert(orderingQueueItems).values([
+      { workspaceId, instanceId: inst2.id, position: 1, enabled: true },
+      { workspaceId, instanceId: inst1.id, position: 2, enabled: true },
+    ]);
+
+    // Test A: Both accounts are eligible.
+    // Must pick Position 1 (inst2) on Account 2, despite Account 1 being created first in DB!
+    const nomA = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    expect(nomA).not.toBeNull();
+    expect(nomA?.candidate.instanceId).toBe(inst2.id);
+    expect(nomA?.account.id).toBe(acc2.id);
+    expect(nomA?.candidate.rulePriority).toBe(1);
+
+    // Test B: Account 2 is placed on 24h portal cooldown
+    const tomorrow = new Date(Date.now() + 20 * 60 * 60 * 1000);
+    await db.update(portalAccounts).set({ cooldownUntil: tomorrow }).where(eq(portalAccounts.id, acc2.id));
+
+    // Must seamlessly fall through to Position 2 (inst1 on Account 1)!
+    const nomB = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    expect(nomB).not.toBeNull();
+    expect(nomB?.candidate.instanceId).toBe(inst1.id);
+    expect(nomB?.account.id).toBe(acc1.id);
+    expect(nomB?.candidate.rulePriority).toBe(2);
+
+    // Test C: Clear Account 2 cooldown, but user re-orders queue:
+    // Move inst1 (Account 1) to Position 1, and inst2 (Account 2) to Position 2
+    await db.update(portalAccounts).set({ cooldownUntil: null }).where(eq(portalAccounts.id, acc2.id));
+    await db.update(orderingQueueItems).set({ position: 1 }).where(eq(orderingQueueItems.instanceId, inst1.id));
+    await db.update(orderingQueueItems).set({ position: 2 }).where(eq(orderingQueueItems.instanceId, inst2.id));
+
+    // Re-ordering must be respected: inst1 on Account 1 is now picked first!
+    const nomC = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    expect(nomC).not.toBeNull();
+    expect(nomC?.candidate.instanceId).toBe(inst1.id);
+    expect(nomC?.account.id).toBe(acc1.id);
+    expect(nomC?.candidate.rulePriority).toBe(1);
   });
 });

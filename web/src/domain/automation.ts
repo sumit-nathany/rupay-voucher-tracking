@@ -18,6 +18,7 @@ import {
 } from '@/db/schema';
 import type { Ctx, Database } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
+import { syncGlobalOrderingQueue } from './ordering-queue';
 import { encryptPortalCredentials } from '@/lib/portal-credentials';
 import {
   decryptPaymentDetails,
@@ -969,6 +970,281 @@ export async function listAutomationAttempts(ctx: Ctx, limit = 50): Promise<Atte
 
 // ── Candidate Nomination Query ──────────────────────────────────────────────
 
+export interface GlobalCandidateNomination {
+  candidate: CandidateNomination['candidate'];
+  account: {
+    id: string;
+    workspaceId: string;
+    label: string;
+    credentialsEncrypted: string;
+  };
+}
+
+/**
+ * Finds the top candidate across the entire Global Ordering Queue.
+ *
+ * Rules:
+ * 1. Synchronizes the global queue automatically so database positions are fresh.
+ * 2. Determines currently eligible connected portal accounts (not in 24h cooldown, not in active attempt).
+ * 3. Walks the queue in strict position ASC order.
+ * 4. The FIRST queue item whose card is mapped to an eligible account with valid payment details wins.
+ * 5. Strictly respects manual user re-ordering across accounts!
+ * 6. Falls back to legacy rules nomination if queue is empty or produces no match.
+ */
+export async function findCandidateFromGlobalQueue(
+  db: Database,
+  workspaceId: string,
+  today: string,
+  options?: {
+    ignoreCooldown?: boolean;
+    portalAccountId?: string;
+  },
+): Promise<GlobalCandidateNomination | null> {
+  // 1. Verify workspace has automation enabled (unless options?.ignoreCooldown)
+  const [settings] = await db
+    .select()
+    .from(automationSettings)
+    .where(eq(automationSettings.workspaceId, workspaceId));
+
+  if (!settings || (!settings.enabled && !options?.ignoreCooldown)) return null;
+
+  // 2. Auto-sync global ordering queue for this workspace
+  try {
+    await syncGlobalOrderingQueue({
+      userId: 'system',
+      workspaceId,
+      role: 'admin',
+      db,
+      today,
+    });
+  } catch (err) {
+    // If sync encounters any error (e.g. test environment without full schema), proceed with existing DB state
+    console.warn('[automation] syncGlobalOrderingQueue warning:', err instanceof Error ? err.message : err);
+  }
+
+  // 3. Fetch connected portal accounts
+  const accounts = await db
+    .select()
+    .from(portalAccounts)
+    .where(
+      and(
+        eq(portalAccounts.workspaceId, workspaceId),
+        eq(portalAccounts.status, 'connected'),
+        options?.portalAccountId ? eq(portalAccounts.id, options.portalAccountId) : undefined,
+      ),
+    );
+
+  if (accounts.length === 0) return null;
+
+  // 4. Filter for currently eligible accounts
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const eligibleAccountsMap = new Map<string, typeof accounts[0]>();
+
+  for (const acc of accounts) {
+    if (!options?.ignoreCooldown) {
+      if (acc.cooldownUntil && new Date(acc.cooldownUntil) > new Date()) {
+        continue;
+      }
+
+      const [recentAttempts] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(portalOrderAttempts)
+        .where(
+          and(
+            eq(portalOrderAttempts.portalAccountId, acc.id),
+            gte(portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
+            inArray(portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
+          ),
+        );
+      if (recentAttempts && recentAttempts.count > 0) continue;
+    }
+
+    const [activeAttempts] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(portalOrderAttempts)
+      .where(
+        and(
+          eq(portalOrderAttempts.portalAccountId, acc.id),
+          inArray(portalOrderAttempts.state, ['reserved', 'submitting']),
+        ),
+      );
+    if (activeAttempts && activeAttempts.count > 0) continue;
+
+    eligibleAccountsMap.set(acc.id, acc);
+  }
+
+  if (eligibleAccountsMap.size === 0) return null;
+
+  // 5. Fetch active card mappings for eligible accounts
+  const eligibleAccountIds = Array.from(eligibleAccountsMap.keys());
+  const mappings = await db
+    .select({
+      id: portalCardMappings.id,
+      cardId: portalCardMappings.cardId,
+      portalAccountId: portalCardMappings.portalAccountId,
+      portalCardId: portalCardMappings.portalCardId,
+      portalCardbinId: portalCardMappings.portalCardbinId,
+      mappingPaymentDetailsEncrypted: portalCardMappings.paymentDetailsEncrypted,
+      cardPaymentDetailsEncrypted: cards.paymentDetailsEncrypted,
+    })
+    .from(portalCardMappings)
+    .innerJoin(cards, eq(portalCardMappings.cardId, cards.id))
+    .where(
+      and(
+        eq(portalCardMappings.workspaceId, workspaceId),
+        inArray(portalCardMappings.portalAccountId, eligibleAccountIds),
+        eq(portalCardMappings.active, true),
+        eq(cards.active, true),
+        or(isNull(cards.inactiveFrom), gte(cards.inactiveFrom, today)),
+      ),
+    );
+
+  const cardToEligibleMappings = new Map<string, Array<typeof mappings[0]>>();
+  for (const m of mappings) {
+    let hasValid = false;
+    if (m.cardPaymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(m.cardPaymentDetailsEncrypted, m.cardId);
+        if (isValidPaymentDetails(dec)) hasValid = true;
+      } catch {}
+    }
+    if (!hasValid && m.mappingPaymentDetailsEncrypted) {
+      try {
+        const dec = decryptPaymentDetails(m.mappingPaymentDetailsEncrypted, m.id);
+        if (isValidPaymentDetails(dec)) hasValid = true;
+      } catch {}
+    }
+    if (hasValid) {
+      const list = cardToEligibleMappings.get(m.cardId) || [];
+      list.push(m);
+      cardToEligibleMappings.set(m.cardId, list);
+    }
+  }
+
+  if (cardToEligibleMappings.size === 0) return null;
+
+  // 6. Inspect Ordering Queue in position ASC order
+  const queueItems = await db
+    .select({
+      id: orderingQueueItems.id,
+      instanceId: orderingQueueItems.instanceId,
+      position: orderingQueueItems.position,
+      enabled: orderingQueueItems.enabled,
+      chosenOptionId: orderingQueueItems.chosenOptionId,
+    })
+    .from(orderingQueueItems)
+    .where(
+      and(
+        eq(orderingQueueItems.workspaceId, workspaceId),
+        eq(orderingQueueItems.enabled, true),
+      ),
+    )
+    .orderBy(asc(orderingQueueItems.position));
+
+  if (queueItems.length > 0) {
+    const queueInstanceIds = queueItems.map((q) => q.instanceId);
+    const instances = await db
+      .select({
+        id: benefitInstances.id,
+        cardId: benefitInstances.cardId,
+        benefitId: benefitInstances.benefitId,
+        orderDeadline: benefitInstances.orderDeadline,
+        chosenOptionId: benefitInstances.chosenOptionId,
+        generatedFromVersion: benefitInstances.generatedFromVersion,
+      })
+      .from(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, workspaceId),
+          inArray(benefitInstances.id, queueInstanceIds),
+          eq(benefitInstances.orderStatus, 'Not Ordered'),
+          gte(benefitInstances.orderDeadline, today),
+          isNull(benefitInstances.soldFor),
+        ),
+      );
+
+    if (instances.length > 0) {
+      const blockingAttempts = await db
+        .select({ instanceId: portalOrderAttempts.instanceId })
+        .from(portalOrderAttempts)
+        .where(
+          and(
+            inArray(portalOrderAttempts.instanceId, instances.map((i) => i.id)),
+            inArray(portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+          ),
+        );
+      const blockedSet = new Set(blockingAttempts.map((b) => b.instanceId));
+      const instMap = new Map(instances.map((i) => [i.id, i]));
+
+      for (const qItem of queueItems) {
+        if (blockedSet.has(qItem.instanceId)) continue;
+        const inst = instMap.get(qItem.instanceId);
+        if (!inst || !inst.benefitId) continue;
+
+        const eligibleCardMappings = cardToEligibleMappings.get(inst.cardId);
+        if (!eligibleCardMappings || eligibleCardMappings.length === 0) continue;
+
+        // Take the first eligible mapping for this card
+        const mapping = eligibleCardMappings[0];
+        const account = eligibleAccountsMap.get(mapping.portalAccountId);
+        if (!account) continue;
+
+        let chosenOpt = qItem.chosenOptionId ?? inst.chosenOptionId ?? null;
+
+        if (inst.generatedFromVersion) {
+          const opts = await db
+            .select({ id: benefitOptions.id })
+            .from(benefitOptions)
+            .where(eq(benefitOptions.versionId, inst.generatedFromVersion))
+            .orderBy(asc(benefitOptions.sortOrder));
+          if (opts.length > 1 && !chosenOpt) {
+            chosenOpt = opts[0].id;
+          }
+        }
+
+        return {
+          candidate: {
+            instanceId: inst.id,
+            cardId: inst.cardId,
+            benefitId: inst.benefitId,
+            orderDeadline: inst.orderDeadline,
+            chosenOptionId: chosenOpt,
+            portalCardId: mapping.portalCardId,
+            portalCardbinId: mapping.portalCardbinId,
+            ruleId: null,
+            rulePriority: qItem.position,
+            portalAccountId: account.id,
+          },
+          account: {
+            id: account.id,
+            workspaceId: account.workspaceId,
+            label: account.label,
+            credentialsEncrypted: account.credentialsEncrypted,
+          },
+        };
+      }
+    }
+  }
+
+  // 7. Fallback: Check legacy ordering rules for eligible accounts
+  for (const acc of eligibleAccountsMap.values()) {
+    const cand = await findCandidatesForAccount(db, acc.id, today, options);
+    if (cand) {
+      return {
+        candidate: cand,
+        account: {
+          id: acc.id,
+          workspaceId: acc.workspaceId,
+          label: acc.label,
+          credentialsEncrypted: acc.credentialsEncrypted,
+        },
+      };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Find the top candidate for each eligible portal account in the given workspace
  * or across all workspaces (for worker execution).
@@ -1385,6 +1661,26 @@ export async function getNextEligibleRunTime(
       .where(eq(automationSettings.workspaceId, workspaceId));
     if (!settings || !settings.enabled) {
       isPaused = true;
+    }
+
+    // Check if Global Order Queue has an immediate candidate ready
+    const today = now.toISOString().slice(0, 10);
+    const globalNomination = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    if (globalNomination) {
+      if (isPaused) {
+        return {
+          eligibleNow: false,
+          nextRunAt: null,
+          accountLabel: globalNomination.account.label,
+          reason: 'automation_paused',
+        };
+      }
+      return {
+        eligibleNow: true,
+        nextRunAt: now,
+        accountLabel: globalNomination.account.label,
+        reason: 'ready_now',
+      };
     }
   }
 

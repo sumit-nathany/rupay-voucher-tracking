@@ -7,7 +7,7 @@ import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
-import { findCandidatesForAccount, recordPortalAccountCooldown } from '../../web/src/domain/automation';
+import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
@@ -64,12 +64,27 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     account = match;
     candidate = await findCandidatesForAccount(db, account.id, today, { ignoreCooldown });
   } else {
-    for (const acc of accounts) {
-      const c = await findCandidatesForAccount(db, acc.id, today, { ignoreCooldown });
-      if (c) {
-        account = acc;
-        candidate = c;
+    // 1. Evaluate via Global Order Queue first across connected workspaces
+    const workspaceIds = Array.from(new Set(accounts.map((a) => a.workspaceId)));
+    for (const wId of workspaceIds) {
+      const globalNomination = await findCandidateFromGlobalQueue(db, wId, today, { ignoreCooldown });
+      if (globalNomination) {
+        account = globalNomination.account as typeof account;
+        candidate = globalNomination.candidate;
+        console.log(`[runner] Global Queue matched candidate at Position #${globalNomination.candidate.rulePriority} for account "${account.label}".`);
         break;
+      }
+    }
+
+    // 2. Fallback to legacy rules iteration if queue produced no candidate
+    if (!candidate) {
+      for (const acc of accounts) {
+        const c = await findCandidatesForAccount(db, acc.id, today, { ignoreCooldown });
+        if (c) {
+          account = acc;
+          candidate = c;
+          break;
+        }
       }
     }
   }

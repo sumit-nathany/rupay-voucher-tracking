@@ -1,4 +1,4 @@
-import { eq, and, gte, asc, inArray, isNull } from 'drizzle-orm';
+import { eq, and, gte, asc, inArray, notInArray, isNull } from 'drizzle-orm';
 import type { Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
 import { resolveOfferKind } from '@/domain/benefit-offer-kind';
@@ -49,10 +49,13 @@ function computeDaysRemaining(deadline: string, today: string): number {
  * 3. Strictly EXCLUDES discounts (BookMyShow, MakeMyTrip, Cleartrip, TaxSpanner, Golf, etc.).
  *    Cab services (Uber, Ola, etc.) are gift vouchers and ARE included.
  */
-export async function listOrderingQueue(
+/**
+ * Fetches raw eligible voucher candidates for the workspace before position assignment.
+ */
+async function fetchRawQueueCandidates(
   ctx: Ctx,
   filter?: QueueFilter,
-): Promise<QueueItemView[]> {
+): Promise<Array<{ item: QueueItemView; hasStoredPosition: boolean }>> {
   // 1. Fetch active cards in workspace
   const activeCards = await ctx.db
     .select({
@@ -71,7 +74,7 @@ export async function listOrderingQueue(
 
   if (activeCards.length === 0) return [];
 
-  // 2. Fetch portal mappings for all cards in workspace (only cards with valid payment details)
+  // 2. Fetch portal mappings for all cards in workspace (only cards with valid payment details and connected portal accounts)
   const mappings = await ctx.db
     .select({
       id: schema.portalCardMappings.id,
@@ -94,6 +97,7 @@ export async function listOrderingQueue(
       and(
         eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
         eq(schema.portalCardMappings.active, true),
+        eq(schema.portalAccounts.status, 'connected'),
       ),
     );
 
@@ -285,20 +289,47 @@ export async function listOrderingQueue(
     });
   }
 
-  // 7. Sort items:
-  // If items already have explicit stored position in ordering_queue_items, respect that.
-  // Otherwise, default sort: Nearest Expiring First (order_deadline ASC), then Highest Value First (cash_value DESC).
-  candidates.sort((a, b) => {
-    if (a.hasStoredPosition && b.hasStoredPosition) {
-      if (a.item.position !== b.item.position) {
-        return a.item.position - b.item.position;
-      }
-    }
-    if (a.hasStoredPosition !== b.hasStoredPosition) {
-      return a.hasStoredPosition ? -1 : 1;
-    }
+  return candidates;
+}
 
-    // Default smart sort: Nearest expiring first, then highest cash value
+/**
+ * Automatically synchronizes the workspace's Global Ordering Queue:
+ * 1. Discovers all eligible pending voucher instances matching criteria.
+ * 2. Cleans up stale entries from ordering_queue_items (e.g. ordered/expired).
+ * 3. Preserves user-assigned positions for existing items.
+ * 4. Appends newly discovered eligible instances sequentially using default smart sort
+ *    (Nearest Expiring First, then Highest Value First).
+ * 5. Automatically writes all items and positions to ordering_queue_items so that the
+ *    database is always 100% up to date without requiring manual clicks.
+ */
+export async function syncGlobalOrderingQueue(ctx: Ctx): Promise<QueueItemView[]> {
+  const candidates = await fetchRawQueueCandidates(ctx);
+
+  if (candidates.length === 0) {
+    // Clean up any remaining queue items in workspace since no instances are eligible
+    await ctx.db
+      .delete(schema.orderingQueueItems)
+      .where(eq(schema.orderingQueueItems.workspaceId, ctx.workspaceId));
+    return [];
+  }
+
+  // 1. Clean up stale items in ordering_queue_items that no longer exist in eligible candidates
+  const validInstanceIds = candidates.map((c) => c.item.instanceId);
+  await ctx.db
+    .delete(schema.orderingQueueItems)
+    .where(
+      and(
+        eq(schema.orderingQueueItems.workspaceId, ctx.workspaceId),
+        notInArray(schema.orderingQueueItems.instanceId, validInstanceIds),
+      ),
+    );
+
+  // 2. Separate into existing items (with user-defined / stored position) and new items
+  const existing = candidates.filter((c) => c.hasStoredPosition);
+  const newItems = candidates.filter((c) => !c.hasStoredPosition);
+
+  // Sort new items by default smart criteria: Nearest Expiring First, then Highest Value First
+  newItems.sort((a, b) => {
     if (a.item.orderDeadline !== b.item.orderDeadline) {
       return a.item.orderDeadline.localeCompare(b.item.orderDeadline);
     }
@@ -308,14 +339,82 @@ export async function listOrderingQueue(
     return a.item.instanceId.localeCompare(b.item.instanceId);
   });
 
-  return candidates.map((c, idx) => ({
-    ...c.item,
-    position: idx + 1,
-  }));
+  let allOrdered: Array<{ item: QueueItemView; hasStoredPosition: boolean }>;
+
+  if (existing.length === 0) {
+    // Initial run: all items sorted by default smart criteria
+    allOrdered = newItems;
+  } else {
+    // Preserve existing items' relative order
+    existing.sort((a, b) => a.item.position - b.item.position);
+    // Append new items at the end
+    allOrdered = [...existing, ...newItems];
+  }
+
+  // 3. Assign sequential positions 1..N and persist to database
+  const result: QueueItemView[] = [];
+
+  for (let idx = 0; idx < allOrdered.length; idx++) {
+    const c = allOrdered[idx];
+    const newPos = idx + 1;
+    const posChanged = c.item.position !== newPos || !c.hasStoredPosition;
+
+    c.item.position = newPos;
+
+    if (posChanged) {
+      await ctx.db
+        .insert(schema.orderingQueueItems)
+        .values({
+          workspaceId: ctx.workspaceId,
+          instanceId: c.item.instanceId,
+          position: newPos,
+          enabled: c.item.enabled,
+          chosenOptionId: c.item.chosenOptionId,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [schema.orderingQueueItems.workspaceId, schema.orderingQueueItems.instanceId],
+          set: {
+            position: newPos,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    result.push(c.item);
+  }
+
+  return result;
 }
 
 /**
- * Populates and sorts the Order Queue dynamically.
+ * Lists pending voucher benefits in the Order Queue.
+ * Automatically synchronizes with the database so positions are persisted and up to date.
+ */
+export async function listOrderingQueue(
+  ctx: Ctx,
+  filter?: QueueFilter,
+): Promise<QueueItemView[]> {
+  const all = await syncGlobalOrderingQueue(ctx);
+
+  if (!filter || (!filter.cardId && !filter.portalAccountId)) {
+    return all;
+  }
+
+  return all.filter((i) => {
+    if (filter.cardId && i.cardId !== filter.cardId) return false;
+    if (filter.portalAccountId) {
+      const matches =
+        i.portalAccountId === filter.portalAccountId ||
+        i.portalAccounts.some((a) => a.id === filter.portalAccountId);
+      if (!matches) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Populates and sorts the Order Queue dynamically with an explicit strategy.
  *
  * Strategies:
  * - 'nearest_expiring' (Default): order_deadline ASC, then cash_value DESC
@@ -326,6 +425,8 @@ export async function populateAndSortQueue(
   strategy: QueueSortStrategy = 'nearest_expiring',
   filter?: QueueFilter,
 ): Promise<QueueItemView[]> {
+  // Sync first to ensure all eligible instances are present
+  await syncGlobalOrderingQueue(ctx);
   const current = await listOrderingQueue(ctx, filter);
   if (current.length === 0) return [];
 

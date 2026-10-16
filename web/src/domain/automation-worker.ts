@@ -14,7 +14,11 @@ import {
   type PortalFailureCode,
   PortalOrderError,
 } from '@/lib/portal-client';
-import { findCandidatesForAccount, type CandidateNomination } from './automation';
+import {
+  findCandidatesForAccount,
+  findCandidateFromGlobalQueue,
+  type CandidateNomination,
+} from './automation';
 
 export interface AutomationJobStats {
   jobRunId: string;
@@ -485,17 +489,37 @@ export async function runAutomationJob({
     // 2. Recover any expired attempts
     await recoverExpiredAttempts(db);
 
-    // 3. Find connected portal accounts
+    // 3. Find candidates: evaluate via Global Order Queue first per workspace, with fallback to legacy rules
     const accounts = await db
       .select({ id: portalAccounts.id, workspaceId: portalAccounts.workspaceId, credentialsEncrypted: portalAccounts.credentialsEncrypted })
       .from(portalAccounts)
       .where(eq(portalAccounts.status, 'connected'));
 
-    for (const acc of accounts) {
-      // Find candidate for account
-      const candidate = await findCandidatesForAccount(db, acc.id, effectiveToday);
-      if (!candidate) continue;
+    const candidatePairs: Array<{ acc: typeof accounts[0]; candidate: CandidateNomination['candidate'] }> = [];
+    const processedAccountIds = new Set<string>();
 
+    const workspaceIds = Array.from(new Set(accounts.map((a) => a.workspaceId)));
+    for (const wId of workspaceIds) {
+      const globalNomination = await findCandidateFromGlobalQueue(db, wId, effectiveToday);
+      if (globalNomination) {
+        const matchingAcc = accounts.find((a) => a.id === globalNomination.account.id);
+        if (matchingAcc) {
+          candidatePairs.push({ acc: matchingAcc, candidate: globalNomination.candidate });
+          processedAccountIds.add(matchingAcc.id);
+        }
+      }
+    }
+
+    for (const acc of accounts) {
+      if (processedAccountIds.has(acc.id)) continue;
+      const candidate = await findCandidatesForAccount(db, acc.id, effectiveToday);
+      if (candidate) {
+        candidatePairs.push({ acc, candidate });
+        processedAccountIds.add(acc.id);
+      }
+    }
+
+    for (const { acc, candidate } of candidatePairs) {
       accountsProcessed++;
 
       // Phase 1: Reserve candidate

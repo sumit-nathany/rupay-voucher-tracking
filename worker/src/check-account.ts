@@ -34,7 +34,7 @@ async function main() {
     .select()
     .from(schema.automationSettings)
     .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
-  console.log(`\nAutomation settings for workspace: paused=${settings?.paused ?? '?'} | telegramChatId=${settings?.telegramChatId ? 'set' : 'none'}`);
+  console.log(`\nAutomation settings for workspace: enabled=${settings?.enabled ?? '?'} | telegramChatId=${settings?.telegramChatId ? 'set' : 'none'}`);
 
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
   console.log(`Today (IST): ${today}`);

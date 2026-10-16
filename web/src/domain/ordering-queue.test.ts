@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import type { Database, Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
@@ -325,5 +326,69 @@ describe('ordering-queue domain', () => {
   it('enforces tenant isolation (workspace B cannot see workspace A items)', async () => {
     const queueB = await listOrderingQueue(ctxB);
     expect(queueB).toHaveLength(0);
+  });
+
+  it('automatically populates newly created instances into the queue while preserving manual order', async () => {
+    // 1. Reorder existing queue: move Uber to Position 1
+    const current = await listOrderingQueue(ctxA);
+    const uber = current.find((q) => q.benefitProvider === 'Uber')!;
+    const otherIds = current.filter((q) => q.instanceId !== uber.instanceId).map((q) => q.instanceId);
+    
+    // Explicit reorder: Uber at #1, followed by others
+    const { reorderQueue } = await import('./ordering-queue');
+    await reorderQueue(ctxA, [uber.instanceId, ...otherIds]);
+
+    const reordered = await listOrderingQueue(ctxA);
+    expect(reordered[0].benefitProvider).toBe('Uber');
+    expect(reordered[0].position).toBe(1);
+
+    // 2. Insert a brand new voucher benefit version and instance
+    const [card] = await db.select().from(schema.cards).where(eq(schema.cards.workspaceId, W_A)).limit(1);
+    const [newBen] = await db.insert(schema.benefits).values({ bankCardTypeId: card.bankCardTypeId }).returning();
+    const [newVer] = await db.insert(schema.benefitCatalogVersions).values({
+      benefitId: newBen.id,
+      benefitType: 'OTT Subscription',
+      benefitProvider: 'SonyLIV',
+      exactBenefit: 'SonyLIV Premium 12 Month',
+      frequency: 'Annual',
+      defaultCashValue: '699.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-01-01',
+    }).returning();
+
+    const [newInst] = await db.insert(schema.benefitInstances).values({
+      workspaceId: W_A,
+      cardId: card.id,
+      bankCardTypeId: card.bankCardTypeId,
+      benefitId: newBen.id,
+      generatedFromVersion: newVer.id,
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      periodLabel: '2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '699.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    // 3. Calling listOrderingQueue must automatically discover and append SonyLIV at the end
+    const withNew = await listOrderingQueue(ctxA);
+    expect(withNew.length).toBe(current.length + 1);
+
+    // Uber must REMAIN at Position 1! (User custom reordering preserved)
+    expect(withNew[0].benefitProvider).toBe('Uber');
+    expect(withNew[0].position).toBe(1);
+
+    // SonyLIV must be appended at the end
+    const sonyliv = withNew.find((q) => q.benefitProvider === 'SonyLIV');
+    expect(sonyliv).toBeDefined();
+    expect(sonyliv?.position).toBe(withNew.length);
+
+    // Check DB directly to ensure ordering_queue_items has SonyLIV persisted
+    const [dbRow] = await db
+      .select()
+      .from(schema.orderingQueueItems)
+      .where(eq(schema.orderingQueueItems.instanceId, newInst.id));
+    expect(dbRow).toBeDefined();
+    expect(dbRow.position).toBe(withNew.length);
   });
 });
