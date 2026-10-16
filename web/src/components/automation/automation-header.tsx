@@ -5,7 +5,6 @@ import {
   PauseCircle,
   PlayCircle,
   Clock,
-  AlertTriangle,
   Loader2,
   CheckCircle2,
   Play,
@@ -27,11 +26,10 @@ export interface NextRunView {
 
 export function AutomationHeader({
   enabled,
-  hasAttentionAccounts,
   nextRun,
 }: {
   enabled: boolean;
-  hasAttentionAccounts: boolean;
+  hasAttentionAccounts?: boolean;
   nextRun?: NextRunView;
 }) {
   const [busy, setBusy] = useState(false);
@@ -99,7 +97,7 @@ export function AutomationHeader({
       <PageHeader
         eyebrow="Automation"
         title="Automated Ordering"
-        description="Daily unattended voucher ordering across portal accounts, cards, and priority rules."
+        description="Automatically orders eligible RuPay vouchers in your priority queue."
         actions={
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Run Order Now Action */}
@@ -207,19 +205,6 @@ export function AutomationHeader({
           <div className="space-y-1 text-xs">
             <p className="font-semibold text-sm">Order Run Triggered</p>
             <p className="text-muted-foreground/90">{triggerFeedback}</p>
-          </div>
-        </div>
-      )}
-
-      {hasAttentionAccounts && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-900 dark:text-amber-200">
-          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
-          <div className="space-y-1 text-xs">
-            <p className="font-semibold text-sm">Action Required on RuPay Portal</p>
-            <p className="text-muted-foreground/90">
-              One or more accounts require verification, credential updates, or manual reconciliation of uncertain bookings.
-              Review the notices below before automatic ordering resumes for those accounts.
-            </p>
           </div>
         </div>
       )}

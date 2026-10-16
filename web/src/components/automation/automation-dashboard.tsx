@@ -12,7 +12,7 @@ import { OrderQueueSection } from './order-queue-section';
 import { AttemptsHistorySection } from './attempts-history-section';
 import { OtpChannelsSection } from './otp-channels-section';
 import {
-  WhatsNextSection,
+  AttentionSection,
   buildAttentionItems,
   type AttentionItem,
 } from './whats-next-section';
@@ -27,7 +27,7 @@ export interface AutomationDashboardProps {
   telegramChatId?: string | null;
 }
 
-type TabValue = 'whats-next' | 'activity' | 'setup';
+type TabValue = 'queue' | 'activity' | 'setup';
 
 export function AutomationDashboard({
   accounts,
@@ -38,7 +38,7 @@ export function AutomationDashboard({
   whatsappPhoneNumber,
   telegramChatId,
 }: AutomationDashboardProps) {
-  const [tab, setTab] = useState<TabValue>('whats-next');
+  const [tab, setTab] = useState<TabValue>('queue');
   const hasAnyOtpChannel = Boolean(telegramChatId);
 
   const attention: AttentionItem[] = useMemo(
@@ -63,79 +63,78 @@ export function AutomationDashboard({
     setTab(target);
   }
 
+  const enabledCount = queue.filter((i) => i.enabled).length;
+
   return (
-    <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)} className="space-y-8 sm:space-y-10">
-      <div className="flex items-center justify-between gap-4">
-        <TabsList className="bg-muted/50 p-1.5 h-auto sm:h-12 rounded-2xl gap-1.5 border border-border/60 flex flex-wrap sm:inline-flex w-full sm:w-auto">
-          <TabsTrigger
-            value="whats-next"
-            className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
-          >
-            <ListOrdered className="h-4 w-4 text-muted-foreground" />
-            <span>What&apos;s Next</span>
-            {attention.length > 0 && (
-              <Badge variant="destructive" className="ml-1 px-2 py-0 text-xs font-medium">
-                {attention.length}
-              </Badge>
-            )}
-          </TabsTrigger>
+    <div className="space-y-6 sm:space-y-8">
+      {/* Actionable alerts (only visible when action is required) */}
+      <AttentionSection attention={attention} onNavigate={handleNavigate} />
 
-          <TabsTrigger
-            value="activity"
-            className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
-          >
-            <History className="h-4 w-4 text-muted-foreground" />
-            <span>Activity</span>
-            {uncertainCount > 0 ? (
-              <Badge variant="destructive" className="ml-1 px-2 py-0 text-xs font-medium">
-                {uncertainCount}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)} className="space-y-6 sm:space-y-8">
+        <div className="flex items-center justify-between gap-4">
+          <TabsList className="bg-muted/50 p-1.5 h-auto sm:h-12 rounded-2xl gap-1.5 border border-border/60 flex flex-wrap sm:inline-flex w-full sm:w-auto">
+            <TabsTrigger
+              value="queue"
+              className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
+            >
+              <ListOrdered className="h-4 w-4 text-muted-foreground" />
+              <span>Order Queue</span>
+              <Badge variant="secondary" className="ml-1 px-2 py-0 text-xs font-semibold">
+                {enabledCount}
               </Badge>
-            ) : (
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="activity"
+              className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
+            >
+              <History className="h-4 w-4 text-muted-foreground" />
+              <span>Activity</span>
+              {uncertainCount > 0 ? (
+                <Badge variant="destructive" className="ml-1 px-2 py-0 text-xs font-medium">
+                  {uncertainCount}
+                </Badge>
+              ) : (
+                <Badge variant="secondary" className="ml-1 px-2 py-0 text-xs font-medium">
+                  {attempts.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="setup"
+              className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
+            >
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
+              <span>Setup & Channels</span>
               <Badge variant="secondary" className="ml-1 px-2 py-0 text-xs font-medium">
-                {attempts.length}
+                {accounts.length}
               </Badge>
-            )}
-          </TabsTrigger>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-          <TabsTrigger
-            value="setup"
-            className="gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-xl"
-          >
-            <KeyRound className="h-4 w-4 text-muted-foreground" />
-            <span>Setup</span>
-            <Badge variant="secondary" className="ml-1 px-2 py-0 text-xs font-medium">
-              {accounts.length}
-            </Badge>
-          </TabsTrigger>
-        </TabsList>
-      </div>
+        <TabsContent value="queue" className="focus-visible:outline-none">
+          <OrderQueueSection initialQueue={queue} accounts={accounts} />
+        </TabsContent>
 
-      <TabsContent value="whats-next" className="mt-8 sm:mt-10 focus-visible:outline-none space-y-10 sm:space-y-12">
-        <WhatsNextSection
-          attention={attention}
-          queue={queue}
-          onNavigate={handleNavigate}
-        />
+        <TabsContent value="activity" className="focus-visible:outline-none">
+          <AttemptsHistorySection attempts={attempts} />
+        </TabsContent>
 
-        <OrderQueueSection initialQueue={queue} accounts={accounts} />
-      </TabsContent>
+        <TabsContent value="setup" className="focus-visible:outline-none space-y-10 sm:space-y-12">
+          <PortalAccountsSection
+            accounts={accounts}
+            mappings={mappings}
+            availableCards={availableCards}
+          />
 
-      <TabsContent value="activity" className="mt-8 sm:mt-10 focus-visible:outline-none">
-        <AttemptsHistorySection attempts={attempts} />
-      </TabsContent>
-
-      <TabsContent value="setup" className="mt-8 sm:mt-10 focus-visible:outline-none space-y-10 sm:space-y-12">
-        <PortalAccountsSection
-          accounts={accounts}
-          mappings={mappings}
-          availableCards={availableCards}
-        />
-
-        <OtpChannelsSection
-          whatsappPhoneNumber={whatsappPhoneNumber}
-          telegramChatId={telegramChatId}
-        />
-      </TabsContent>
-    </Tabs>
+          <OtpChannelsSection
+            whatsappPhoneNumber={whatsappPhoneNumber}
+            telegramChatId={telegramChatId}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
