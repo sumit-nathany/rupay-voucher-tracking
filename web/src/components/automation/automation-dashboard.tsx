@@ -122,7 +122,7 @@ export function AutomationDashboard({
           <AttemptsHistorySection attempts={attempts} />
         </TabsContent>
 
-        <TabsContent value="setup" className="focus-visible:outline-none space-y-10 sm:space-y-12">
+        <TabsContent value="setup" className="focus-visible:outline-none space-y-5 max-w-3xl">
           <PortalAccountsSection
             accounts={accounts}
             mappings={mappings}
