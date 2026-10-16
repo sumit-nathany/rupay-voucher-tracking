@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   AlertTriangle,
   KeyRound,
@@ -17,7 +18,8 @@ export type AttentionItem = {
   message: string;
   detail?: string;
   actionLabel: string;
-  actionTab: 'setup' | 'activity';
+  actionTab?: 'setup' | 'activity';
+  actionHref?: string;
 };
 
 const ATTENTION_STATUSES: PortalAccountView['status'][] = [
@@ -34,6 +36,16 @@ export function buildAttentionItems(
 ): AttentionItem[] {
   const items: AttentionItem[] = [];
 
+  if (accounts.length === 0) {
+    items.push({
+      id: 'no-accounts',
+      message: 'No RuPay portal account configured',
+      detail: 'Connect your RuPay portal login to enable automated ordering.',
+      actionLabel: 'Configure',
+      actionHref: '/accounts',
+    });
+  }
+
   for (const acc of accounts) {
     if (ATTENTION_STATUSES.includes(acc.status)) {
       items.push({
@@ -41,7 +53,7 @@ export function buildAttentionItems(
         message: `${acc.label} — ${acc.status.replace(/_/g, ' ')}`,
         detail: 'The worker will skip this account until it is fixed.',
         actionLabel: 'Fix',
-        actionTab: 'setup',
+        actionHref: '/accounts',
       });
     }
   }
@@ -61,7 +73,7 @@ export function buildAttentionItems(
     items.push({
       id: 'otp-channel',
       message: 'No OTP delivery channel configured',
-      detail: 'Bank OTPs during checkout need WhatsApp or Telegram to reach you.',
+      detail: 'Bank OTPs during checkout need Telegram to reach you.',
       actionLabel: 'Set up',
       actionTab: 'setup',
     });
@@ -147,9 +159,12 @@ function NextOrderPreview({
                   expires {item.orderDeadline}
                 </span>
                 {noAccount && (
-                  <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  <Link
+                    href="/accounts"
+                    className="text-amber-600 dark:text-amber-400 font-medium hover:underline inline-flex items-center gap-0.5"
+                  >
                     not mapped to an account
-                  </span>
+                  </Link>
                 )}
                 {optionNeeded && (
                   <span className="text-amber-600 dark:text-amber-400 font-medium">
@@ -199,15 +214,29 @@ export function WhatsNextSection({
                     <p className="text-xs text-muted-foreground">{item.detail}</p>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onNavigate(item.actionTab)}
-                  className="shrink-0 h-8 rounded-lg text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
-                >
-                  {item.actionLabel}
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
+                {item.actionHref ? (
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 h-8 rounded-lg text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                  >
+                    <Link href={item.actionHref}>
+                      {item.actionLabel}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => item.actionTab && onNavigate(item.actionTab)}
+                    className="shrink-0 h-8 rounded-lg text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10"
+                  >
+                    {item.actionLabel}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>

@@ -39,7 +39,7 @@ export function AutomationDashboard({
   telegramChatId,
 }: AutomationDashboardProps) {
   const [tab, setTab] = useState<TabValue>('whats-next');
-  const hasAnyOtpChannel = Boolean(whatsappPhoneNumber || telegramChatId);
+  const hasAnyOtpChannel = Boolean(telegramChatId);
 
   const attention: AttentionItem[] = useMemo(
     () => buildAttentionItems(accounts, initialAttempts, hasAnyOtpChannel),

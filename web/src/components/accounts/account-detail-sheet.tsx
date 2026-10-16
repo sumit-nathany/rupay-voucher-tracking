@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/sheet';
 import { useRunAction } from '../holders/form-kit';
 
+const SHOW_WHATSAPP = false;
+
 export interface AccountDetailData {
   id: string;
   label: string;
@@ -306,12 +308,14 @@ export function AccountDetailSheet({
                     <span className="text-muted-foreground">Account Label</span>
                     <span className="font-medium text-foreground truncate max-w-[220px]">{account.label}</span>
                   </div>
-                  <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
-                    <span className="text-muted-foreground">WhatsApp OTP Phone</span>
-                    <span className="font-medium text-foreground">
-                      {account.phoneNumber || 'Workspace default'}
-                    </span>
-                  </div>
+                  {SHOW_WHATSAPP && (
+                    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                      <span className="text-muted-foreground">WhatsApp OTP Phone</span>
+                      <span className="font-medium text-foreground">
+                        {account.phoneNumber || 'Workspace default'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                     <span className="text-muted-foreground">Status</span>
                     <span className={`font-medium text-foreground capitalize ${getStatusTone(account.status)}`}>
@@ -428,22 +432,24 @@ export function AccountDetailSheet({
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
-                    WhatsApp Phone for OTP (optional)
-                  </Label>
-                  <Input
-                    id="sheet-phoneNumber"
-                    name="phoneNumber"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="e.g. +919876543210"
-                    className="h-9 text-sm font-mono"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Used on payment gateways for 3D-Secure bank OTP prompts.
-                  </p>
-                </div>
+                {SHOW_WHATSAPP && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
+                      WhatsApp Phone for OTP (optional)
+                    </Label>
+                    <Input
+                      id="sheet-phoneNumber"
+                      name="phoneNumber"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="e.g. +919876543210"
+                      className="h-9 text-sm font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Used on payment gateways for 3D-Secure bank OTP prompts.
+                    </p>
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-border/40 space-y-3">
                   <p className="text-xs font-medium text-foreground">Update Portal Credentials (optional)</p>

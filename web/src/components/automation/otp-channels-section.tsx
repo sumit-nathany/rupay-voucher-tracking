@@ -19,6 +19,8 @@ import {
   sendTestTelegramMessageAction,
 } from '@/actions/automation';
 
+const SHOW_WHATSAPP = false;
+
 export function OtpChannelsSection({
   whatsappPhoneNumber,
   telegramChatId,
@@ -120,7 +122,7 @@ export function OtpChannelsSection({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1">
+      <div className={SHOW_WHATSAPP ? "grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1" : "grid grid-cols-1 max-w-2xl gap-6 pt-1"}>
         {/* Telegram Card */}
         <Card className="rounded-2xl border border-border/70 shadow-xs flex flex-col justify-between">
           <div>
@@ -239,91 +241,93 @@ export function OtpChannelsSection({
         </Card>
 
         {/* WhatsApp Card */}
-        <Card className="rounded-2xl border border-border/70 shadow-xs flex flex-col justify-between">
-          <div>
-            <CardHeader className="p-5 sm:p-6 pb-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3.5">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 shrink-0">
-                    <Phone className="h-5 w-5" />
+        {SHOW_WHATSAPP && (
+          <Card className="rounded-2xl border border-border/70 shadow-xs flex flex-col justify-between">
+            <div>
+              <CardHeader className="p-5 sm:p-6 pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500 shrink-0">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base sm:text-lg font-semibold">WhatsApp Delivery</CardTitle>
+                      <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">Direct WhatsApp notification to phone</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-base sm:text-lg font-semibold">WhatsApp Delivery</CardTitle>
-                    <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-0.5">Direct WhatsApp notification to phone</CardDescription>
-                  </div>
+                  {whatsappPhoneNumber ? (
+                    <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-normal gap-1 py-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-xs font-normal py-1">
+                      Not configured
+                    </Badge>
+                  )}
                 </div>
-                {whatsappPhoneNumber ? (
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs font-normal gap-1 py-1">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Connected
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs font-normal py-1">
-                    Not configured
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
+              </CardHeader>
 
-            <CardContent className="p-5 sm:p-6 pt-0 space-y-5">
-              <div className="rounded-2xl border bg-muted/30 p-4 space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <p className="font-semibold text-foreground flex items-center gap-1.5">
-                  <Phone className="h-4 w-4 text-emerald-500" />
-                  WhatsApp Prompt Details:
-                </p>
-                <p className="leading-relaxed">
-                  During checkout, an OTP prompt is sent via WhatsApp to this registered phone number. Replying with the 6-digit OTP completes payment.
-                </p>
-              </div>
-
-              <form onSubmit={handleSavePhone} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="whatsapp-phone" className="text-sm font-medium">
-                    WhatsApp Phone Number (with country code)
-                  </Label>
-                  <Input
-                    id="whatsapp-phone"
-                    type="tel"
-                    placeholder="+919876543210"
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    className="text-sm h-10 rounded-xl"
-                  />
-                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Example: <code className="text-foreground font-mono">+919876543210</code>. Leave blank to disable WhatsApp OTP prompts.
+              <CardContent className="p-5 sm:p-6 pt-0 space-y-5">
+                <div className="rounded-2xl border bg-muted/30 p-4 space-y-2 text-xs sm:text-sm text-muted-foreground">
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Phone className="h-4 w-4 text-emerald-500" />
+                    WhatsApp Prompt Details:
+                  </p>
+                  <p className="leading-relaxed">
+                    During checkout, an OTP prompt is sent via WhatsApp to this registered phone number. Replying with the 6-digit OTP completes payment.
                   </p>
                 </div>
 
-                {phoneFeedback && (
-                  <div
-                    className={`rounded-xl p-3 text-xs sm:text-sm flex items-center gap-2.5 ${
-                      phoneFeedback.success
-                        ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
-                        : 'bg-destructive/10 text-destructive border border-destructive/30'
-                    }`}
-                  >
-                    {phoneFeedback.success ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
-                    )}
-                    <span>{phoneFeedback.message}</span>
+                <form onSubmit={handleSavePhone} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="whatsapp-phone" className="text-sm font-medium">
+                      WhatsApp Phone Number (with country code)
+                    </Label>
+                    <Input
+                      id="whatsapp-phone"
+                      type="tel"
+                      placeholder="+919876543210"
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      className="text-sm h-10 rounded-xl"
+                    />
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      Example: <code className="text-foreground font-mono">+919876543210</code>. Leave blank to disable WhatsApp OTP prompts.
+                    </p>
                   </div>
-                )}
 
-                <div className="pt-2 flex justify-end">
-                  <Button
-                    type="submit"
-                    disabled={savingPhone}
-                    className="gap-2 text-sm font-medium h-10 px-4 rounded-xl"
-                  >
-                    {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Save Phone Number
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </div>
-        </Card>
+                  {phoneFeedback && (
+                    <div
+                      className={`rounded-xl p-3 text-xs sm:text-sm flex items-center gap-2.5 ${
+                        phoneFeedback.success
+                          ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
+                          : 'bg-destructive/10 text-destructive border border-destructive/30'
+                      }`}
+                    >
+                      {phoneFeedback.success ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+                      )}
+                      <span>{phoneFeedback.message}</span>
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex justify-end">
+                    <Button
+                      type="submit"
+                      disabled={savingPhone}
+                      className="gap-2 text-sm font-medium h-10 px-4 rounded-xl"
+                    >
+                      {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Phone Number
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
