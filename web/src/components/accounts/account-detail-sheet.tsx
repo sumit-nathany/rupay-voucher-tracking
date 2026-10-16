@@ -41,8 +41,6 @@ import { MappingDialog, type CardOption } from '@/components/automation/mapping-
 import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
 import { useRunAction } from '../holders/form-kit';
 
-const SHOW_WHATSAPP = false;
-
 export interface AccountDetailSheetProps {
   account: PortalAccountView;
   allAccounts: PortalAccountView[];
@@ -209,7 +207,7 @@ export function AccountDetailSheet({
                       <span>
                         {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'} mapped
                       </span>
-                      {account.phoneNumber && <span>• OTP: {account.phoneNumber}</span>}
+                      {account.phoneNumber && <span>• Mobile: {account.phoneNumber}</span>}
                       {isCooldown && formattedCooldownTime && (
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
                           • Unlocks {formattedCooldownTime}
@@ -309,14 +307,12 @@ export function AccountDetailSheet({
                       <span className="text-muted-foreground">Account Label</span>
                       <span className="font-medium text-foreground truncate max-w-[220px]">{account.label}</span>
                     </div>
-                    {SHOW_WHATSAPP && (
-                      <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
-                        <span className="text-muted-foreground">WhatsApp OTP Phone</span>
-                        <span className="font-medium text-foreground">
-                          {account.phoneNumber || 'Workspace default'}
-                        </span>
-                      </div>
-                    )}
+                    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                      <span className="text-muted-foreground">Registered Mobile</span>
+                      <span className="font-medium text-foreground">
+                        {account.phoneNumber || 'Auto-detected on checkout'}
+                      </span>
+                    </div>
                     <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                       <span className="text-muted-foreground">Status</span>
                       <span className={`font-medium text-foreground capitalize ${getStatusTone(account.status)}`}>
@@ -531,24 +527,22 @@ export function AccountDetailSheet({
                     />
                   </div>
 
-                  {SHOW_WHATSAPP && (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
-                        WhatsApp Phone for OTP (optional)
-                      </Label>
-                      <Input
-                        id="sheet-phoneNumber"
-                        name="phoneNumber"
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="e.g. +919876543210"
-                        className="h-9 text-sm font-mono"
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Used on payment gateways for 3D-Secure bank OTP prompts.
-                      </p>
-                    </div>
-                  )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sheet-phoneNumber" className="text-xs font-medium">
+                      Registered Mobile Number (optional)
+                    </Label>
+                    <Input
+                      id="sheet-phoneNumber"
+                      name="phoneNumber"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                      className="h-9 text-sm font-mono"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Mobile number registered with this RuPay account, used on payment gateways during checkout.
+                    </p>
+                  </div>
 
                   <div className="pt-2 border-t border-border/40 space-y-3">
                     <p className="text-xs font-medium text-foreground">Update Portal Credentials (optional)</p>

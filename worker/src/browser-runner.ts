@@ -361,6 +361,32 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.log(`✓ Active session exists in profile for "${account.label}". Login & CAPTCHA bypassed!`);
   }
 
+  // Extract user details and registered mobile number from portal storage
+  try {
+    const portalUserDetails = await page.evaluate(() => {
+      const raw = localStorage.getItem('UserDetails');
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    });
+
+    if (portalUserDetails && portalUserDetails.contactnumber) {
+      const contactNum = String(portalUserDetails.contactnumber).trim();
+      if (contactNum.length >= 10 && (!account.phoneNumber || account.phoneNumber !== contactNum)) {
+        console.log(`[portal] 📱 Auto-detected account registered phone number from UserDetails: ${contactNum}`);
+        account.phoneNumber = contactNum;
+        await db
+          .update(schema.portalAccounts)
+          .set({ phoneNumber: contactNum, updatedAt: new Date() })
+          .where(eq(schema.portalAccounts.id, account.id))
+          .catch(() => {});
+      }
+    }
+  } catch {}
+
   await humanHesitate(1200, 2000);
 
   console.log(`\n--- Step 3: Selecting Card for ${cardRow?.cardName || 'PNB'} (••${cardRow?.last4}) ---`);
@@ -568,9 +594,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
 
   const telegramChatId = settings?.telegramChatId || null;
-  // Strictly use the portal account's own registered mobile number when available.
-  const portalAccountPhone = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
-  const targetPhoneNumber = portalAccountPhone || settings?.whatsappPhoneNumber || null;
+  // Strictly use the portal account's own registered mobile number:
+  const targetPhoneNumber = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
   console.log(`[gateway] Portal account mobile number for payment gateway contact: ${targetPhoneNumber || '(not configured, relying on prefill)'}`);
 
   // Inspect payment form elements (inputs, iframes)

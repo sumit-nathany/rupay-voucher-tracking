@@ -17,8 +17,6 @@ export interface AccountRow {
   hasCredentials: boolean;
 }
 
-const SHOW_WHATSAPP = false;
-
 function AccountFormBody({
   account,
   close,
@@ -74,14 +72,19 @@ function AccountFormBody({
       <Field id="account-label" label="Label">
         <Input id="account-label" required maxLength={100} value={label} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
       </Field>
-      {SHOW_WHATSAPP && (
-        <Field id="account-phoneNumber" label="WhatsApp Phone for OTP (optional)">
-          <Input id="account-phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} autoComplete="off" />
-          <p className="text-xs text-muted-foreground">
-            Override workspace default phone for 3D-Secure bank OTP prompts.
-          </p>
-        </Field>
-      )}
+      <Field id="account-phoneNumber" label="Registered Mobile Number (optional)">
+        <Input
+          id="account-phoneNumber"
+          type="tel"
+          placeholder="e.g. 9876543210"
+          value={phoneNumber}
+          onChange={(e) => setPhoneNumber(e.target.value)}
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">
+          Mobile number registered with this RuPay account, used on payment gateways during checkout.
+        </p>
+      </Field>
 
        {!isCreate && (
          <div className="space-y-4">
