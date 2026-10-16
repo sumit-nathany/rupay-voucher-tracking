@@ -122,19 +122,23 @@ export function AutomationDashboard({
           <AttemptsHistorySection attempts={attempts} />
         </TabsContent>
 
-        <TabsContent value="setup" className="focus-visible:outline-none space-y-7 max-w-3xl">
-          <PortalAccountsSection
-            accounts={accounts}
-            mappings={mappings}
-            availableCards={availableCards}
-          />
+        <TabsContent value="setup" className="focus-visible:outline-none">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-stretch max-w-5xl">
+            <div className="md:col-span-5 lg:col-span-4 flex flex-col">
+              <PortalAccountsSection
+                accounts={accounts}
+                mappings={mappings}
+                availableCards={availableCards}
+              />
+            </div>
 
-          <div className="border-t border-border/50" />
-
-          <OtpChannelsSection
-            whatsappPhoneNumber={whatsappPhoneNumber}
-            telegramChatId={telegramChatId}
-          />
+            <div className="md:col-span-7 lg:col-span-8 flex flex-col">
+              <OtpChannelsSection
+                whatsappPhoneNumber={whatsappPhoneNumber}
+                telegramChatId={telegramChatId}
+              />
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
