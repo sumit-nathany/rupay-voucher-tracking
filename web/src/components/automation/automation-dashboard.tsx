@@ -122,12 +122,14 @@ export function AutomationDashboard({
           <AttemptsHistorySection attempts={attempts} />
         </TabsContent>
 
-        <TabsContent value="setup" className="focus-visible:outline-none space-y-5 max-w-3xl">
+        <TabsContent value="setup" className="focus-visible:outline-none space-y-7 max-w-3xl">
           <PortalAccountsSection
             accounts={accounts}
             mappings={mappings}
             availableCards={availableCards}
           />
+
+          <div className="border-t border-border/50" />
 
           <OtpChannelsSection
             whatsappPhoneNumber={whatsappPhoneNumber}

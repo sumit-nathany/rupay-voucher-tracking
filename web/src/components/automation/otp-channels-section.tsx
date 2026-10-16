@@ -111,35 +111,38 @@ export function OtpChannelsSection({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
+      <div className="space-y-0.5">
+        <h3 className="text-base font-semibold text-foreground">Telegram OTP Delivery</h3>
+        <p className="text-xs text-muted-foreground">
+          3D-Secure bank OTP prompts are sent here during automated voucher checkout. Reply with your 6-digit code.
+        </p>
+      </div>
+
       {/* Telegram OTP Card */}
       <div className="rounded-2xl border border-border/70 bg-card p-5 sm:p-6 shadow-xs space-y-4">
         {/* Header row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start sm:items-center gap-3.5">
-            <div className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
-              <Send className="h-5 w-5" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-500">
+              <Send className="h-4 w-4" />
             </div>
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-semibold text-base sm:text-lg text-foreground">
-                  Telegram OTP Delivery
-                </h3>
-                {telegramChatId ? (
-                  <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs gap-1 py-0.5 font-normal">
-                    <CheckCircle2 className="h-3 w-3" /> Connected
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-xs py-0.5 font-normal">
-                    Not configured
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Receive 3D-Secure bank OTP prompts and reply with your 6-digit code.
-              </p>
+            <div>
+              <span className="font-semibold text-sm sm:text-base text-foreground">
+                Telegram Bot
+              </span>
+              <p className="text-xs text-muted-foreground">Interactive 2-way real-time OTP reply</p>
             </div>
           </div>
+          {telegramChatId ? (
+            <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-xs gap-1 py-0.5 font-normal">
+              <CheckCircle2 className="h-3 w-3" /> Connected
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-xs py-0.5 font-normal">
+              Not configured
+            </Badge>
+          )}
         </div>
 
         {/* Quick setup hint */}
