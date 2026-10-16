@@ -12,6 +12,8 @@ import {
   ArrowDown,
   KeyRound,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +33,8 @@ import {
   listOrderingQueueAction,
 } from '@/actions/automation';
 
+const DEFAULT_PAGE_SIZE = 5;
+
 interface OrderQueueSectionProps {
   initialQueue: QueueItemView[];
   accounts?: PortalAccountView[];
@@ -42,11 +46,16 @@ export function OrderQueueSection({
 }: OrderQueueSectionProps) {
   const [items, setItems] = useState<QueueItemView[]>(initialQueue);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [visibleCount, setVisibleCount] = useState<number>(DEFAULT_PAGE_SIZE);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setItems(initialQueue);
   }, [initialQueue]);
+
+  useEffect(() => {
+    setVisibleCount(DEFAULT_PAGE_SIZE);
+  }, [selectedAccountId]);
 
   // Filter items based on the selected RuPay account scope
   const displayedItems = useMemo(() => {
@@ -57,6 +66,10 @@ export function OrderQueueSection({
         i.portalAccounts.some((a) => a.id === selectedAccountId),
     );
   }, [items, selectedAccountId]);
+
+  const visibleItems = useMemo(() => {
+    return displayedItems.slice(0, visibleCount);
+  }, [displayedItems, visibleCount]);
 
   const handleRefresh = () => {
     startTransition(async () => {
@@ -90,6 +103,11 @@ export function OrderQueueSection({
 
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (targetIdx < 0 || targetIdx >= displayedItems.length) return;
+
+    // Expand visibleCount if moving an item down past current visible threshold so it stays in view
+    if (targetIdx >= visibleCount) {
+      setVisibleCount(targetIdx + 1);
+    }
 
     // Optimistically reorder displayed items
     const reorderedDisplayed = [...displayedItems];
@@ -267,7 +285,7 @@ export function OrderQueueSection({
         </div>
       ) : (
         <div className="space-y-3">
-          {displayedItems.map((item, index) => {
+          {visibleItems.map((item, index) => {
             const isFirst = index === 0;
             const isLast = index === displayedItems.length - 1;
             const isUrgent = item.daysRemaining <= 7;
@@ -442,6 +460,49 @@ export function OrderQueueSection({
               </div>
             );
           })}
+
+          {displayedItems.length > DEFAULT_PAGE_SIZE && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 px-1 border-t border-border/40">
+              <p className="text-xs text-muted-foreground">
+                Showing <span className="font-semibold text-foreground">{Math.min(visibleCount, displayedItems.length)}</span> of{' '}
+                <span className="font-semibold text-foreground">{displayedItems.length}</span> vouchers in queue
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {visibleCount < displayedItems.length && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setVisibleCount((prev) => Math.min(prev + DEFAULT_PAGE_SIZE, displayedItems.length))}
+                    className="h-8 px-3 rounded-xl text-xs font-medium gap-1.5 cursor-pointer border-border/80"
+                  >
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    Show 5 more
+                  </Button>
+                )}
+                {displayedItems.length - visibleCount > DEFAULT_PAGE_SIZE && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setVisibleCount(displayedItems.length)}
+                    className="h-8 px-3 rounded-xl text-xs text-muted-foreground hover:text-foreground font-medium cursor-pointer"
+                  >
+                    Show all ({displayedItems.length})
+                  </Button>
+                )}
+                {visibleCount > DEFAULT_PAGE_SIZE && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setVisibleCount(DEFAULT_PAGE_SIZE)}
+                    className="h-8 px-3 rounded-xl text-xs text-muted-foreground hover:text-foreground font-medium gap-1 cursor-pointer"
+                  >
+                    <ChevronUp className="h-3.5 w-3.5" />
+                    Show less
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
