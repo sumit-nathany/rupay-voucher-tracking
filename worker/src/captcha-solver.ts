@@ -388,7 +388,18 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 
   const pageUrl = page.url();
 
-  // 3. Strategy 1: NopeCHA Token API
+  // 3. Strategy 1: CapSolver API
+  const capSolverKey = process.env.CAPSOLVER_API_KEY;
+  if (capSolverKey && siteKey) {
+    console.log('[captcha] Using CapSolver service...');
+    const token = await solveWithCapSolver(capSolverKey, siteKey, pageUrl);
+    if (token) {
+      await injectRecaptchaToken(page, token);
+      return true;
+    }
+  }
+
+  // 4. Strategy 2: NopeCHA Token API
   const nopechaKey = process.env.NOPECHA_API_KEY;
   if (nopechaKey && siteKey) {
     console.log('[captcha] Using NopeCHA Token service...');
@@ -399,22 +410,11 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 4. Strategy 2: 2Captcha API
+  // 5. Strategy 3: 2Captcha API
   const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY;
   if (twoCaptchaKey && siteKey) {
     console.log('[captcha] Using 2Captcha service...');
     const token = await solveWith2Captcha(twoCaptchaKey, siteKey, pageUrl);
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
-  }
-
-  // 4. Strategy B: CapSolver API
-  const capSolverKey = process.env.CAPSOLVER_API_KEY;
-  if (capSolverKey && siteKey) {
-    console.log('[captcha] Using CapSolver service...');
-    const token = await solveWithCapSolver(capSolverKey, siteKey, pageUrl);
     if (token) {
       await injectRecaptchaToken(page, token);
       return true;
