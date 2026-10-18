@@ -8,7 +8,12 @@ import { cn } from '@/lib/utils';
 import { formatCardLabel } from '@/domain/card-label';
 import { benefitLabel } from './label';
 import { isLifetimeScope } from '@/components/dashboard/view-params';
-import { type BenefitSort, groupBenefitItems, resolveBenefitGroupMode, sortBenefitItems } from './group';
+import {
+  groupBenefitItems,
+  parseSort,
+  resolveBenefitGroupMode,
+  sortBenefitItems,
+} from './group';
 import { StatusBadge } from './status-badge';
 import { useBenefitDrawer } from './use-drawer';
 
@@ -60,17 +65,13 @@ function Row({ it, onOpen }: { it: InstanceListItem; onOpen: (id: string, l?: { 
   );
 }
 
-function parseSort(raw: string | null): BenefitSort {
-  return raw === 'value-asc' ? 'value-asc' : 'value-desc';
-}
-
 export function BenefitList({ items }: { items: InstanceListItem[] }) {
   const { open, drawer } = useBenefitDrawer();
   const sp = useSearchParams();
   const sort = parseSort(sp.get('sort'));
   const lifetime = isLifetimeScope({ lifetime: sp.get('lifetime') ?? undefined });
   const groupMode = resolveBenefitGroupMode(sp.get('group'), lifetime);
-  const groups = groupBenefitItems(items, groupMode).map((g) => ({
+  const groups = groupBenefitItems(items, groupMode, sort).map((g) => ({
     ...g,
     items: sortBenefitItems(g.items, sort),
   }));

@@ -73,7 +73,7 @@ export function sectionTitle(item: Pick<InstanceListItem, 'frequency' | 'periodL
   return `${bandLabel(item.frequency)} · ${formatPeriodHeading(item)}`;
 }
 
-export function groupItems(items: InstanceListItem[]): Group[] {
+export function groupItems(items: InstanceListItem[], sort?: BenefitSort): Group[] {
   const byKey = new Map<string, Group & { r: number; end: string; start: string }>();
   for (const i of items) {
     const r = rank(i);
@@ -84,9 +84,17 @@ export function groupItems(items: InstanceListItem[]): Group[] {
     g.items.push(i);
     byKey.set(k, g);
   }
-  return [...byKey.values()]
-    .sort((x, y) => x.r - y.r || x.end.localeCompare(y.end) || x.start.localeCompare(y.start))
-    .map(({ key, title, items }) => ({ key, title, items }));
+
+  const list = [...byKey.values()];
+  if (sort === 'time-desc') {
+    list.sort((x, y) => y.end.localeCompare(x.end) || y.start.localeCompare(x.start) || y.r - x.r);
+  } else if (sort === 'time-asc') {
+    list.sort((x, y) => x.start.localeCompare(y.start) || x.end.localeCompare(y.end) || x.r - y.r);
+  } else {
+    list.sort((x, y) => x.r - y.r || x.end.localeCompare(y.end) || x.start.localeCompare(y.start));
+  }
+
+  return list.map(({ key, title, items }) => ({ key, title, items }));
 }
 
 export function cardSectionTitle(
@@ -191,10 +199,14 @@ export function groupItemsByCategory(items: InstanceListItem[]): Group[] {
   );
 }
 
-export function groupBenefitItems(items: InstanceListItem[], mode: BenefitGroupMode): Group[] {
+export function groupBenefitItems(
+  items: InstanceListItem[],
+  mode: BenefitGroupMode,
+  sort?: BenefitSort,
+): Group[] {
   switch (mode) {
     case 'period':
-      return groupItems(items);
+      return groupItems(items, sort);
     case 'category':
       return groupItemsByCategory(items);
     case 'card':
@@ -207,13 +219,46 @@ export function groupBenefitItems(items: InstanceListItem[], mode: BenefitGroupM
 }
 
 /** Missing URL `sort` defaults to value-desc. Discount coupons stay after gift vouchers. */
-export type BenefitSort = 'value-desc' | 'value-asc';
+export type BenefitSort = 'value-desc' | 'value-asc' | 'time-asc' | 'time-desc';
+
+export function parseSort(raw: string | null): BenefitSort {
+  if (raw === 'value-asc') return 'value-asc';
+  if (raw === 'time-asc' || raw === 'period-asc') return 'time-asc';
+  if (raw === 'time-desc' || raw === 'period-desc') return 'time-desc';
+  return 'value-desc';
+}
 
 function offerKindRank(kind: InstanceListItem['offerKind']) {
   return kind === 'discount' ? 1 : 0;
 }
 
 export function sortBenefitItems(items: InstanceListItem[], sort: BenefitSort): InstanceListItem[] {
+  if (sort === 'time-asc') {
+    return [...items].sort(
+      (a, b) =>
+        offerKindRank(a.offerKind) - offerKindRank(b.offerKind) ||
+        a.periodStart.localeCompare(b.periodStart) ||
+        a.periodEnd.localeCompare(b.periodEnd) ||
+        (a.orderDeadline || '').localeCompare(b.orderDeadline || '') ||
+        b.value - a.value ||
+        (a.benefitType || '').localeCompare(b.benefitType || '', undefined, { sensitivity: 'base' }) ||
+        (a.benefitName || '').localeCompare(b.benefitName || '', undefined, { sensitivity: 'base' }) ||
+        a.id.localeCompare(b.id),
+    );
+  }
+  if (sort === 'time-desc') {
+    return [...items].sort(
+      (a, b) =>
+        offerKindRank(a.offerKind) - offerKindRank(b.offerKind) ||
+        b.periodEnd.localeCompare(a.periodEnd) ||
+        b.periodStart.localeCompare(a.periodStart) ||
+        (b.orderDeadline || '').localeCompare(a.orderDeadline || '') ||
+        b.value - a.value ||
+        (a.benefitType || '').localeCompare(b.benefitType || '', undefined, { sensitivity: 'base' }) ||
+        (a.benefitName || '').localeCompare(b.benefitName || '', undefined, { sensitivity: 'base' }) ||
+        a.id.localeCompare(b.id),
+    );
+  }
   const dir = sort === 'value-asc' ? 1 : -1;
   return [...items].sort(
     (a, b) =>

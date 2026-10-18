@@ -206,4 +206,72 @@ describe('sortBenefitItems', () => {
     const sorted = sortBenefitItems([it1, it2, it3, discount], 'value-desc');
     expect(sorted.map((i) => i.id)).toEqual(['3', '2', '1', '4']);
   });
+
+  it('sorts by time range ascending (earliest to latest)', () => {
+    const q1 = mk('q1', 'Quarterly', '2026-Q1', '2026-01-01', '2026-03-31', 200);
+    const q2 = mk('q2', 'Quarterly', '2026-Q2', '2026-04-01', '2026-06-30', 500);
+    const q3 = mk('q3', 'Quarterly', '2026-Q3', '2026-07-01', '2026-09-30', 100);
+    const q4 = mk('q4', 'Quarterly', '2026-Q4', '2026-10-01', '2026-12-31', 300);
+
+    const sorted = sortBenefitItems([q3, q1, q4, q2], 'time-asc');
+    expect(sorted.map((i) => i.id)).toEqual(['q1', 'q2', 'q3', 'q4']);
+  });
+
+  it('sorts by time range descending (latest to earliest)', () => {
+    const q1 = mk('q1', 'Quarterly', '2026-Q1', '2026-01-01', '2026-03-31', 200);
+    const q2 = mk('q2', 'Quarterly', '2026-Q2', '2026-04-01', '2026-06-30', 500);
+    const q3 = mk('q3', 'Quarterly', '2026-Q3', '2026-07-01', '2026-09-30', 100);
+    const q4 = mk('q4', 'Quarterly', '2026-Q4', '2026-10-01', '2026-12-31', 300);
+
+    const sorted = sortBenefitItems([q3, q1, q4, q2], 'time-desc');
+    expect(sorted.map((i) => i.id)).toEqual(['q4', 'q3', 'q2', 'q1']);
+  });
+});
+
+describe('groupItems with time sorting', () => {
+  it('sorts period groups earliest to latest when sort is time-asc', () => {
+    const q1 = mk('q1', 'Quarterly', '2026-Q1', '2026-01-01', '2026-03-31');
+    const q2 = mk('q2', 'Quarterly', '2026-Q2', '2026-04-01', '2026-06-30');
+    const q3 = mk('q3', 'Quarterly', '2026-Q3', '2026-07-01', '2026-09-30');
+    const q4 = mk('q4', 'Quarterly', '2026-Q4', '2026-10-01', '2026-12-31');
+
+    const groups = groupItems([q3, q1, q4, q2], 'time-asc');
+    expect(groups.map((g) => g.title)).toEqual([
+      'Quarterly · Q1 2026',
+      'Quarterly · Q2 2026',
+      'Quarterly · Q3 2026',
+      'Quarterly · Q4 2026',
+    ]);
+  });
+
+  it('sorts period groups latest to earliest when sort is time-desc', () => {
+    const q1 = mk('q1', 'Quarterly', '2026-Q1', '2026-01-01', '2026-03-31');
+    const q2 = mk('q2', 'Quarterly', '2026-Q2', '2026-04-01', '2026-06-30');
+    const q3 = mk('q3', 'Quarterly', '2026-Q3', '2026-07-01', '2026-09-30');
+    const q4 = mk('q4', 'Quarterly', '2026-Q4', '2026-10-01', '2026-12-31');
+
+    const groups = groupItems([q3, q1, q4, q2], 'time-desc');
+    expect(groups.map((g) => g.title)).toEqual([
+      'Quarterly · Q4 2026',
+      'Quarterly · Q3 2026',
+      'Quarterly · Q2 2026',
+      'Quarterly · Q1 2026',
+    ]);
+  });
+
+  it('sorts within custom grouping while preserving the groups themselves', () => {
+    const cardQ1 = { ...mkCard('c1', 'card-1', 'holder-1', 'Sumit', 'BOI Select'), periodStart: '2026-01-01', periodEnd: '2026-03-31' };
+    const cardQ3 = { ...mkCard('c3', 'card-1', 'holder-1', 'Sumit', 'BOI Select'), periodStart: '2026-07-01', periodEnd: '2026-09-30' };
+    const cardQ2 = { ...mkCard('c2', 'card-1', 'holder-1', 'Sumit', 'BOI Select'), periodStart: '2026-04-01', periodEnd: '2026-06-30' };
+
+    const groups = groupBenefitItems([cardQ3, cardQ1, cardQ2], 'card', 'time-asc');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.title).toBe('Sumit • BOI Select');
+
+    const sortedItems = sortBenefitItems(groups[0].items, 'time-asc');
+    expect(sortedItems.map((i) => i.id)).toEqual(['c1', 'c2', 'c3']);
+
+    const sortedItemsDesc = sortBenefitItems(groups[0].items, 'time-desc');
+    expect(sortedItemsDesc.map((i) => i.id)).toEqual(['c3', 'c2', 'c1']);
+  });
 });

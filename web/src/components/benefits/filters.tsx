@@ -233,7 +233,7 @@ export function Filters({
 
           {/* Sort */}
           <Select
-            value={sort === 'value-asc' ? 'value-asc' : 'value-desc'}
+            value={sort === 'value-asc' || sort === 'time-asc' || sort === 'time-desc' ? sort : 'value-desc'}
             onValueChange={(v) => set({ sort: v === 'value-desc' ? '' : v })}
           >
             <SelectTrigger aria-label="Sort by" className={`${base} ${sort && sort !== 'value-desc' ? activeFilter : ''}`}>
@@ -242,6 +242,8 @@ export function Filters({
             <SelectContent>
               <SelectItem value="value-desc">Value: high &#x2192; low</SelectItem>
               <SelectItem value="value-asc">Value: low &#x2192; high</SelectItem>
+              <SelectItem value="time-asc">Time range: earliest &#x2192; latest</SelectItem>
+              <SelectItem value="time-desc">Time range: latest &#x2192; earliest</SelectItem>
             </SelectContent>
           </Select>
 
