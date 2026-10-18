@@ -193,17 +193,17 @@ export function AccountDetailSheet({
             aria-label={`View details for ${account.label}`}
           >
             <Card className="h-full overflow-hidden rounded-2xl border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
-              <CardContent className="flex flex-row items-center justify-between gap-4 p-5 sm:p-6">
-                <div className="flex min-w-0 flex-1 items-center gap-4">
+              <CardContent className="flex flex-row items-center justify-between gap-3.5 p-4 sm:p-5">
+                <div className="flex min-w-0 flex-1 items-center gap-3.5">
                   <div
                     aria-hidden
-                    className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
+                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
                   >
-                    <KeyRound className="h-6 w-6" />
+                    <KeyRound className="h-5 w-5" />
                   </div>
-                  <div className="min-w-0 space-y-1.5 flex-1">
+                  <div className="min-w-0 space-y-1 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-base sm:text-lg leading-snug text-foreground group-hover:text-primary transition-colors break-words">
+                      <span className="font-semibold text-base leading-snug text-foreground group-hover:text-primary transition-colors [overflow-wrap:anywhere]">
                         {account.label}
                       </span>
                       {isCooldown ? (
@@ -223,7 +223,7 @@ export function AccountDetailSheet({
                         </Badge>
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
                       <span>
                         {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'} mapped
                       </span>

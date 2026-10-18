@@ -59,7 +59,7 @@ export default async function AccountsPage() {
   } catch (err) {
     console.error('[AccountsPage]', err);
     return (
-      <ContentStage className="max-w-5xl space-y-6 [.nav-unpinned_&]:max-w-6xl [.nav-unpinned_&]:2xl:max-w-7xl">
+      <ContentStage className="max-w-6xl space-y-6 [.nav-unpinned_&]:max-w-7xl [.nav-unpinned_&]:2xl:max-w-[1536px]">
         <PageHeader
           eyebrow="Accounts"
           title="RuPay Accounts"
@@ -72,7 +72,7 @@ export default async function AccountsPage() {
   }
 
   return (
-    <ContentStage className="max-w-5xl space-y-6 [.nav-unpinned_&]:max-w-6xl [.nav-unpinned_&]:2xl:max-w-7xl">
+    <ContentStage className="max-w-6xl space-y-6 [.nav-unpinned_&]:max-w-7xl [.nav-unpinned_&]:2xl:max-w-[1536px]">
       <PageHeader
         eyebrow="Accounts"
         title="RuPay Accounts"
@@ -83,7 +83,7 @@ export default async function AccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState title="No accounts yet" description="Add a RuPay portal account to enable automated ordering." />
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
           {accounts.map((account: PortalAccountView) => (
             <li key={account.id}>
               <AccountDetailSheet
