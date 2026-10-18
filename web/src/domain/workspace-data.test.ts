@@ -1,4 +1,5 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { and, eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import { bankCardTypes, benefits, benefitInstances, cardBenefitOverrides, cards, cardHolders, workspaces } from '@/db/schema';
 import { NotFoundError, type Ctx, type Database } from '@/lib/context';
@@ -130,8 +131,113 @@ describe('cards', () => {
       db.update(cards).set({ holderId: holderB }).where(eq0(cardA)),
     ).rejects.toThrow();
   });
-  it('cannot delete card with overrides', async () => {
-    await expect(d.deleteCard(A, { id: cardA })).rejects.toBeInstanceOf(d.ConflictError);
+  it('cannot delete card if it has benefits in statuses other than Not Ordered', async () => {
+    for (const status of ['Coupon Received', 'Ordered but Coupon not received', 'Coupon Redeemed', 'Skipped', 'Withdrawn']) {
+      const card = await d.createCard(A, {
+        holderId: holderA,
+        bankCardTypeId: typeX,
+        displayName: `Card ${status}`,
+        lastDigits: '8888',
+      });
+      await db.insert(benefitInstances).values({
+        workspaceId: A.workspaceId,
+        cardId: card.id,
+        bankCardTypeId: typeX,
+        benefitId: benX,
+        periodStart: '2026-01-01',
+        periodEnd: '2026-03-31',
+        periodLabel: '2026-Q1',
+        orderDeadline: '2026-03-31',
+        orderStatus: status,
+      });
+
+      await expect(d.deleteCard(A, { id: card.id })).rejects.toBeInstanceOf(d.ConflictError);
+    }
+  });
+
+  it('cannot delete card if it has booking reference even if status is Not Ordered', async () => {
+    const card = await d.createCard(A, {
+      holderId: holderA,
+      bankCardTypeId: typeX,
+      displayName: 'Card with Booking Ref',
+      lastDigits: '8889',
+    });
+    await db.insert(benefitInstances).values({
+      workspaceId: A.workspaceId,
+      cardId: card.id,
+      bankCardTypeId: typeX,
+      benefitId: benX,
+      periodStart: '2026-01-01',
+      periodEnd: '2026-03-31',
+      periodLabel: '2026-Q1',
+      orderDeadline: '2026-03-31',
+      orderStatus: 'Not Ordered',
+      rupayBookingId: 'RUPS-TEST1234',
+    });
+
+    await expect(d.deleteCard(A, { id: card.id })).rejects.toBeInstanceOf(d.ConflictError);
+  });
+
+  it('allows deleting card when all benefits are in Not Ordered status, cleaning up instances and overrides', async () => {
+    const card = await d.createCard(A, {
+      holderId: holderA,
+      bankCardTypeId: typeX,
+      displayName: 'Deletable Card',
+      lastDigits: '7777',
+    });
+
+    // Add an override
+    await d.createOverride(A, {
+      kind: 'suppress',
+      cardId: card.id,
+      benefitId: benX,
+    });
+
+    // Add multiple Not Ordered instances
+    await db.insert(benefitInstances).values([
+      {
+        workspaceId: A.workspaceId,
+        cardId: card.id,
+        bankCardTypeId: typeX,
+        benefitId: benX,
+        periodStart: '2026-01-01',
+        periodEnd: '2026-03-31',
+        periodLabel: '2026-Q1',
+        orderDeadline: '2026-03-31',
+        orderStatus: 'Not Ordered',
+      },
+      {
+        workspaceId: A.workspaceId,
+        cardId: card.id,
+        bankCardTypeId: typeX,
+        benefitId: benX,
+        periodStart: '2026-04-01',
+        periodEnd: '2026-06-30',
+        periodLabel: '2026-Q2',
+        orderDeadline: '2026-06-30',
+        orderStatus: 'Not Ordered',
+      },
+    ]);
+
+    const res = await d.deleteCard(A, { id: card.id });
+    expect(res).toEqual({ id: card.id });
+
+    // Verify card is deleted
+    await rejectsNotFound(d.getCard(A, { id: card.id }));
+
+    // Verify instances are gone
+    const remainingInstances = await db
+      .select()
+      .from(benefitInstances)
+      .where(and(eq(benefitInstances.workspaceId, A.workspaceId), eq(benefitInstances.cardId, card.id)));
+    expect(remainingInstances).toHaveLength(0);
+
+    // Verify override is gone
+    const remainingOverrides = await db
+      .select()
+      .from(cardBenefitOverrides)
+      .where(and(eq(cardBenefitOverrides.workspaceId, A.workspaceId), eq(cardBenefitOverrides.cardId, card.id)));
+    expect(remainingOverrides).toHaveLength(0);
   });
   it('marking card inactive prunes non-ordered benefits from inactive_from onwards', async () => {
     const card = await d.createCard(A, {
@@ -208,7 +314,6 @@ describe('cards', () => {
   });
 });
 
-import { eq } from 'drizzle-orm';
 const eq0 = (id: string) => eq(cards.id, id);
 
 describe('overrides', () => {

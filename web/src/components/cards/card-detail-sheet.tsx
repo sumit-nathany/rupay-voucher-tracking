@@ -139,7 +139,7 @@ export function CardDetailSheet({
   async function handleDelete() {
     const ok = await run(
       () => deleteCard({ id: card.id }),
-      'Could not delete card. A card that has benefit history cannot be deleted; mark it inactive instead.',
+      'Could not delete card. A card that has benefits in statuses other than Not Ordered cannot be deleted; mark it inactive instead.',
     );
     if (ok) {
       setOpen(false);
@@ -642,7 +642,7 @@ export function CardDetailSheet({
               <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-foreground space-y-2">
                 <p className="font-semibold text-destructive">Warning</p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  This permanently removes the card. A card that already has benefit vouchers or history cannot be deleted; mark it inactive instead.
+                  This permanently removes the card and any un-ordered benefits. A card that has benefits in any status other than Not Ordered cannot be deleted; mark it inactive instead.
                 </p>
               </div>
 

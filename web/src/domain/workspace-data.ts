@@ -7,7 +7,7 @@
  * schemas are .strict() so a stray one is rejected loudly). Every query,
  * reads included, filters on ctx.workspaceId.
  */
-import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   bankCardTypes,
@@ -17,6 +17,11 @@ import {
   cardHolders,
   cardVariants,
   cards,
+  orderingQueueItems,
+  orderingRuleCards,
+  portalCardMappings,
+  portalOrderAttempts,
+  reminderLog,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import { inferOfferKind } from '@/domain/benefit-offer-kind';
@@ -424,22 +429,142 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   return row;
 }
 
-/** Deletes only a card with no overrides or instances; otherwise deactivate. */
+/**
+ * Deletes a card if and only if it has no benefits in any status other than 'Not Ordered'.
+ * If the card has benefits in other statuses (or active order attempts), deletion is rejected.
+ * When allowed, all un-ordered benefit instances, reminders, queue items, overrides,
+ * and mappings for this card are cleaned up atomically.
+ */
 export async function deleteCard(ctx: Ctx, input: unknown) {
   const { id } = parse(idOnly, input);
   await getCard(ctx, { id });
-  const [o] = await ctx.db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(cardBenefitOverrides)
-    .where(and(eq(cardBenefitOverrides.workspaceId, ctx.workspaceId), eq(cardBenefitOverrides.cardId, id)));
-  const [i] = await ctx.db
+
+  // 1. Check if the card has any benefit instances in any status other than 'Not Ordered'
+  const [nonNotOrdered] = await ctx.db
     .select({ n: sql<number>`count(*)::int` })
     .from(benefitInstances)
-    .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.cardId, id)));
-  if (o.n > 0 || i.n > 0) {
-    throw new ConflictError('Card has benefit history; deactivate the card instead of deleting');
+    .where(
+      and(
+        eq(benefitInstances.workspaceId, ctx.workspaceId),
+        eq(benefitInstances.cardId, id),
+        or(
+          ne(benefitInstances.orderStatus, 'Not Ordered'),
+          isNotNull(benefitInstances.rupayBookingId),
+        ),
+      ),
+    );
+  if (nonNotOrdered && nonNotOrdered.n > 0) {
+    throw new ConflictError('Card has benefits in a status other than Not Ordered; deactivate the card instead of deleting');
   }
-  await ctx.db.delete(cards).where(and(eq(cards.workspaceId, ctx.workspaceId), eq(cards.id, id)));
+
+  // 2. Check if there are any active automation order attempts in flight
+  const [activeAttempt] = await ctx.db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(portalOrderAttempts)
+    .innerJoin(benefitInstances, eq(portalOrderAttempts.instanceId, benefitInstances.id))
+    .where(
+      and(
+        eq(benefitInstances.workspaceId, ctx.workspaceId),
+        eq(benefitInstances.cardId, id),
+        inArray(portalOrderAttempts.state, ['reserved', 'submitting', 'uncertain']),
+      ),
+    );
+  if (activeAttempt && activeAttempt.n > 0) {
+    throw new ConflictError('Card has an automated order in progress; please wait for it to complete before deleting');
+  }
+
+  // 3. Atomically delete all instances, overrides, mappings, and the card
+  await ctx.db.transaction(async (tx) => {
+    const instances = await tx
+      .select({ id: benefitInstances.id })
+      .from(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, ctx.workspaceId),
+          eq(benefitInstances.cardId, id),
+        ),
+      );
+
+    if (instances.length > 0) {
+      const instanceIds = instances.map((r) => r.id);
+
+      // Clean up reminder logs referencing these instances
+      await tx
+        .delete(reminderLog)
+        .where(
+          and(
+            eq(reminderLog.workspaceId, ctx.workspaceId),
+            inArray(reminderLog.instanceId, instanceIds),
+          ),
+        );
+
+      // Clean up queue entries referencing these instances
+      await tx
+        .delete(orderingQueueItems)
+        .where(
+          and(
+            eq(orderingQueueItems.workspaceId, ctx.workspaceId),
+            inArray(orderingQueueItems.instanceId, instanceIds),
+          ),
+        );
+
+      // Clean up any finished/failed portal order attempts referencing these instances
+      await tx
+        .delete(portalOrderAttempts)
+        .where(
+          and(
+            eq(portalOrderAttempts.workspaceId, ctx.workspaceId),
+            inArray(portalOrderAttempts.instanceId, instanceIds),
+          ),
+        );
+
+      // Delete the un-ordered benefit instances
+      await tx
+        .delete(benefitInstances)
+        .where(
+          and(
+            eq(benefitInstances.workspaceId, ctx.workspaceId),
+            eq(benefitInstances.cardId, id),
+          ),
+        );
+    }
+
+    // Delete any card benefit overrides
+    await tx
+      .delete(cardBenefitOverrides)
+      .where(
+        and(
+          eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
+          eq(cardBenefitOverrides.cardId, id),
+        ),
+      );
+
+    // Delete any portal card mappings
+    await tx
+      .delete(portalCardMappings)
+      .where(
+        and(
+          eq(portalCardMappings.workspaceId, ctx.workspaceId),
+          eq(portalCardMappings.cardId, id),
+        ),
+      );
+
+    // Delete any ordering rule cards
+    await tx
+      .delete(orderingRuleCards)
+      .where(eq(orderingRuleCards.cardId, id));
+
+    // Delete the card itself
+    await tx
+      .delete(cards)
+      .where(
+        and(
+          eq(cards.workspaceId, ctx.workspaceId),
+          eq(cards.id, id),
+        ),
+      );
+  });
+
   return { id };
 }
 
