@@ -104,13 +104,9 @@ export function HolderDetailSheet({
                     <span className="truncate font-semibold text-base leading-snug text-foreground group-hover:text-primary transition-colors">
                       {holder.name}
                     </span>
-                    {holder.active === false ? (
+                    {holder.active === false && (
                       <Badge variant="secondary" className="leading-none text-xs">
                         Inactive
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal text-xs leading-none">
-                        Active
                       </Badge>
                     )}
                   </div>
@@ -151,13 +147,9 @@ export function HolderDetailSheet({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <SheetTitle className="text-xl font-bold leading-tight">{holder.name}</SheetTitle>
-                      {holder.active === false ? (
+                      {holder.active === false && (
                         <Badge variant="secondary" className="text-xs">
                           Inactive
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium text-xs">
-                          Active
                         </Badge>
                       )}
                     </div>
@@ -179,14 +171,16 @@ export function HolderDetailSheet({
                         {holder.email || <span className="text-muted-foreground font-normal">Not provided</span>}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-2 py-1 border-b border-border/40">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <User className="h-3.5 w-3.5" /> Status
-                      </span>
-                      <span className="font-medium text-foreground">
-                        {holder.active ? 'Active — can be assigned cards' : 'Inactive'}
-                      </span>
-                    </div>
+                    {holder.active === false && (
+                      <div className="flex items-center justify-between gap-2 py-1 border-b border-border/40">
+                        <span className="text-muted-foreground flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5" /> Status
+                        </span>
+                        <span className="font-medium text-muted-foreground">
+                          Inactive
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-2 py-1">
                       <span className="text-muted-foreground flex items-center gap-1.5">
                         <CreditCard className="h-3.5 w-3.5" /> Total Cards
