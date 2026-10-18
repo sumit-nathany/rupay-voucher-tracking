@@ -395,6 +395,12 @@ export function OrderQueueSection({
                   {/* Details */}
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
+                      {item.benefitType && (
+                        <Badge variant="outline" className="text-xs font-semibold shrink-0">
+                          {item.benefitType}
+                        </Badge>
+                      )}
+
                       <span className="font-semibold text-sm sm:text-base text-foreground truncate">
                         {item.benefitProvider
                           ? `${item.benefitProvider} - ${item.exactBenefit}`
@@ -488,8 +494,11 @@ export function OrderQueueSection({
                             onValueChange={(val) => handleSelectOption(item.instanceId, val)}
                             disabled={!item.enabled || isPending}
                           >
-                            <SelectTrigger className="h-8 text-xs rounded-xl border-border/80 bg-background font-medium">
-                              <SelectValue placeholder="Pick benefit option..." />
+                            <SelectTrigger
+                              className="h-8 text-xs rounded-xl border-border/80 bg-background font-medium"
+                              aria-label={`Pick ${item.benefitType || 'benefit'} option`}
+                            >
+                              <SelectValue placeholder={`Pick ${item.benefitType || 'benefit'} option...`} />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
                               {item.availableOptions.map((opt) => (

@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { PortalAccountView, AttemptView } from '@/domain/automation';
+import { getPortalStatusExplanation } from '@/lib/portal-status';
+
 
 export type AttentionItem = {
   id: string;
@@ -46,7 +48,7 @@ export function buildAttentionItems(
       items.push({
         id: `account-${acc.id}`,
         message: `${acc.label} — ${acc.status.replace(/_/g, ' ')}`,
-        detail: 'The worker will skip this account until it is fixed.',
+        detail: getPortalStatusExplanation(acc.status, acc.statusDetailCode),
         actionLabel: 'Fix',
         actionHref: '/accounts',
       });
@@ -98,10 +100,10 @@ export function AttentionSection({
             key={item.id}
             className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card/90 rounded-xl px-4 py-3 border border-amber-500/20 text-xs sm:text-sm"
           >
-            <div className="space-y-0.5 min-w-0">
-              <p className="font-semibold text-foreground text-sm">{item.message}</p>
+            <div className="space-y-0.5 min-w-0 flex-1">
+              <p className="font-semibold text-foreground text-sm break-words">{item.message}</p>
               {item.detail && (
-                <p className="text-xs text-muted-foreground">{item.detail}</p>
+                <p className="text-xs text-muted-foreground break-words leading-relaxed">{item.detail}</p>
               )}
             </div>
             {item.actionHref ? (

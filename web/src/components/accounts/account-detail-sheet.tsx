@@ -39,6 +39,11 @@ import {
 } from '@/components/ui/sheet';
 import { MappingDialog, type CardOption } from '@/components/automation/mapping-dialogs';
 import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
+import {
+  getPortalStatusExplanation,
+  getPortalStatusResolution,
+} from '@/lib/portal-status';
+
 import { useRunAction } from '../holders/form-kit';
 
 export interface AccountDetailSheetProps {
@@ -138,6 +143,18 @@ export function AccountDetailSheet({
     }
   }
 
+  async function handleReconnect() {
+    setError(null);
+    setFeedback(null);
+    const ok = await run(
+      () => resumePortalAccountAction({ id: account.id }),
+      'Failed to clear issue and reconnect account',
+    );
+    if (ok) {
+      setFeedback('Issue cleared and account reconnected successfully.');
+    }
+  }
+
   async function handleUnmapCard(id: string, cardName: string) {
     if (!confirm(`Remove card mapping for "${cardName}"?`)) return;
     setError(null);
@@ -181,15 +198,15 @@ export function AccountDetailSheet({
                   >
                     <KeyRound className="h-6 w-6" />
                   </div>
-                  <div className="min-w-0 space-y-1.5">
+                  <div className="min-w-0 space-y-1.5 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-semibold text-base sm:text-lg leading-snug text-foreground group-hover:text-primary transition-colors">
+                      <span className="font-semibold text-base sm:text-lg leading-snug text-foreground group-hover:text-primary transition-colors break-words">
                         {account.label}
                       </span>
                       {isCooldown ? (
                         <Badge
                           variant="outline"
-                          className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1"
+                          className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1 shrink-0"
                         >
                           <Clock className="h-3 w-3" />
                           Cooldown
@@ -197,9 +214,9 @@ export function AccountDetailSheet({
                       ) : (
                         <Badge
                           variant="outline"
-                          className={`text-xs font-medium tracking-wider capitalize ${getStatusTone(account.status)}`}
+                          className={`text-xs font-medium tracking-wider capitalize shrink-0 ${getStatusTone(account.status)}`}
                         >
-                          {account.status.replace('_', ' ')}
+                          {account.status.replace(/_/g, ' ')}
                         </Badge>
                       )}
                     </div>
@@ -214,6 +231,11 @@ export function AccountDetailSheet({
                         </span>
                       )}
                     </div>
+                    {(account.status === 'needs_attention' || account.statusDetailCode) && (
+                      <p className="text-xs text-destructive font-medium break-words pt-0.5">
+                        {getPortalStatusExplanation(account.status, account.statusDetailCode)}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center pl-1 text-muted-foreground group-hover:text-foreground">
@@ -236,15 +258,15 @@ export function AccountDetailSheet({
                     >
                       <KeyRound className="h-6 w-6" />
                     </div>
-                    <div className="space-y-1 min-w-0">
+                    <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <SheetTitle className="text-xl font-bold leading-tight truncate">
+                        <SheetTitle className="text-xl font-bold leading-tight break-words">
                           {account.label}
                         </SheetTitle>
                         {isCooldown ? (
                           <Badge
                             variant="outline"
-                            className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1"
+                            className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1 shrink-0"
                           >
                             <Clock className="h-3 w-3" />
                             Cooldown
@@ -252,13 +274,13 @@ export function AccountDetailSheet({
                         ) : (
                           <Badge
                             variant="outline"
-                            className={`text-xs font-medium tracking-wider capitalize ${getStatusTone(account.status)}`}
+                            className={`text-xs font-medium tracking-wider capitalize shrink-0 ${getStatusTone(account.status)}`}
                           >
-                            {account.status.replace('_', ' ')}
+                            {account.status.replace(/_/g, ' ')}
                           </Badge>
                         )}
                       </div>
-                      <SheetDescription className="truncate">
+                      <SheetDescription className="break-words">
                         RuPay Benefits portal credentials & automated checkout configuration
                       </SheetDescription>
                     </div>
@@ -277,6 +299,37 @@ export function AccountDetailSheet({
                   <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
                     <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
                     <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Needs Attention Alert Banner */}
+                {account.status === 'needs_attention' && (
+                  <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive space-y-3 shadow-xs">
+                    <div className="flex items-center gap-2 font-semibold text-sm text-destructive">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>Account Needs Attention</span>
+                    </div>
+                    <p className="text-foreground/90 text-xs leading-relaxed break-words">
+                      {getPortalStatusResolution(account.status, account.statusDetailCode)}
+                    </p>
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={pending}
+                        onClick={handleReconnect}
+                        className="h-8 text-xs font-semibold gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer"
+                      >
+                        {pending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Clear Issue / Reconnect
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -316,9 +369,17 @@ export function AccountDetailSheet({
                     <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                       <span className="text-muted-foreground">Status</span>
                       <span className={`font-medium text-foreground capitalize ${getStatusTone(account.status)}`}>
-                        {account.status.replace('_', ' ')}
+                        {account.status.replace(/_/g, ' ')}
                       </span>
                     </div>
+                    {account.statusDetailCode && (
+                      <div className="flex items-start justify-between gap-2 py-1.5 border-b border-border/40">
+                        <span className="text-muted-foreground shrink-0">Issue Detail</span>
+                        <span className="font-medium text-destructive text-xs text-right break-words max-w-[240px]">
+                          {getPortalStatusExplanation(account.status, account.statusDetailCode)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                       <span className="text-muted-foreground">Mapped Cards</span>
                       <span className="font-medium text-foreground">
@@ -437,39 +498,68 @@ export function AccountDetailSheet({
                   )}
                 </div>
 
-                {/* Quick Pause / Resume Action Card */}
-                <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 p-3.5">
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-bold text-foreground">
-                      {account.status === 'paused' ? 'Account Paused' : 'Automation Active'}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {account.status === 'paused'
-                        ? 'Resume to include this account in automated ordering.'
-                        : 'Pause to skip this account during scheduled daily runs.'}
-                    </p>
+                {/* Quick Pause / Resume / Reconnect Action Card */}
+                {account.status === 'needs_attention' ? (
+                  <div className="flex items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 p-3.5 gap-3">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <p className="text-xs font-bold text-destructive">
+                        Account Needs Attention
+                      </p>
+                      <p className="text-[11px] text-muted-foreground break-words leading-relaxed">
+                        {getPortalStatusExplanation(account.status, account.statusDetailCode)}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="default"
+                      size="sm"
+                      disabled={pending}
+                      onClick={handleReconnect}
+                      className="h-8 text-xs font-semibold gap-1.5 shrink-0 bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer"
+                    >
+                      {pending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5" /> Reconnect
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant={account.status === 'paused' ? 'default' : 'outline'}
-                    size="sm"
-                    disabled={pending}
-                    onClick={handleTogglePause}
-                    className="h-8 text-xs font-semibold gap-1.5 shrink-0"
-                  >
-                    {pending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : account.status === 'paused' ? (
-                      <>
-                        <Play className="h-3.5 w-3.5" /> Resume
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="h-3.5 w-3.5" /> Pause
-                      </>
-                    )}
-                  </Button>
-                </div>
+                ) : (
+                  <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 p-3.5">
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-bold text-foreground">
+                        {account.status === 'paused' ? 'Account Paused' : 'Automation Active'}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {account.status === 'paused'
+                          ? 'Resume to include this account in automated ordering.'
+                          : 'Pause to skip this account during scheduled daily runs.'}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={account.status === 'paused' ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={pending}
+                      onClick={handleTogglePause}
+                      className="h-8 text-xs font-semibold gap-1.5 shrink-0"
+                    >
+                      {pending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : account.status === 'paused' ? (
+                        <>
+                          <Play className="h-3.5 w-3.5" /> Resume
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="h-3.5 w-3.5" /> Pause
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <SheetFooter className="mt-8 pt-4 border-t border-border/50 flex flex-row items-center justify-between gap-2 sm:justify-between">

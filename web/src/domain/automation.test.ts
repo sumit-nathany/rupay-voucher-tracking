@@ -31,9 +31,12 @@ import {
   savePortalCardMapping,
   listPortalCardMappings,
   setCardPortalAccounts,
+  setPortalAccountCards,
   createOrderingRule,
   findCandidatesForAccount,
   findCandidateFromGlobalQueue,
+  getPortalStatusExplanation,
+  getPortalStatusResolution,
 } from './automation';
 import { encryptPaymentDetails } from '@/lib/card-payment-details';
 
@@ -98,11 +101,55 @@ describe('automation domain', () => {
     await resumePortalAccount(ctx, acc.id);
     expect((await listPortalAccounts(ctx))[0].status).toBe('connected');
 
+    // Set account to needs_attention with conflict detail code
+    await db
+      .update(portalAccounts)
+      .set({ status: 'needs_attention', statusDetailCode: 'tracker_reference_conflict' })
+      .where(eq(portalAccounts.id, acc.id));
+
+    const attentionAcc = (await listPortalAccounts(ctx))[0];
+    expect(attentionAcc.status).toBe('needs_attention');
+    expect(attentionAcc.statusDetailCode).toBe('tracker_reference_conflict');
+
+    // Resuming/reconnecting clears statusDetailCode and resets status to connected
+    await resumePortalAccount(ctx, acc.id);
+    const resumedAcc = (await listPortalAccounts(ctx))[0];
+    expect(resumedAcc.status).toBe('connected');
+    expect(resumedAcc.statusDetailCode).toBeNull();
+
     await updatePortalAccount(ctx, { id: acc.id, label: 'Renamed Account' });
     expect((await listPortalAccounts(ctx))[0].label).toBe('Renamed Account');
 
     await deletePortalAccount(ctx, acc.id);
     expect((await listPortalAccounts(ctx)).length).toBe(0);
+  });
+
+  it('maps known portal status detail codes and statuses to human-friendly explanations and resolutions', () => {
+    expect(getPortalStatusExplanation('needs_attention', 'tracker_reference_conflict')).toBe(
+      'A previous order reference conflicted with another card. Check RuPay portal orders.',
+    );
+    expect(getPortalStatusExplanation('needs_attention', 'worker_lost_after_submit_started')).toBe(
+      'Automation worker lost connection during checkout. Check RuPay portal orders.',
+    );
+    expect(getPortalStatusExplanation('needs_attention', 'network_post_submit')).toBe(
+      'Network disconnected after 3DS authorization. Check RuPay portal orders.',
+    );
+    expect(getPortalStatusExplanation('credentials_expired', null)).toBe(
+      'Portal sign-in failed. Please update portal login credentials.',
+    );
+    expect(getPortalStatusExplanation('challenge_required', null)).toBe(
+      'Portal required a captcha or security challenge. Sign in manually to clear.',
+    );
+    expect(getPortalStatusExplanation('portal_changed', null)).toBe(
+      'Portal layout changed unexpectedly. Check account configuration.',
+    );
+    expect(getPortalStatusExplanation('needs_attention', null)).toBe(
+      'Account needs attention before automation can proceed. Check RuPay portal orders.',
+    );
+
+    expect(getPortalStatusResolution('needs_attention', 'tracker_reference_conflict')).toBe(
+      'A previous order reference conflicted with another card. Please verify your RuPay portal orders and reconnect this account when ready.',
+    );
   });
 
   it('nominates eligible candidates based on rule priority, filters, and 24h limit', async () => {
@@ -479,6 +526,79 @@ describe('automation domain', () => {
     const mappings3 = await listPortalCardMappings(ctx);
     expect(mappings3.filter((m) => m.cardId === card.id).length).toBe(0);
   });
+
+  it('sets and updates card assignments for a portal account', async () => {
+    const acc = await createPortalAccount(ctx, {
+      label: 'Acc Multi Cards',
+      credentials: { loginId: 'multicards@test.com', password: 'pwd' },
+    });
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({ displayName: 'Bank Card', bankName: 'Bank' }).returning();
+
+    const [cardA] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card A',
+      lastDigits: '1111',
+    }).returning();
+    const [cardB] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card B',
+      lastDigits: '2222',
+    }).returning();
+    const [cardC] = await db.insert(cards).values({
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card C',
+      lastDigits: '3333',
+    }).returning();
+
+    const samplePayment = {
+      version: 1 as const,
+      mode: 'full' as const,
+      cardNumber: '5085001234567890',
+      expiryMonth: '12',
+      expiryYear: '2028',
+      cvv: '123',
+    };
+    for (const c of [cardA, cardB, cardC]) {
+      await db.update(cards)
+        .set({ paymentDetailsEncrypted: encryptPaymentDetails(samplePayment, c.id) })
+        .where(eq(cards.id, c.id));
+    }
+
+    // Assign Card A and Card B to this account
+    await setPortalAccountCards(ctx, {
+      portalAccountId: acc.id,
+      cardIds: [cardA.id, cardB.id],
+    });
+
+    const m1 = await listPortalCardMappings(ctx, acc.id);
+    expect(m1.map((m) => m.cardId).sort()).toEqual([cardA.id, cardB.id].sort());
+
+    // Update assignment to Card B and Card C (Card A removed, Card C added)
+    await setPortalAccountCards(ctx, {
+      portalAccountId: acc.id,
+      cardIds: [cardB.id, cardC.id],
+    });
+
+    const m2 = await listPortalCardMappings(ctx, acc.id);
+    expect(m2.map((m) => m.cardId).sort()).toEqual([cardB.id, cardC.id].sort());
+
+    // Unassign all cards from this account
+    await setPortalAccountCards(ctx, {
+      portalAccountId: acc.id,
+      cardIds: [],
+    });
+
+    const m3 = await listPortalCardMappings(ctx, acc.id);
+    expect(m3.length).toBe(0);
+  });
+
 
   it('prevents assigning card to portal account if card details are not configured', async () => {
     const acc = await createPortalAccount(ctx, {

@@ -49,6 +49,14 @@ export interface PortalAccountView {
   rulesCount: number;
 }
 
+export {
+  PORTAL_STATUS_EXPLANATIONS,
+  PORTAL_STATUS_RESOLUTIONS,
+  getPortalStatusExplanation,
+  getPortalStatusResolution,
+} from '@/lib/portal-status';
+
+
 export interface PortalCardMappingView {
   id: string;
   workspaceId: string;
@@ -314,8 +322,13 @@ export async function updatePortalAccount(
       { version: 1, loginId: input.credentials.loginId, password: input.credentials.password, extra: input.credentials.extra },
       existing.id,
     );
-    // If status was credentials_expired or challenge_required, reset to connected
-    if (existing.status === 'credentials_expired' || existing.status === 'challenge_required') {
+    // If status was credentials_expired, challenge_required, needs_attention, or portal_changed, reset to connected
+    if (
+      existing.status === 'credentials_expired' ||
+      existing.status === 'challenge_required' ||
+      existing.status === 'needs_attention' ||
+      existing.status === 'portal_changed'
+    ) {
       patch.status = 'connected';
       patch.statusDetailCode = null;
     }
@@ -355,7 +368,7 @@ export async function pausePortalAccount(ctx: Ctx, id: string): Promise<void> {
 export async function resumePortalAccount(ctx: Ctx, id: string): Promise<void> {
   await ctx.db
     .update(portalAccounts)
-    .set({ status: 'connected', updatedAt: new Date() })
+    .set({ status: 'connected', statusDetailCode: null, updatedAt: new Date() })
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, id)));
 }
 
@@ -712,6 +725,121 @@ export async function setCardPortalAccounts(
       ),
     );
 }
+
+export async function setPortalAccountCards(
+  ctx: Ctx,
+  input: {
+    portalAccountId: string;
+    cardIds: string[];
+  },
+): Promise<void> {
+  const { portalAccountId, cardIds } = input;
+
+  // Verify portal account belongs to workspace
+  const [acc] = await ctx.db
+    .select({ id: portalAccounts.id })
+    .from(portalAccounts)
+    .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, portalAccountId)));
+  if (!acc) throw new NotFoundError('Portal account not found in workspace');
+
+  if (cardIds.length > 0) {
+    // Verify all cards belong to workspace
+    const targetCards = await ctx.db
+      .select({
+        id: cards.id,
+        paymentDetailsEncrypted: cards.paymentDetailsEncrypted,
+      })
+      .from(cards)
+      .where(
+        and(
+          eq(cards.workspaceId, ctx.workspaceId),
+          inArray(cards.id, cardIds),
+        ),
+      );
+    if (targetCards.length !== cardIds.length) {
+      throw new NotFoundError('One or more cards not found in workspace');
+    }
+
+    // Strict Guardrail: Validate all selected cards have valid payment details configured
+    const cardMap = new Map<string, PaymentDetails>();
+    for (const c of targetCards) {
+      let validDecryptedDetails: PaymentDetails | null = null;
+      if (c.paymentDetailsEncrypted) {
+        try {
+          const decrypted = decryptPaymentDetails(c.paymentDetailsEncrypted, c.id);
+          if (isValidPaymentDetails(decrypted)) {
+            validDecryptedDetails = decrypted;
+          }
+        } catch {}
+      }
+
+      if (!validDecryptedDetails) {
+        throw new ValidationError(
+          'Cannot assign card: Payment details (card number, expiry date, CVV) must be configured on all cards before assigning them to a portal account. Please add payment details under Cards.',
+        );
+      }
+      cardMap.set(c.id, validDecryptedDetails);
+    }
+
+    // Get existing mappings for this portal account
+    const existingMappings = await ctx.db
+      .select()
+      .from(portalCardMappings)
+      .where(
+        and(
+          eq(portalCardMappings.workspaceId, ctx.workspaceId),
+          eq(portalCardMappings.portalAccountId, portalAccountId),
+        ),
+      );
+
+    const existingCardIds = new Set(existingMappings.map((m) => m.cardId));
+    const desiredCardIds = new Set(cardIds);
+
+    // Delete mappings that are no longer selected
+    const toDelete = existingMappings.filter((m) => !desiredCardIds.has(m.cardId));
+    if (toDelete.length > 0) {
+      await ctx.db
+        .delete(portalCardMappings)
+        .where(
+          and(
+            eq(portalCardMappings.workspaceId, ctx.workspaceId),
+            inArray(portalCardMappings.id, toDelete.map((d) => d.id)),
+          ),
+        );
+    }
+
+    // Insert mappings for newly selected cards (inheriting payment details)
+    const toAdd = cardIds.filter((cid) => !existingCardIds.has(cid));
+    for (const cid of toAdd) {
+      const validDetails = cardMap.get(cid);
+      const mappingId = crypto.randomUUID();
+      const mappingEncrypted = validDetails
+        ? encryptPaymentDetails(validDetails, mappingId)
+        : null;
+
+      await ctx.db.insert(portalCardMappings).values({
+        id: mappingId,
+        workspaceId: ctx.workspaceId,
+        portalAccountId,
+        cardId: cid,
+        paymentDetailsEncrypted: mappingEncrypted,
+        active: true,
+      });
+    }
+    return;
+  }
+
+  // If cardIds is empty: unassign all cards from this account
+  await ctx.db
+    .delete(portalCardMappings)
+    .where(
+      and(
+        eq(portalCardMappings.workspaceId, ctx.workspaceId),
+        eq(portalCardMappings.portalAccountId, portalAccountId),
+      ),
+    );
+}
+
 
 // ── Ordering Rules ──────────────────────────────────────────────────────────
 

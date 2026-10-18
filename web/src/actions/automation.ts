@@ -118,6 +118,8 @@ export async function resumePortalAccountAction(input: { id: string }) {
   revalidatePath('/accounts');
 }
 
+export const reconnectPortalAccountAction = resumePortalAccountAction;
+
 export async function deletePortalAccountAction(input: { id: string }) {
   const ctx = await getCtx();
   await auto.deletePortalAccount(ctx, input.id);
@@ -174,6 +176,20 @@ export async function setCardPortalAccountsAction(input: z.infer<typeof setCardP
   revalidatePath('/automation');
   revalidatePath('/accounts');
 }
+
+const setPortalAccountCardsSchema = z.object({
+  portalAccountId: z.string().uuid(),
+  cardIds: z.array(z.string().uuid()),
+});
+
+export async function setPortalAccountCardsAction(input: z.infer<typeof setPortalAccountCardsSchema>) {
+  const ctx = await getCtx();
+  const parsed = setPortalAccountCardsSchema.parse(input);
+  await auto.setPortalAccountCards(ctx, parsed);
+  revalidatePath('/automation');
+  revalidatePath('/accounts');
+}
+
 
 const ruleSchema = z.object({
   portalAccountId: z.string().uuid(),
