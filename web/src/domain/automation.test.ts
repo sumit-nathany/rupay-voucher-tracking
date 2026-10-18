@@ -124,6 +124,68 @@ describe('automation domain', () => {
     expect((await listPortalAccounts(ctx)).length).toBe(0);
   });
 
+  it('strictly enforces uniqueness of label, loginId, and phoneNumber across portal accounts in workspace', async () => {
+    const acc1 = await createPortalAccount(ctx, {
+      label: 'Alpha Account',
+      phoneNumber: '9876543210',
+      credentials: { loginId: 'unique1@example.com', password: 'pwd' },
+    });
+
+    // 1. Duplicate label on create
+    await expect(
+      createPortalAccount(ctx, {
+        label: 'ALPHA Account',
+        credentials: { loginId: 'unique2@example.com', password: 'pwd' },
+      }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // 2. Duplicate loginId on create
+    await expect(
+      createPortalAccount(ctx, {
+        label: 'Beta Account',
+        credentials: { loginId: 'UNIQUE1@example.com', password: 'pwd' },
+      }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // 3. Duplicate phone on create
+    await expect(
+      createPortalAccount(ctx, {
+        label: 'Beta Account',
+        phoneNumber: '9876543210',
+        credentials: { loginId: 'unique2@example.com', password: 'pwd' },
+      }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // Create a valid second account
+    const acc2 = await createPortalAccount(ctx, {
+      label: 'Beta Account',
+      phoneNumber: '9876543211',
+      credentials: { loginId: 'unique2@example.com', password: 'pwd' },
+    });
+
+    // 4. Updating acc2 to duplicate acc1's label
+    await expect(
+      updatePortalAccount(ctx, { id: acc2.id, label: 'alpha account' }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // 5. Updating acc2 to duplicate acc1's loginId
+    await expect(
+      updatePortalAccount(ctx, {
+        id: acc2.id,
+        credentials: { loginId: 'unique1@example.com', password: 'pwd' },
+      }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // 6. Updating acc2 to duplicate acc1's phone
+    await expect(
+      updatePortalAccount(ctx, { id: acc2.id, phoneNumber: '9876543210' }),
+    ).rejects.toThrow('already exists in this workspace');
+
+    // Clean up
+    await deletePortalAccount(ctx, acc1.id);
+    await deletePortalAccount(ctx, acc2.id);
+  });
+
   it('maps known portal status detail codes and statuses to human-friendly explanations and resolutions', () => {
     expect(getPortalStatusExplanation('needs_attention', 'tracker_reference_conflict')).toBe(
       'A previous order reference conflicted with another card. Check RuPay portal orders.',

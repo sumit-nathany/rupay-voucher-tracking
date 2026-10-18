@@ -19,7 +19,7 @@ import {
 import type { Ctx, Database } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
 import { syncGlobalOrderingQueue } from './ordering-queue';
-import { encryptPortalCredentials } from '@/lib/portal-credentials';
+import { encryptPortalCredentials, decryptPortalCredentials } from '@/lib/portal-credentials';
 import {
   decryptPaymentDetails,
   encryptPaymentDetails,
@@ -255,12 +255,47 @@ export async function createPortalAccount(
   input: { label: string; phoneNumber?: string | null; credentials: { loginId: string; password: string; extra?: Record<string, string> } },
 ): Promise<PortalAccountView> {
   const label = input.label.trim();
-  if (!label) throw new Error('Label cannot be empty');
+  if (!label) throw new ValidationError('Label cannot be empty');
+
+  // Verify label is unique in workspace
+  const existingAccounts = await ctx.db
+    .select()
+    .from(portalAccounts)
+    .where(eq(portalAccounts.workspaceId, ctx.workspaceId));
+
+  const duplicateLabel = existingAccounts.find(
+    (a) => a.label.trim().toLowerCase() === label.toLowerCase(),
+  );
+  if (duplicateLabel) {
+    throw new ValidationError(`A RuPay account with label "${label}" already exists in this workspace`);
+  }
+
+  // Verify loginId is unique across existing accounts in workspace
+  const targetLoginId = input.credentials.loginId.trim().toLowerCase();
+  for (const existing of existingAccounts) {
+    try {
+      const creds = decryptPortalCredentials(existing.credentialsEncrypted, existing.id);
+      if (creds.loginId.trim().toLowerCase() === targetLoginId) {
+        throw new ValidationError(`A RuPay account with login ID "${input.credentials.loginId}" already exists in this workspace ("${existing.label}")`);
+      }
+    } catch (err) {
+      if (err instanceof ValidationError) throw err;
+    }
+  }
+
+  // Verify phone number is unique if provided
+  if (input.phoneNumber?.trim()) {
+    const targetPhone = input.phoneNumber.trim();
+    const duplicatePhone = existingAccounts.find((a) => a.phoneNumber?.trim() === targetPhone);
+    if (duplicatePhone) {
+      throw new ValidationError(`A RuPay account with phone number "${targetPhone}" already exists in this workspace ("${duplicatePhone.label}")`);
+    }
+  }
 
   // Generate UUID in application so we can bind it to ciphertext AAD
   const accountId = crypto.randomUUID();
   const credentialsEncrypted = encryptPortalCredentials(
-    { version: 1, loginId: input.credentials.loginId, password: input.credentials.password, extra: input.credentials.extra },
+    { version: 1, loginId: input.credentials.loginId.trim(), password: input.credentials.password, extra: input.credentials.extra },
     accountId,
   );
 
@@ -305,21 +340,51 @@ export async function updatePortalAccount(
 
   if (!existing) throw new NotFoundError('Portal account not found');
 
+  const otherAccounts = await ctx.db
+    .select()
+    .from(portalAccounts)
+    .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), ne(portalAccounts.id, input.id)));
+
   const patch: Partial<typeof portalAccounts.$inferInsert> = { updatedAt: new Date() };
 
   if (input.label !== undefined) {
     const l = input.label.trim();
-    if (!l) throw new Error('Label cannot be empty');
+    if (!l) throw new ValidationError('Label cannot be empty');
+    const duplicateLabel = otherAccounts.find(
+      (a) => a.label.trim().toLowerCase() === l.toLowerCase(),
+    );
+    if (duplicateLabel) {
+      throw new ValidationError(`A RuPay account with label "${l}" already exists in this workspace`);
+    }
     patch.label = l;
   }
 
   if (input.phoneNumber !== undefined) {
-    patch.phoneNumber = input.phoneNumber?.trim() || null;
+    const p = input.phoneNumber?.trim() || null;
+    if (p) {
+      const duplicatePhone = otherAccounts.find((a) => a.phoneNumber?.trim() === p);
+      if (duplicatePhone) {
+        throw new ValidationError(`A RuPay account with phone number "${p}" already exists in this workspace ("${duplicatePhone.label}")`);
+      }
+    }
+    patch.phoneNumber = p;
   }
 
   if (input.credentials) {
+    const targetLoginId = input.credentials.loginId.trim().toLowerCase();
+    for (const other of otherAccounts) {
+      try {
+        const creds = decryptPortalCredentials(other.credentialsEncrypted, other.id);
+        if (creds.loginId.trim().toLowerCase() === targetLoginId) {
+          throw new ValidationError(`A RuPay account with login ID "${input.credentials.loginId}" already exists in this workspace ("${other.label}")`);
+        }
+      } catch (err) {
+        if (err instanceof ValidationError) throw err;
+      }
+    }
+
     patch.credentialsEncrypted = encryptPortalCredentials(
-      { version: 1, loginId: input.credentials.loginId, password: input.credentials.password, extra: input.credentials.extra },
+      { version: 1, loginId: input.credentials.loginId.trim(), password: input.credentials.password, extra: input.credentials.extra },
       existing.id,
     );
     // If status was credentials_expired, challenge_required, needs_attention, or portal_changed, reset to connected
