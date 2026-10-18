@@ -14,6 +14,8 @@ export interface TelegramSendOtpOptions {
   voucherValue?: number | string;
   amount?: number;
   timeoutMinutes?: number;
+  isRetry?: boolean;
+  errorMessage?: string;
 }
 
 export interface TelegramConfirmationOptions {
@@ -81,16 +83,24 @@ export class RealTelegramClient implements TelegramClient {
       ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
       : `• *Voucher Details:* ${options.benefitName}\n`;
 
+    const header = options.isRetry
+      ? `❌ *Wrong OTP Entered — Please Re-enter OTP*\n\n` +
+        `The bank reported: *${options.errorMessage || 'Invalid OTP'}*.\n\n`
+      : `💳 *RuPay Benefit Verification Required*\n\nYour automated voucher order is ready to finalize:\n`;
+
+    const cta = options.isRetry
+      ? `👉 *Please check your SMS and reply with the CORRECT 6-digit Bank OTP* to authenticate the payment.`
+      : `👉 *Please reply with the 6-digit Bank OTP* received on your phone within ${timeout} minutes to complete your order.`;
+
     const messageText =
-      `💳 *RuPay Benefit Verification Required*\n\n` +
-      `Your automated voucher order is ready to finalize:\n` +
+      header +
       accountLine +
       cardLine +
       brandLine +
       categoryLine +
       voucherLine +
       `• *Verification Charge:* ₹${amount} (nominal)\n\n` +
-      `👉 *Please reply with the 6-digit Bank OTP* received on your phone within ${timeout} minutes to complete your order.`;
+      cta;
 
     return this.sendMessage(options.chatId, messageText);
   }
@@ -129,8 +139,9 @@ export class MockTelegramClient implements TelegramClient {
   }
 
   async sendOtpPrompt(options: TelegramSendOtpOptions): Promise<{ success: boolean; messageId: string }> {
+    const prefix = options.isRetry ? '❌ Wrong OTP — Re-entry Required' : '💳 RuPay Verification';
     console.log(`\n💬 [Mock Telegram] Outbound to chat ${options.chatId}:`);
-    console.log(`   "💳 RuPay Verification: OTP required for ${options.benefitName} (₹${options.amount ?? 2}). Reply with OTP within 2 mins."`);
+    console.log(`   "${prefix}: OTP required for ${options.benefitName} (₹${options.amount ?? 2}). Reply with OTP within 2 mins."`);
     return { success: true, messageId: `mock_tg_${Date.now()}` };
   }
 

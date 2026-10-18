@@ -69,6 +69,20 @@ describe('telegram client service', () => {
     expect(body2.text).toContain('*Brand / Merchant:* *Uber*');
     expect(body2.text).toContain('*Category:* Cab Services');
     expect(body2.text).toContain('Redeemable Coupon - INR 100 (₹100 value)');
+
+    const resRetry = await tg.sendOtpPrompt({
+      chatId: '987654321',
+      benefitName: 'Redeemable Coupon - INR 100',
+      cardName: 'Bank of India RuPay Select Card',
+      isRetry: true,
+      errorMessage: 'Incorrect OTP entered',
+    });
+    expect(resRetry.success).toBe(true);
+    const [, optionsRetry] = fetchMock.mock.calls[2];
+    const bodyRetry = JSON.parse(optionsRetry.body);
+    expect(bodyRetry.text).toContain('Wrong OTP Entered — Please Re-enter OTP');
+    expect(bodyRetry.text).toContain('Incorrect OTP entered');
+    expect(bodyRetry.text).toContain('CORRECT 6-digit Bank OTP');
   });
 
   it('getTelegramClient defaults to MockTelegramClient when token is missing', () => {

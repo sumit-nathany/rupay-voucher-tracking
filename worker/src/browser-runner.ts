@@ -269,6 +269,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   // Listen for portal transaction responses
   let cooldownDetectedUntil: Date | null = null;
+  let initiatedOrderId: string | null = null;
   page.on('response', async (res) => {
     const url = res.url();
     if (url.includes('addUserTransaction') || url.includes('createOrder') || url.includes('payment') || url.includes('juspay')) {
@@ -279,6 +280,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
         const msg = inner?.message || json?.message;
         const resData = inner?.response || json?.response;
+        if (resData?.orderid && typeof resData.orderid === 'string' && resData.orderid.startsWith('RUP')) {
+          initiatedOrderId = resData.orderid.trim();
+          console.log(`[portal] 🎯 Tracked active order ID: ${initiatedOrderId}`);
+        }
         if (resData && (resData.billing_tel || resData.mobile || resData.phone)) {
           const detectedPhone = String(resData.billing_tel || resData.mobile || resData.phone).trim();
           if (detectedPhone && detectedPhone.length >= 10 && !account.phoneNumber) {
@@ -817,29 +822,33 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         currUrl.includes('success') ||
         currUrl.includes('confirm') ||
         currUrl.includes('booking') ||
-        currUrl.includes('truztee.com/#/offers') ||
-        (currUrl.includes('rupayselect.truztee.com') && !currUrl.includes('/Payment/OfflinePayment'));
+        currUrl.includes('truztee.com/#/myaccount') ||
+        currUrl.includes('truztee.com/#/view-redeemed-offers');
 
       if (isPostPaymentSuccess) {
         const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
         
-        // Exclude common non-ID generic English words
-        const invalidWords = new Set([
-          'process', 'processing', 'pending', 'initiated', 'failed', 'failure',
-          'cancelled', 'loading', 'success', 'successful', 'transaction', 'completed',
-          'reference', 'confirmed', 'details', 'status', 'summary', 'payment', 'please'
-        ]);
+        // Exclude pages that explicitly say "Initiated" or "Failure" without any "Success"
+        const isOnlyInitiated = pageText.includes('Initiated') && !pageText.includes('Success') && !pageText.includes('Successful');
+        if (!isOnlyInitiated) {
+          // Exclude common non-ID generic English words
+          const invalidWords = new Set([
+            'process', 'processing', 'pending', 'initiated', 'failed', 'failure',
+            'cancelled', 'loading', 'success', 'successful', 'transaction', 'completed',
+            'reference', 'confirmed', 'details', 'status', 'summary', 'payment', 'please'
+          ]);
 
-        const matches = Array.from(pageText.matchAll(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/gi));
-        for (const m of matches) {
-          const cand = m[1].trim();
-          if (!invalidWords.has(cand.toLowerCase()) && (/[0-9]/.test(cand) || cand.toUpperCase().startsWith('RUP'))) {
-            bookingRef = cand;
-            break;
+          const matches = Array.from(pageText.matchAll(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/gi));
+          for (const m of matches) {
+            const cand = m[1].trim();
+            if (!invalidWords.has(cand.toLowerCase()) && (/[0-9]/.test(cand) || cand.toUpperCase().startsWith('RUP'))) {
+              bookingRef = cand;
+              break;
+            }
           }
-        }
 
-        if (bookingRef) break;
+          if (bookingRef) break;
+        }
       }
     }
 
@@ -851,11 +860,23 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         await checkPage.goto('https://rupayselect.truztee.com/#/myaccount').catch(() => {});
         await checkPage.waitForTimeout(4000);
 
-        const latestOrder = await checkPage.evaluate(() => {
+        const latestOrder = await checkPage.evaluate((targetOrderId) => {
           const rows = Array.from(document.querySelectorAll('tr'));
+          if (targetOrderId) {
+            const targetRow = rows.find((r) => r.innerText.includes(targetOrderId));
+            if (targetRow) {
+              const text = targetRow.innerText;
+              const isSuccess = text.includes('Success') || text.includes('Successful') || text.includes('Completed');
+              if (isSuccess) return targetOrderId;
+              return null;
+            }
+          }
+          const todayDateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
           for (const r of rows) {
             const text = r.innerText;
-            if (text.includes('Cab Services') || text.includes('Uber') || text.includes('Initiated') || text.includes('Success')) {
+            const isConfirmedStatus = text.includes('Success') || text.includes('Successful') || text.includes('Completed');
+            const isToday = text.includes(todayDateStr);
+            if (isConfirmedStatus && isToday) {
               const chip = r.querySelector('.ma-order-chip');
               if (chip) {
                 return chip.textContent?.trim() || null;
@@ -863,11 +884,28 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
             }
           }
           return null;
-        }).catch(() => null);
+        }, initiatedOrderId).catch(() => null);
 
         if (latestOrder && latestOrder.startsWith('RUP')) {
-          console.log(`[monitor] ✓ Found Order ID from My Account table: ${latestOrder}`);
+          console.log(`[monitor] ✓ Found Confirmed Order ID from My Account table: ${latestOrder}`);
           bookingRef = latestOrder;
+        } else {
+          // Check if there is an Initiated row to alert
+          const initiatedChip = await checkPage.evaluate(() => {
+            const rows = Array.from(document.querySelectorAll('tr'));
+            for (const r of rows) {
+              const text = r.innerText;
+              if (text.includes('Initiated')) {
+                const chip = r.querySelector('.ma-order-chip');
+                if (chip) return chip.textContent?.trim() || null;
+              }
+            }
+            return null;
+          }).catch(() => null);
+
+          if (initiatedChip) {
+            console.warn(`[monitor] ⚠️ Order ${initiatedChip} is still in "Initiated" state on Truztee (bank capture pending or cooldown). Will not mark as confirmed.`);
+          }
         }
       } catch (err) {
         console.warn('[monitor] Error checking My Account table:', err);
