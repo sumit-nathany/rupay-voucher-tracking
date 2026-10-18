@@ -270,3 +270,28 @@ Spa Services (6 options) and OTT Entertainment (2 options). This replaced the 14
   behaviour: `import` refuses such a card. On 2026-10-10, PNB 151's stale `effective_to` was cleared with a targeted SQL
   update instead, since it was already tracked.)
 - What `netrate`, `publishedrate` and `userrate` mean when they differ. They were equal in every offer seen.
+
+## Order Lifecycle, Transaction States & Cooldown Behavior
+
+Findings from observing active order flow and payment gateway interactions on Truztee:
+
+### 1. Order Creation (`POST /api/Select/addUserTransaction`)
+When a user or automation clicks "Continue to Payment", Truztee calls `/api/Select/addUserTransaction` with:
+- `cardtypeid`, `cardbinid`, `serviceid`, `productid`, `deliverymode`
+- Response returns `{ "orderid": "RUPS-XXXXXXXX", "transactionid": "...", "sessionid": "..." }`
+
+### 2. Transaction States
+Visible in `https://rupayselect.truztee.com/#/myaccount` and `#/view-redeemed-offers`:
+
+| State | Behavior & Trigger |
+|---|---|
+| **`Initiated`** | Order created; card redirected to Zaggle Propel. Truztee **temporarily locks the benefit and account for ~20 minutes**. |
+| **`Success`** | 3DS authorization succeeds and Zaggle callback reaches Truztee. The voucher is confirmed. The coupon code (`ccode`) is populated either immediately or asynchronously within 24–48 hours, and a confirmation email is dispatched. |
+| **`Failure`** | User explicitly cancels payment or the 3DS gateway returns a failure. |
+| **Purged / Cleared** | If a transaction is left in `Initiated` (e.g. browser closed or 3DS interrupted), after 20 minutes with no bank settlement, Truztee either marks it as `Failure` or completely drops it from `#/myaccount`. Once expired/purged, the benefit immediately unlocks and becomes available for redemption again. |
+
+### 3. Payment Gateway (Zaggle Propel)
+- Gateway URL: `https://app.zagglepropel.com/checkout/<hash>`
+- Charges a nominal ₹1 or ₹2 card authorization fee.
+- Card fields `#green_edge_payment_cardNumber`, `#green_edge_payment_expiryDate`, `#green_edge_payment_cvv`, and `#green_edge_payment_cardholderName` require synthetic `input`/`change` events for React/AntD state binding.
+

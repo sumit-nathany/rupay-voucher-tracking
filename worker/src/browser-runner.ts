@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, and } from 'drizzle-orm';
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import { eq, and, inArray, lte, or } from 'drizzle-orm';
+import { chromium, type BrowserContext, type Page, type Locator } from 'playwright';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
@@ -54,6 +54,21 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   if (ignoreCooldown) {
     console.log('[runner] --force / ignoreCooldown active: bypassing 24h limit checks for testing.');
   }
+
+  // Auto-recover stale in-flight attempts (> 10 mins old or expired lease)
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+  await db
+    .update(schema.portalOrderAttempts)
+    .set({ state: 'failed_pre_submit', failureCode: 'abandoned_or_timeout', finishedAt: new Date() })
+    .where(
+      and(
+        inArray(schema.portalOrderAttempts.state, ['reserved', 'submitting']),
+        or(
+          lte(schema.portalOrderAttempts.leaseExpiresAt, new Date()),
+          lte(schema.portalOrderAttempts.reservedAt, tenMinutesAgo),
+        ),
+      ),
+    );
 
   let account = accounts[0];
   let candidate: Awaited<ReturnType<typeof findCandidatesForAccount>> = null;
@@ -482,24 +497,84 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2000);
 
-  console.log(`\n--- Step 5: Clicking Redeem on Category Page (${benefitDetails.exactBenefit}) ---`);
+  console.log(`\n--- Step 5: Clicking Redeem on Category Page (${benefitDetails.exactBenefit} - Provider: ${benefitDetails.benefitProvider || 'any'}) ---`);
   await humanHesitate(1500, 2500);
-  let redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
+  let redeemBtn: Locator | null = null;
+
   if (benefitDetails.benefitProvider) {
-    const providerCardBtn = page
-      .locator(`.offer-card:has-text("${benefitDetails.benefitProvider}"), .card:has-text("${benefitDetails.benefitProvider}")`)
-      .locator('button:has-text("Redeem")')
-      .first();
-    if (await providerCardBtn.isVisible({ timeout: 2000 })) {
-      redeemBtn = providerCardBtn;
+    const targetProvider = benefitDetails.benefitProvider.trim();
+    console.log(`[step 5] Searching for offer card specific to provider: "${targetProvider}"...`);
+
+    // Strategy 1: Match by DOM hierarchy (evaluating which Redeem button sits in a container with provider text or logo)
+    const matchingBtnIndex = await page.evaluate(({ provider }) => {
+      const pLower = provider.toLowerCase();
+      const allButtons = Array.from(document.querySelectorAll('button, a')).filter((el) => {
+        const t = el.textContent?.trim().toLowerCase() || '';
+        return t.includes('redeem');
+      });
+
+      for (let i = 0; i < allButtons.length; i++) {
+        const btn = allButtons[i];
+        let curr = btn.parentElement;
+        for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
+          // If container contains more than 1 Redeem button, we have climbed out of the individual card into a parent grid/row!
+          const innerRedeemCount = Array.from(curr.querySelectorAll('button, a')).filter((el) => {
+            const t = el.textContent?.trim().toLowerCase() || '';
+            return t.includes('redeem');
+          }).length;
+          if (innerRedeemCount > 1) {
+            break;
+          }
+
+          const text = curr.textContent?.toLowerCase() || '';
+          const hasImg = Array.from(curr.querySelectorAll('img')).some((img) => {
+            const src = (img.src || '').toLowerCase();
+            const alt = (img.alt || '').toLowerCase();
+            return src.includes(pLower) || alt.includes(pLower);
+          });
+          if (text.includes(pLower) || hasImg) {
+            return i;
+          }
+          curr = curr.parentElement;
+        }
+      }
+      return -1;
+    }, { provider: targetProvider });
+
+    if (matchingBtnIndex >= 0) {
+      console.log(`[step 5] ✓ Found matching provider card for "${targetProvider}" at button index ${matchingBtnIndex}!`);
+      const buttons = page.locator('button:has-text("Redeem"), a:has-text("Redeem"), button.od-redeem-btn');
+      redeemBtn = buttons.nth(matchingBtnIndex);
+    } else {
+      // Strategy 2: Playwright container filters
+      const containerCandidates = [
+        page.locator('div, section, article').filter({
+          has: page.locator(`:is(:text-matches("${targetProvider}", "i"), img[src*="${targetProvider.toLowerCase()}" i], img[alt*="${targetProvider.toLowerCase()}" i])`),
+        }).locator('button:has-text("Redeem"), a:has-text("Redeem"), button.od-redeem-btn').first(),
+        page.locator(`.offer-card:has-text("${targetProvider}"), .card:has-text("${targetProvider}"), div[class*="card" i]:has-text("${targetProvider}")`).locator('button:has-text("Redeem")').first(),
+      ];
+
+      for (const cand of containerCandidates) {
+        if (await cand.isVisible({ timeout: 1500 }).catch(() => false)) {
+          redeemBtn = cand;
+          break;
+        }
+      }
     }
+
+    if (!redeemBtn) {
+      throw new Error(`Target provider "${targetProvider}" card could NOT be found on the category page! Aborting to avoid redeeming the wrong offer.`);
+    }
+  } else {
+    redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
   }
+
   await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
   await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
 
   console.log('\n--- Step 6: Checking Benefit Page / Payment Modal ---');
   await humanHesitate(1800, 2800);
-  const continueDirectly = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible').first();
+  const continueDirectly = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, button:has-text("Continue"):visible').first();
   if (await continueDirectly.isVisible({ timeout: 2000 })) {
     console.log('[step 6] "Continue to Payment" already visible; skipping separate "Redeem Now" step.');
   } else {
@@ -533,9 +608,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('[modal]', JSON.stringify(modalInfo));
 
   const continueToPaymentBtn = page
-    .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible')
+    .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, .modal button:has-text("Continue"):visible, button:has-text("Continue"):visible, button.btn-custom_modal:visible')
     .first();
-  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 8000 });
+  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 12000 });
   console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
   await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
   // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler
@@ -570,7 +645,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     // Re-click if still on truztee after 4 seconds and no gateway visible
     if (sec === 4 && page.url().includes('rupayselect.truztee.com')) {
       try {
-        const btn = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible').first();
+        const btn = page.locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, .modal button:has-text("Continue"):visible, button:has-text("Continue"):visible').first();
         if (await btn.isVisible()) {
           console.log('[gateway] Re-clicking "Continue to Payment"...');
           await btn.click({ force: true });
@@ -682,6 +757,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       ruleId: candidate.ruleId,
       state: 'submitting',
       submissionStartedAt: new Date(),
+      leaseExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
     })
     .returning();
 
@@ -710,6 +786,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         cardName: cardRow?.cardName ?? 'RuPay Card',
         cardLast4,
         benefitName: benefitDetails.exactBenefit,
+        provider: benefitDetails.benefitProvider || undefined,
+        category: benefitDetails.benefitType || undefined,
+        voucherValue: benefitDetails.cashValue || undefined,
       },
       180000,
     );
@@ -727,9 +806,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
 
   if (otpCompleted) {
     console.log('Monitoring transaction completion & booking reference...');
-    for (let sec = 0; sec < 45; sec++) {
+    let bookingRef: string | null = null;
+    for (let sec = 0; sec < 120; sec++) {
       await activePaymentPage.waitForTimeout(1000);
       const currUrl = activePaymentPage.url();
+      if (sec % 10 === 0) {
+        console.log(`[monitor] Waiting for transaction completion (${sec}s / 120s) - URL: ${currUrl}`);
+      }
       const isPostPaymentSuccess =
         currUrl.includes('success') ||
         currUrl.includes('confirm') ||
@@ -748,7 +831,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         ]);
 
         const matches = Array.from(pageText.matchAll(/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/gi));
-        let bookingRef: string | null = null;
         for (const m of matches) {
           const cand = m[1].trim();
           if (!invalidWords.has(cand.toLowerCase()) && (/[0-9]/.test(cand) || cand.toUpperCase().startsWith('RUP'))) {
@@ -757,67 +839,102 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
           }
         }
 
-        if (bookingRef) {
-          console.log(`\n🎉 Booking Reference Confirmed: ${bookingRef}`);
-          const today = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
+        if (bookingRef) break;
+      }
+    }
 
-          try {
-            await finalizeConfirmedOrder(db as any, attempt.id, bookingRef, today);
-            if (candidate.chosenOptionId) {
-              await db
-                .update(schema.benefitInstances)
-                .set({ chosenOptionId: candidate.chosenOptionId })
-                .where(eq(schema.benefitInstances.id, candidate.instanceId));
+    // Fallback: If not found in page text, check Truztee My Account table directly
+    if (!bookingRef) {
+      console.log('[monitor] Direct booking reference not found in post-payment page. Checking Truztee My Account page...');
+      try {
+        const checkPage = popupTracker.page && !popupTracker.page.isClosed() ? popupTracker.page : page;
+        await checkPage.goto('https://rupayselect.truztee.com/#/myaccount').catch(() => {});
+        await checkPage.waitForTimeout(4000);
+
+        const latestOrder = await checkPage.evaluate(() => {
+          const rows = Array.from(document.querySelectorAll('tr'));
+          for (const r of rows) {
+            const text = r.innerText;
+            if (text.includes('Cab Services') || text.includes('Uber') || text.includes('Initiated') || text.includes('Success')) {
+              const chip = r.querySelector('.ma-order-chip');
+              if (chip) {
+                return chip.textContent?.trim() || null;
+              }
             }
-            console.log(`[portal] ✓ Successfully auto-recorded booking ID "${bookingRef}" against benefit instance ${candidate.instanceId} in portal database!`);
-          } catch (e) {
-            console.error('[portal] Error in finalizeConfirmedOrder, running direct update:', e);
-            await db
-              .update(schema.benefitInstances)
-              .set({
-                orderStatus: 'Ordered but Coupon not received',
-                orderDate: today,
-                rupayBookingId: bookingRef,
-                ...(candidate.chosenOptionId ? { chosenOptionId: candidate.chosenOptionId } : {}),
-                comments: `Auto-ordered via RuPay portal runner on ${today} (Ref: ${bookingRef})`,
-              })
-              .where(eq(schema.benefitInstances.id, candidate.instanceId));
-
-            await db
-              .update(schema.portalOrderAttempts)
-              .set({ state: 'confirmed', bookingReference: bookingRef, finishedAt: new Date() })
-              .where(eq(schema.portalOrderAttempts.id, attempt.id));
-
-            const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            await recordPortalAccountCooldown(db as any, account.id, cooldown24h, 'order_completed_cooldown');
-            console.log(`[portal] ✓ Direct fallback update completed for instance ${candidate.instanceId}.`);
           }
+          return null;
+        }).catch(() => null);
 
-          const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          console.log(`[portal] ⏱️ Account "${account.label}" placed into 24-hour cooldown until: ${cooldown24h.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
-          if (telegramChatId) {
-            const tg = getTelegramClient();
-            await tg.sendBookingConfirmation({
-              chatId: telegramChatId,
-              cardName: cardRow?.cardName ?? 'RuPay Card',
-              cardLast4,
-              portalAccountLabel: account.label,
-              benefitName: benefitDetails.exactBenefit,
-              bookingRef,
-            });
-            console.log(`[gateway] Sent booking confirmation via Telegram to ${telegramChatId}.`);
-          } else if (targetPhoneNumber) {
-            const whatsapp = getWhatsAppClient();
-            await whatsapp.sendBookingConfirmation({
-              to: targetPhoneNumber,
-              cardName: cardRow?.cardName ?? 'RuPay Card',
-              benefitName: benefitDetails.exactBenefit,
-              bookingRef,
-            });
-            console.log(`[gateway] Sent booking confirmation via WhatsApp to ${targetPhoneNumber}.`);
-          }
-          break;
+        if (latestOrder && latestOrder.startsWith('RUP')) {
+          console.log(`[monitor] ✓ Found Order ID from My Account table: ${latestOrder}`);
+          bookingRef = latestOrder;
         }
+      } catch (err) {
+        console.warn('[monitor] Error checking My Account table:', err);
+      }
+    }
+
+    if (bookingRef) {
+      console.log(`\n🎉 Booking Reference Confirmed: ${bookingRef}`);
+      const today = new Date().toLocaleDateString('en-CA'); // 'YYYY-MM-DD'
+
+      try {
+        await finalizeConfirmedOrder(db as any, attempt.id, bookingRef, today);
+        if (candidate.chosenOptionId) {
+          await db
+            .update(schema.benefitInstances)
+            .set({ chosenOptionId: candidate.chosenOptionId })
+            .where(eq(schema.benefitInstances.id, candidate.instanceId));
+        }
+        console.log(`[portal] ✓ Successfully auto-recorded booking ID "${bookingRef}" against benefit instance ${candidate.instanceId} in portal database!`);
+      } catch (e) {
+        console.error('[portal] Error in finalizeConfirmedOrder, running direct update:', e);
+        await db
+          .update(schema.benefitInstances)
+          .set({
+            orderStatus: 'Ordered but Coupon not received',
+            orderDate: today,
+            rupayBookingId: bookingRef,
+            ...(candidate.chosenOptionId ? { chosenOptionId: candidate.chosenOptionId } : {}),
+            comments: `Auto-ordered via RuPay portal runner on ${today} (Ref: ${bookingRef})`,
+          })
+          .where(eq(schema.benefitInstances.id, candidate.instanceId));
+
+        await db
+          .update(schema.portalOrderAttempts)
+          .set({ state: 'confirmed', bookingReference: bookingRef, finishedAt: new Date() })
+          .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+        const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await recordPortalAccountCooldown(db as any, account.id, cooldown24h, 'order_completed_cooldown');
+        console.log(`[portal] ✓ Direct fallback update completed for instance ${candidate.instanceId}.`);
+      }
+
+      const cooldown24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      console.log(`[portal] ⏱️ Account "${account.label}" placed into 24-hour cooldown until: ${cooldown24h.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`);
+      if (telegramChatId) {
+        const tg = getTelegramClient();
+        await tg.sendBookingConfirmation({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          bookingRef,
+        });
+        console.log(`[gateway] Sent booking confirmation via Telegram to ${telegramChatId}.`);
+      } else if (targetPhoneNumber) {
+        const whatsapp = getWhatsAppClient();
+        await whatsapp.sendBookingConfirmation({
+          to: targetPhoneNumber,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          benefitName: benefitDetails.exactBenefit,
+          bookingRef,
+        });
+        console.log(`[gateway] Sent booking confirmation via WhatsApp to ${targetPhoneNumber}.`);
       }
     }
 
@@ -838,6 +955,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         .set({ state: 'uncertain', failureCode: 'gateway_declined', finishedAt: new Date() })
         .where(eq(schema.portalOrderAttempts.id, attempt.id));
     }
+  } else {
+    console.log(`\n⚠️ OTP was not completed or timed out.`);
+    await db
+      .update(schema.portalOrderAttempts)
+      .set({ state: 'failed_pre_submit', failureCode: 'otp_timeout', finishedAt: new Date() })
+      .where(eq(schema.portalOrderAttempts.id, attempt.id));
   }
 
   // Never kill the browser context abruptly: keep open for inspection if unresolved

@@ -9,6 +9,9 @@ export interface TelegramSendOtpOptions {
   cardLast4?: string;
   portalAccountLabel?: string;
   benefitName: string;
+  provider?: string;
+  category?: string;
+  voucherValue?: number | string;
   amount?: number;
   timeoutMinutes?: number;
 }
@@ -19,6 +22,9 @@ export interface TelegramConfirmationOptions {
   cardLast4?: string;
   portalAccountLabel?: string;
   benefitName: string;
+  provider?: string;
+  category?: string;
+  voucherValue?: number | string;
   bookingRef: string;
 }
 
@@ -69,13 +75,20 @@ export class RealTelegramClient implements TelegramClient {
     const cardLine = options.cardLast4
       ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
       : `• *Card:* ${options.cardName}\n`;
+    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
+    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
+    const voucherLine = options.voucherValue
+      ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
+      : `• *Voucher Details:* ${options.benefitName}\n`;
 
     const messageText =
       `💳 *RuPay Benefit Verification Required*\n\n` +
       `Your automated voucher order is ready to finalize:\n` +
       accountLine +
       cardLine +
-      `• *Benefit:* ${options.benefitName}\n` +
+      brandLine +
+      categoryLine +
+      voucherLine +
       `• *Verification Charge:* ₹${amount} (nominal)\n\n` +
       `👉 *Please reply with the 6-digit Bank OTP* received on your phone within ${timeout} minutes to complete your order.`;
 
@@ -87,12 +100,19 @@ export class RealTelegramClient implements TelegramClient {
     const cardLine = options.cardLast4
       ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
       : `• *Card:* ${options.cardName}\n`;
+    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
+    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
+    const voucherLine = options.voucherValue
+      ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
+      : `• *Voucher Details:* ${options.benefitName}\n`;
 
     const messageText =
       `🎉 *Voucher Order Confirmed!*\n\n` +
       accountLine +
       cardLine +
-      `• *Benefit:* ${options.benefitName}\n` +
+      brandLine +
+      categoryLine +
+      voucherLine +
       `• *Booking Reference:* \`${options.bookingRef}\`\n\n` +
       `Your voucher code will be available in your RuPay Tracker dashboard shortly.`;
 

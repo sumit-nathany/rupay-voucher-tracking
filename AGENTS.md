@@ -146,3 +146,19 @@ Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/
 - **Spec updates:** product decisions land in REQUIREMENTS.md/PLAN.md. External review rounds produce `Review Feedback vX.md` at the root; once findings are reconciled into the specs, those files are deleted.
 - **Feature docs:** new features get a requirements + implementation-plan pair under `docs/` before building (see `docs/automated-rupay-ordering-*.md`).
 - **In flight:** the `feat/automated-rupay-ordering` branch is building the automated ordering feature (worker, portal client, stored portal credentials) per `docs/automated-rupay-ordering-*.md`.
+
+## RuPay Portal Order Lifecycle & 20-Min Cooldown Invariant
+
+- `POST /api/Select/addUserTransaction` creates an order (`RUPS-*`) in `Initiated` state and locks the benefit entitlement and account for **20 minutes**.
+- **Pending/Failed orders**: If 3DS OTP fails, times out, or the session aborts, the transaction remains locked in `Initiated` until the 20-minute window expires. Truztee then drops or marks it `Failure`, automatically unlocking the benefit for redemption.
+- **Completed orders**: On 3DS authorization success, status transitions to `Success`. Voucher codes (`ccode`) populate immediately or within 24–48 hours.
+- **Rule for agents**: Never assume an abandoned attempt burnt the benefit permanently. Always wait 20 minutes from `addUserTransaction` timestamp before retrying an interrupted order.
+
+## Portal Entitlement Scoping: `(portal_account, card_type, period)`
+
+- **Physical Cards vs. Portal Accounts**: Benefits are legally entitled to individual physical cards. However, the RuPay Portal enforces redemption limits at the `(portal_account, card_type, period)` level, NOT per physical card number.
+- **Multi-Card Conflict**: If an account has multiple cards of the same `bank_card_type` (e.g. two Bank of India Select cards), once a benefit (e.g. Cab Services in Q4) is redeemed from that account, the portal hides/disables that benefit for all other cards of that type on that account for the rest of the period.
+- **Automation Rule**: Benefit instances of the same `(bankCardTypeId, benefitId, periodStart)` can only be redeemed once per portal account per period. Additional cards of the same type must be mapped to and ordered from a separate portal account where that benefit has not yet been redeemed in that period.
+
+
+

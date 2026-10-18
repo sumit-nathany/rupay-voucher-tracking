@@ -15,6 +15,8 @@ import {
   orderingQueueItems,
   portalCardMappings,
   portalAccounts,
+  automationSettings,
+  cardVariants,
 } from '@/db/schema';
 import type { Database, Ctx } from '@/lib/context';
 import {
@@ -696,4 +698,156 @@ describe('automation domain', () => {
     expect(nomC?.account.id).toBe(acc1.id);
     expect(nomC?.candidate.rulePriority).toBe(1);
   });
+
+  it('enforces (portal_account, card_type, period) entitlement limit so multiple cards of the same type use distinct accounts', async () => {
+    const today = '2026-10-18';
+    const workspaceId = crypto.randomUUID();
+    const testCtx: Ctx = {
+      userId: 'user_1',
+      workspaceId,
+      role: 'admin',
+      db,
+      today,
+    };
+
+    await db.insert(workspaces).values({ id: workspaceId, name: 'Multi-Card Entitlement Workspace' });
+    await db.insert(automationSettings).values({ workspaceId, enabled: true });
+
+    // Two connected accounts
+    const acc1 = await createPortalAccount(testCtx, {
+      label: 'acc1@gmail.com',
+      credentials: { loginId: 'acc1@gmail.com', password: 'p1' },
+    });
+
+    const acc2 = await createPortalAccount(testCtx, {
+      label: 'acc2@gmail.com',
+      credentials: { loginId: 'acc2@gmail.com', password: 'p2' },
+    });
+
+    const [variant] = await db.insert(cardVariants).values({ name: 'Select Variant' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({
+      displayName: 'Bank of India RuPay Select',
+      variantId: variant.id,
+      bankName: 'Bank of India',
+    }).returning();
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Surendra' }).returning();
+
+    // Two separate physical cards of the SAME card type
+    const card1Id = crypto.randomUUID();
+    const [card1] = await db.insert(cards).values({
+      id: card1Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 1 (BOI)',
+      lastDigits: '1111',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '111' }, card1Id),
+    }).returning();
+
+    const card2Id = crypto.randomUUID();
+    const [card2] = await db.insert(cards).values({
+      id: card2Id,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 2 (BOI)',
+      lastDigits: '2222',
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '222' }, card2Id),
+    }).returning();
+
+    // Card 1 is mapped to Account 1
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: acc1.id,
+      cardId: card1.id,
+      portalCardId: '101',
+      portalCardbinId: '201',
+    });
+
+    // Card 2 is mapped to BOTH Account 1 and Account 2
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: acc1.id,
+      cardId: card2.id,
+      portalCardId: '101',
+      portalCardbinId: '201',
+    });
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: acc2.id,
+      cardId: card2.id,
+      portalCardId: '102',
+      portalCardbinId: '202',
+    });
+
+    // Benefit: Cab Services for Q4 2026
+    const [benefit] = await db.insert(benefits).values({ bankCardTypeId: cardType.id, benefitType: 'Cab Services' }).returning();
+    const [ver] = await db.insert(benefitCatalogVersions).values({
+      benefitId: benefit.id,
+      benefitType: 'Cab Services',
+      benefitProvider: 'Uber',
+      exactBenefit: 'Uber 100',
+      defaultCashValue: '100.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-10-01',
+      frequency: 'Quarterly',
+    }).returning();
+
+    // Instance 1 for Card 1
+    const [inst1] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card1.id,
+      bankCardTypeId: cardType.id,
+      benefitId: benefit.id,
+      generatedFromVersion: ver.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '100.00',
+      orderStatus: 'Ordered but Coupon not received',
+    }).returning();
+
+    // Instance 2 for Card 2 (same benefit and period, but Not Ordered!)
+    const [inst2] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card2.id,
+      bankCardTypeId: cardType.id,
+      benefitId: benefit.id,
+      generatedFromVersion: ver.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '100.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    // Record that Card 1 was already successfully ordered via Account 1
+    await db.insert(portalOrderAttempts).values({
+      workspaceId,
+      portalAccountId: acc1.id,
+      instanceId: inst1.id,
+      state: 'confirmed',
+      bookingReference: 'RUPS-CARD1-DONE',
+    });
+
+    // Put Card 2's instance in the queue
+    await db.insert(orderingQueueItems).values({
+      workspaceId,
+      instanceId: inst2.id,
+      position: 1,
+      enabled: true,
+    });
+
+    // 1. Account 1 must NOT be nominated for Card 2's instance because Account 1 already redeemed
+    // this (BOI Select, Cab Services, Q4 2026) entitlement!
+    const candAcc1 = await findCandidatesForAccount(db, acc1.id, today);
+    expect(candAcc1).toBeNull();
+
+    // 2. Global queue evaluation must route Card 2's instance to Account 2!
+    const globalNom = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    expect(globalNom).not.toBeNull();
+    expect(globalNom?.candidate.instanceId).toBe(inst2.id);
+    expect(globalNom?.account.id).toBe(acc2.id); // Routed to Account 2, bypassing Account 1!
+  });
 });
+

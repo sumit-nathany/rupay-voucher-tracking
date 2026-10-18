@@ -153,7 +153,7 @@ export async function transcribeAudioWithGemini(
   audioBuffer: Buffer,
   apiKey: string,
 ): Promise<string | null> {
-  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
   const base64Audio = audioBuffer.toString('base64');
 
   for (const model of models) {
@@ -264,63 +264,98 @@ export async function solveRecaptchaViaAudio(
       return false;
     }
 
-    // 2. Click the audio challenge button
+    // 2. Click the audio challenge button if not already in audio mode
     const audioBtn = bframe.locator('#recaptcha-audio-button, button#recaptcha-audio-button').first();
-    try {
-      await audioBtn.waitFor({ state: 'visible', timeout: 5000 });
+    if (await audioBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await humanClick(audioBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1200 });
-    } catch {
-      console.warn('[captcha] Audio challenge button (#recaptcha-audio-button) not visible.');
-      return false;
+      await humanDelay(1500, 2500);
     }
 
-    await humanDelay(1500, 2500);
+    const maxRounds = 5;
+    let lastAudioUrl: string | null = null;
 
-    // Check if Google blocked audio queries ("Your computer or network may be sending automated queries")
-    const blockedMsg = await bframe.locator('.rc-dostitle, .rc-audiochallenge-error-message, div:has-text("automated queries")').first().textContent().catch(() => '');
-    if (blockedMsg?.includes('automated queries')) {
-      console.warn('[captcha] Google blocked audio challenge:', blockedMsg.trim());
-      return false;
+    for (let round = 1; round <= maxRounds; round++) {
+      console.log(`[captcha] Audio challenge round ${round} of ${maxRounds}...`);
+
+      // Check if already solved
+      const isSolved = await page.evaluate(() => {
+        const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
+        return Boolean(textarea && textarea.value.length > 0);
+      });
+      if (isSolved) {
+        console.log(`[captcha] ✓ reCAPTCHA solved after round ${round - 1}!`);
+        return true;
+      }
+
+      // Check if Google blocked audio queries ("Your computer or network may be sending automated queries")
+      const blockedMsg = await bframe.locator('.rc-dostitle, .rc-audiochallenge-error-message, div:has-text("automated queries")').first().textContent().catch(() => '');
+      if (blockedMsg?.includes('automated queries')) {
+        console.warn('[captcha] Google blocked audio challenge:', blockedMsg.trim());
+        return false;
+      }
+
+      // 3. Obtain audio download link (wait for new audio URL if subsequent round)
+      const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link, a[href*="audio.mp3"]').first();
+      let audioUrl: string | null = null;
+      for (let w = 0; w < 10; w++) {
+        audioUrl = await downloadLink.getAttribute('href').catch(() => null);
+        if (!audioUrl) {
+          const audioElement = bframe.locator('audio#player, audio[src], source[src]').first();
+          audioUrl = await audioElement.getAttribute('src').catch(() => null);
+        }
+        if (audioUrl && (round === 1 || audioUrl !== lastAudioUrl)) break;
+        await page.waitForTimeout(500);
+      }
+
+      if (!audioUrl) {
+        console.warn(`[captcha] Could not retrieve audio challenge URL in round ${round}.`);
+        return false;
+      }
+      lastAudioUrl = audioUrl;
+
+      console.log(`[captcha] Downloading audio challenge file (round ${round})...`);
+      const audioRes = await page.request.get(audioUrl);
+      const audioBuf = await audioRes.body();
+
+      // 4. Transcribe audio
+      const transcription = await transcribeAudioWithGemini(audioBuf, geminiApiKey);
+      if (!transcription) {
+        console.warn(`[captcha] Transcription failed in round ${round}.`);
+        const reloadBtn = bframe.locator('#recaptcha-reload-button').first();
+        if (await reloadBtn.isVisible().catch(() => false)) {
+          await humanClick(reloadBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1000 });
+        }
+        continue;
+      }
+
+      // 5. Enter transcription into input
+      const responseInput = bframe.locator('#audio-response').first();
+      await responseInput.fill('');
+      await humanType(responseInput, transcription, { minCharDelayMs: 90, maxCharDelayMs: 180 });
+      await humanHesitate(400, 800);
+
+      // 6. Click verify
+      const verifyBtn = bframe.locator('#recaptcha-verify-button').first();
+      await humanClick(verifyBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+
+      await humanDelay(1500, 2500);
+
+      const checkSolved = await page.evaluate(() => {
+        const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
+        return Boolean(textarea && textarea.value.length > 0);
+      });
+      if (checkSolved) {
+        console.log(`[captcha] ✓ reCAPTCHA successfully solved in round ${round}!`);
+        return true;
+      }
+
+      const feedback = await bframe.locator('.rc-audiochallenge-error-message').first().textContent().catch(() => '');
+      if (feedback) {
+        console.log(`[captcha] reCAPTCHA feedback after round ${round}: "${feedback.trim()}"`);
+      }
     }
 
-    // 3. Obtain audio download link
-    const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link, a[href*="audio.mp3"]').first();
-    let audioUrl = await downloadLink.getAttribute('href').catch(() => null);
-    if (!audioUrl) {
-      const audioElement = bframe.locator('audio#player, audio[src], source[src]').first();
-      audioUrl = await audioElement.getAttribute('src').catch(() => null);
-    }
-
-    if (!audioUrl) {
-      console.warn('[captcha] Could not retrieve audio challenge URL.');
-      return false;
-    }
-
-    console.log('[captcha] Downloading audio challenge file...');
-    const audioRes = await page.request.get(audioUrl);
-    const audioBuf = await audioRes.body();
-
-    // 4. Transcribe audio
-    const transcription = await transcribeAudioWithGemini(audioBuf, geminiApiKey);
-    if (!transcription) return false;
-
-    // 5. Enter transcription into input
-    const responseInput = bframe.locator('#audio-response').first();
-    await humanType(responseInput, transcription, { minCharDelayMs: 90, maxCharDelayMs: 180 });
-    await humanHesitate(400, 800);
-
-    // 6. Click verify
-    const verifyBtn = bframe.locator('#recaptcha-verify-button').first();
-    await humanClick(verifyBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-
-    await page.waitForTimeout(1500);
-
-    const isSolved = await page.evaluate(() => {
-      const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
-      return Boolean(textarea && textarea.value.length > 0);
-    });
-
-    return isSolved;
+    return false;
   } catch (err) {
     console.error('[captcha] Audio challenge bypass error:', err);
     return false;

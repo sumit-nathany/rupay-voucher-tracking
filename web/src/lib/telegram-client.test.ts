@@ -53,16 +53,22 @@ describe('telegram client service', () => {
 
     const res2 = await tg.sendOtpPrompt({
       chatId: '987654321',
-      benefitName: 'Cult.fit',
-      cardName: 'PNB Salary Imperial',
-      cardLast4: '1746',
-      portalAccountLabel: 'sumit.nathany@gmail.com',
+      benefitName: 'Redeemable Coupon - INR 100',
+      provider: 'Uber',
+      category: 'Cab Services',
+      voucherValue: 100,
+      cardName: 'Bank of India RuPay Select Card',
+      cardLast4: '6356',
+      portalAccountLabel: 'surendranathany@gmail.com',
     });
     expect(res2.success).toBe(true);
     const [, options2] = fetchMock.mock.calls[1];
     const body2 = JSON.parse(options2.body);
-    expect(body2.text).toContain('sumit.nathany@gmail.com');
-    expect(body2.text).toContain('•••• 1746');
+    expect(body2.text).toContain('surendranathany@gmail.com');
+    expect(body2.text).toContain('•••• 6356');
+    expect(body2.text).toContain('*Brand / Merchant:* *Uber*');
+    expect(body2.text).toContain('*Category:* Cab Services');
+    expect(body2.text).toContain('Redeemable Coupon - INR 100 (₹100 value)');
   });
 
   it('getTelegramClient defaults to MockTelegramClient when token is missing', () => {

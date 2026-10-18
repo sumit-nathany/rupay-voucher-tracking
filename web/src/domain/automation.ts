@@ -1142,12 +1142,39 @@ export async function findCandidateFromGlobalQueue(
     .orderBy(asc(orderingQueueItems.position));
 
   if (queueItems.length > 0) {
+    // Query existing redemptions across all eligible accounts to enforce (portal_account, card_type, period) limits
+    const accountRedemptions = await db
+      .select({
+        portalAccountId: portalOrderAttempts.portalAccountId,
+        bankCardTypeId: benefitInstances.bankCardTypeId,
+        benefitId: benefitInstances.benefitId,
+        overrideId: benefitInstances.overrideId,
+        periodStart: benefitInstances.periodStart,
+      })
+      .from(portalOrderAttempts)
+      .innerJoin(benefitInstances, eq(portalOrderAttempts.instanceId, benefitInstances.id))
+      .where(
+        and(
+          inArray(portalOrderAttempts.portalAccountId, eligibleAccountIds),
+          inArray(portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+        ),
+      );
+
+    const accountRedemptionSet = new Set(
+      accountRedemptions.map(
+        (r) => `${r.portalAccountId}:${r.bankCardTypeId}:${r.benefitId || r.overrideId}:${r.periodStart}`
+      ),
+    );
+
     const queueInstanceIds = queueItems.map((q) => q.instanceId);
     const instances = await db
       .select({
         id: benefitInstances.id,
         cardId: benefitInstances.cardId,
+        bankCardTypeId: benefitInstances.bankCardTypeId,
         benefitId: benefitInstances.benefitId,
+        overrideId: benefitInstances.overrideId,
+        periodStart: benefitInstances.periodStart,
         orderDeadline: benefitInstances.orderDeadline,
         chosenOptionId: benefitInstances.chosenOptionId,
         generatedFromVersion: benefitInstances.generatedFromVersion,
@@ -1184,8 +1211,11 @@ export async function findCandidateFromGlobalQueue(
         const eligibleCardMappings = cardToEligibleMappings.get(inst.cardId);
         if (!eligibleCardMappings || eligibleCardMappings.length === 0) continue;
 
-        // Take the first eligible mapping for this card
-        const mapping = eligibleCardMappings[0];
+        // Find an eligible mapping whose portal account has NOT already redeemed this (card_type, benefit, period)
+        const instKey = (accId: string) => `${accId}:${inst.bankCardTypeId}:${inst.benefitId || inst.overrideId}:${inst.periodStart}`;
+        const mapping = eligibleCardMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
+        if (!mapping) continue;
+
         const account = eligibleAccountsMap.get(mapping.portalAccountId);
         if (!account) continue;
 
@@ -1350,6 +1380,29 @@ export async function findCandidatesForAccount(
   const cardMap = new Map(eligibleMappings.map((m) => [m.cardId, m]));
   const mappedCardIds = Array.from(cardMap.keys());
 
+  // Query existing redemptions on this portal account to enforce (portal_account, card_type, period) limits
+  const accountRedemptions = await db
+    .select({
+      bankCardTypeId: benefitInstances.bankCardTypeId,
+      benefitId: benefitInstances.benefitId,
+      overrideId: benefitInstances.overrideId,
+      periodStart: benefitInstances.periodStart,
+    })
+    .from(portalOrderAttempts)
+    .innerJoin(benefitInstances, eq(portalOrderAttempts.instanceId, benefitInstances.id))
+    .where(
+      and(
+        eq(portalOrderAttempts.portalAccountId, portalAccountId),
+        inArray(portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+      ),
+    );
+
+  const accountRedemptionSet = new Set(
+    accountRedemptions.map(
+      (r) => `${r.bankCardTypeId}:${r.benefitId || r.overrideId}:${r.periodStart}`
+    ),
+  );
+
   // 5a. Check Modern Ordering Queue first:
   // If user has configured an order queue, evaluate candidates directly in queue position order
   const queueItems = await db
@@ -1375,7 +1428,10 @@ export async function findCandidatesForAccount(
       .select({
         id: benefitInstances.id,
         cardId: benefitInstances.cardId,
+        bankCardTypeId: benefitInstances.bankCardTypeId,
         benefitId: benefitInstances.benefitId,
+        overrideId: benefitInstances.overrideId,
+        periodStart: benefitInstances.periodStart,
         orderDeadline: benefitInstances.orderDeadline,
         chosenOptionId: benefitInstances.chosenOptionId,
         generatedFromVersion: benefitInstances.generatedFromVersion,
@@ -1409,6 +1465,10 @@ export async function findCandidatesForAccount(
         if (blockedSet.has(qItem.instanceId)) continue;
         const inst = instMap.get(qItem.instanceId);
         if (!inst || !inst.benefitId) continue;
+
+        // Skip if this portal account has already redeemed this (card_type, benefit, period)
+        const instKey = `${inst.bankCardTypeId}:${inst.benefitId || inst.overrideId}:${inst.periodStart}`;
+        if (accountRedemptionSet.has(instKey)) continue;
 
         const mapping = cardMap.get(inst.cardId);
         if (!mapping) continue;
@@ -1490,7 +1550,10 @@ export async function findCandidatesForAccount(
     .select({
       id: benefitInstances.id,
       cardId: benefitInstances.cardId,
+      bankCardTypeId: benefitInstances.bankCardTypeId,
       benefitId: benefitInstances.benefitId,
+      overrideId: benefitInstances.overrideId,
+      periodStart: benefitInstances.periodStart,
       orderDeadline: benefitInstances.orderDeadline,
       chosenOptionId: benefitInstances.chosenOptionId,
       generatedFromVersion: benefitInstances.generatedFromVersion,
@@ -1529,6 +1592,10 @@ export async function findCandidatesForAccount(
   for (const inst of instances) {
     if (blockedSet.has(inst.id)) continue;
     if (!inst.benefitId) continue; // Custom benefit overrides without catalog benefit id skipped for automated portal
+
+    // Skip if this portal account has already redeemed this (card_type, benefit, period)
+    const instKey = `${inst.bankCardTypeId}:${inst.benefitId || inst.overrideId}:${inst.periodStart}`;
+    if (accountRedemptionSet.has(instKey)) continue;
 
     const mapping = cardMap.get(inst.cardId);
     if (!mapping) continue;

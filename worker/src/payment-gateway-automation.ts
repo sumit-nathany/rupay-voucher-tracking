@@ -24,6 +24,9 @@ export interface OtpPromptContext {
   cardName?: string;
   cardLast4?: string;
   benefitName?: string;
+  provider?: string;
+  category?: string;
+  voucherValue?: number | string;
 }
 
 export interface PaymentAutomationResult {
@@ -144,14 +147,18 @@ export async function fillCardDetailsOnGateway(
   // 1. Fill Card Number (if not already using a saved card)
   if (!savedCardClicked && details.cardNumber) {
     const cardSelectors = [
+      '#green_edge_payment_cardNumber',
       '#cno', // CCAvenue
       'input[name="card_number"]',
       'input[name="cno"]',
+      'input[id*="cardnumber" i]',
       'input[id*="card_number" i]',
       'input[id*="cardno" i]',
+      'input[id*="card" i]:not([id*="name" i]):not([id*="holder" i])',
       'input[autocomplete*="cc-number" i]',
       'input[placeholder*="Card Number" i]',
       'input[placeholder*="16 digit" i]',
+      'input[placeholder*="652500"]',
       'input[name*="card" i]',
       '#card_number',
     ];
@@ -161,7 +168,13 @@ export async function fillCardDetailsOnGateway(
         try {
           const input = t.locator(sel).first();
           if (await input.isVisible({ timeout: 800 })) {
+            await input.click();
             await input.fill(details.cardNumber);
+            await input.evaluate((el: HTMLInputElement, val: string) => {
+              el.value = val;
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+              el.dispatchEvent(new Event('change', { bubbles: true }));
+            }, details.cardNumber).catch(() => {});
             console.log(`[gateway] Card number entered via "${sel}"`);
             filledCount++;
             break;
@@ -487,6 +500,9 @@ export async function promptForOtpAndSubmit(
           cardLast4: contextOptions.cardLast4,
           portalAccountLabel: contextOptions.portalAccountLabel,
           benefitName: contextOptions.benefitName || 'RuPay Benefit',
+          provider: contextOptions.provider,
+          category: contextOptions.category,
+          voucherValue: contextOptions.voucherValue,
           amount: 1,
           timeoutMinutes: 3,
         });
@@ -541,37 +557,72 @@ export async function promptForOtpAndSubmit(
       rl.close();
     };
 
-    async function injectOtp(otp: string, source: string) {
+    async function injectOtp(otp: string, source: string): Promise<boolean> {
       console.log(`\n[gateway] >>> Injecting OTP (${source}): ${otp} into bank ACS page <<<`);
       const otpInput = await findOtpInput(page);
-      if (otpInput) {
-        await otpInput.locator.fill(otp);
-        console.log('[gateway] OTP filled! Clicking Submit/Verify button...');
+      if (!otpInput) {
+        console.log('[gateway] Could not locate OTP input field automatically. Please submit in browser.');
+        return false;
+      }
 
-        const submitSelectors = [
-          'button:has-text("Continue")',
-          'button:has-text("Submit")',
-          'input[type="submit"]',
-          'button:has-text("Verify")',
-          'button:has-text("Confirm")',
-          'input[value*="Submit" i]',
-          '#btnSubmit',
-          '#submit',
-        ];
+      await otpInput.locator.fill(otp);
+      console.log('[gateway] OTP filled! Clicking Submit/Verify button...');
 
+      const submitSelectors = [
+        'input[type="submit"]',
+        'input[value*="submit" i]',
+        'input[value*="verify" i]',
+        'input[value*="confirm" i]',
+        'input[value*="proceed" i]',
+        'input[type="button"][value*="submit" i]',
+        'input[type="button"][value*="verify" i]',
+        'button:has-text("Submit")',
+        'button:has-text("Continue")',
+        'button:has-text("Verify")',
+        'button:has-text("Confirm")',
+        'button:has-text("Proceed")',
+        '#btnSubmit',
+        '#submit',
+        '#Submit',
+        '#submitBtn',
+        '#btn_submit',
+        '#verifyBtn',
+        '[id*="submit" i]',
+        '[name*="submit" i]',
+        'a:has-text("Submit")',
+        'a:has-text("Verify")',
+      ];
+
+      // Try on otpInput.target first, then all frames, then page
+      const targets = [otpInput.target, ...page.frames(), page];
+      let clicked = false;
+      for (const t of targets) {
         for (const sel of submitSelectors) {
           try {
-            const btn = otpInput.target.locator(sel).first();
-            if (await btn.isVisible({ timeout: 1000 })) {
-              await btn.click();
+            const btn = t.locator(sel).first();
+            if (await btn.isVisible({ timeout: 400 })) {
+              await btn.click({ timeout: 2000 });
               console.log(`[gateway] Clicked OTP submit via "${sel}".`);
+              clicked = true;
               break;
             }
           } catch {}
         }
-      } else {
-        console.log('[gateway] Could not locate OTP input field automatically. Please submit in browser.');
+        if (clicked) break;
       }
+
+      // If button not clicked via selectors, press Enter on the OTP input
+      if (!clicked) {
+        try {
+          console.log('[gateway] Standard submit button not found. Pressing Enter on OTP input field...');
+          await otpInput.locator.press('Enter');
+          clicked = true;
+        } catch (e: any) {
+          console.warn('[gateway] Pressing Enter failed:', e?.message || e);
+        }
+      }
+
+      return clicked;
     }
 
     // Terminal stdin prompt
