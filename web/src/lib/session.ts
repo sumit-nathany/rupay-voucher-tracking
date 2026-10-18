@@ -6,6 +6,7 @@
  * tested against PGlite without DATABASE_URL or a Next request scope.
  */
 import { createServerClient } from '@supabase/ssr';
+import type { User } from '@supabase/supabase-js';
 import { eq } from 'drizzle-orm';
 import { systemAdmins, workspaceMembers, workspaces } from '@/db/schema';
 import { AuthzError, type Ctx, type Database } from '@/lib/context';
@@ -82,13 +83,30 @@ export async function createSupabaseServerClient() {
   });
 }
 
+/** Retrieve currently authenticated Supabase Auth user without provisioning workspace. */
+export async function getSessionUser(): Promise<User | null> {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user;
+}
+
 /** Build the request Ctx from the Supabase session. Throws AuthzError if unauthenticated. */
 export async function getCtx(): Promise<Ctx> {
+  const { ctx } = await getCtxAndUser();
+  return ctx;
+}
+
+/** Build Ctx and return the Supabase Auth user in one call. Throws AuthzError if unauthenticated. */
+export async function getCtxAndUser(): Promise<{ ctx: Ctx; user: User }> {
   const supabase = await createSupabaseServerClient();
   // getUser() validates the JWT with Supabase Auth; getSession() would trust the cookie.
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) throw new AuthzError('Not authenticated');
   const { db } = await import('@/db');
   const m = await provisionWorkspace(db, data.user.id);
-  return { userId: data.user.id, workspaceId: m.workspaceId, role: m.role, db, today: today() };
+  return {
+    ctx: { userId: data.user.id, workspaceId: m.workspaceId, role: m.role, db, today: today() },
+    user: data.user,
+  };
 }

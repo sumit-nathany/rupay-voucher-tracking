@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { signOut } from '@/app/auth/actions';
 import { Button } from '@/components/ui/button';
@@ -11,11 +12,19 @@ import { NavLinks } from './nav-links';
 
 const SIDEBAR_PINNED_KEY = 'rupay_nav_pinned';
 
+export interface AppShellUser {
+  email: string | null;
+  role: string;
+  isSystemAdmin?: boolean;
+}
+
 export function AppShell({
   showAdmin,
+  user,
   children,
 }: {
   showAdmin: boolean;
+  user?: AppShellUser;
   children: React.ReactNode;
 }) {
   // true = keep nav bar always (pinned desktop sidebar); false = hide nav bar
@@ -70,15 +79,37 @@ export function AppShell({
           <NavLinks variant="sidebar" showAdmin={showAdmin} />
         </nav>
 
-        <form action={signOut} className="mt-4 border-t border-border pt-4">
-          <Button
-            type="submit"
-            variant="ghost"
-            className="w-full justify-start rounded-xl text-muted-foreground"
-          >
-            <LogOut className="h-4 w-4" /> Sign out
-          </Button>
-        </form>
+        <div className="mt-4 border-t border-border pt-3 space-y-1">
+          {user && (
+            <Link
+              href="/profile"
+              className="flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors group"
+              title="View Profile & Settings"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs uppercase ring-1 ring-primary/20">
+                {user.email ? user.email.slice(0, 2).toUpperCase() : 'U'}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col text-left">
+                <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                  {user.email ?? 'My Profile'}
+                </span>
+                <span className="truncate text-[10px] text-muted-foreground capitalize">
+                  {user.isSystemAdmin ? 'System Admin' : user.role === 'admin' ? 'Workspace Admin' : 'Member'}
+                </span>
+              </div>
+            </Link>
+          )}
+
+          <form action={signOut}>
+            <Button
+              type="submit"
+              variant="ghost"
+              className="w-full justify-start rounded-xl text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="h-4 w-4" /> Sign out
+            </Button>
+          </form>
+        </div>
       </aside>
 
       {/* Main content wrapper */}
@@ -151,6 +182,21 @@ export function AppShell({
               </Button>
             )}
 
+            {user && (
+              <Link
+                href="/profile"
+                className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="View Profile & Settings"
+              >
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary font-bold text-[10px] uppercase ring-1 ring-primary/20">
+                  {user.email ? user.email.slice(0, 2).toUpperCase() : 'U'}
+                </div>
+                <span className="hidden sm:inline-block max-w-[130px] truncate text-xs font-semibold text-foreground">
+                  {user.email ?? 'Profile'}
+                </span>
+              </Link>
+            )}
+
             <form action={signOut}>
               <Button
                 type="submit"
@@ -196,16 +242,40 @@ export function AppShell({
               <p className="eyebrow mb-2 px-3 text-muted-foreground/70">Navigate</p>
               <NavLinks variant="sidebar" showAdmin={showAdmin} onNavigate={closeMobile} />
             </nav>
-            <form action={signOut} className="mt-4 border-t border-border pt-4">
-              <Button
-                type="submit"
-                variant="ghost"
-                className="w-full justify-start rounded-xl text-muted-foreground"
-                onClick={closeMobile}
-              >
-                <LogOut className="h-4 w-4" /> Sign out
-              </Button>
-            </form>
+
+            <div className="mt-4 border-t border-border pt-3 space-y-1">
+              {user && (
+                <Link
+                  href="/profile"
+                  onClick={closeMobile}
+                  className="flex items-center gap-3 rounded-xl px-2.5 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors group"
+                  title="View Profile & Settings"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs uppercase ring-1 ring-primary/20">
+                    {user.email ? user.email.slice(0, 2).toUpperCase() : 'U'}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col text-left">
+                    <span className="truncate text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {user.email ?? 'My Profile'}
+                    </span>
+                    <span className="truncate text-[10px] text-muted-foreground capitalize">
+                      {user.isSystemAdmin ? 'System Admin' : user.role === 'admin' ? 'Workspace Admin' : 'Member'}
+                    </span>
+                  </div>
+                </Link>
+              )}
+
+              <form action={signOut}>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  className="w-full justify-start rounded-xl text-muted-foreground hover:text-foreground"
+                  onClick={closeMobile}
+                >
+                  <LogOut className="h-4 w-4" /> Sign out
+                </Button>
+              </form>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

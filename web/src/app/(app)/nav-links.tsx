@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Gift, Users, CreditCard, SlidersHorizontal, Library, Bot, KeyRound } from 'lucide-react';
+import { LayoutDashboard, Gift, Users, CreditCard, SlidersHorizontal, Library, Bot, KeyRound, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const adminLink = { href: '/admin/catalog', label: 'Catalog', icon: Library, hint: 'Shared card data' };
@@ -14,6 +14,7 @@ const links = [
   { href: '/accounts', label: 'Accounts', icon: KeyRound, hint: 'Portal logins' },
   { href: '/automation', label: 'Automation', icon: Bot, hint: 'Auto ordering' },
   { href: '/overrides', label: 'Overrides', icon: SlidersHorizontal, hint: 'Catalog fixes' },
+  { href: '/profile', label: 'Profile', icon: User, hint: 'Account & password' },
 ];
 
 export function NavLinks({
