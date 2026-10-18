@@ -40,8 +40,6 @@ export function Filters({
   const holder = sp.get('holder') ?? '';
   const card = sp.get('card') ?? '';
   const accountId = sp.get('account') ?? sp.get('portal_account') ?? '';
-  const currentAccount = portalAccounts?.find((a) => a.id === accountId);
-  const accountLabel = currentAccount?.label || 'Account Orders';
   const status = sp.get('status') ?? '';
   const sort = sp.get('sort') ?? '';
   const discounts = sp.get('discounts') ?? '';
@@ -117,19 +115,6 @@ export function Filters({
             Across everything
           </span>
         )}
-        {accountId && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary shadow-xs">
-            <span>Account: {accountLabel}</span>
-            <button
-              type="button"
-              onClick={() => set({ account: '', portal_account: '' })}
-              className="rounded-full p-0.5 hover:bg-primary/20 text-primary transition-colors cursor-pointer"
-              aria-label="Remove account filter"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        )}
         {active && (
           <button
             type="button"
@@ -195,6 +180,24 @@ export function Filters({
               ))}
             </SelectContent>
           </Select>
+
+          {/* RuPay Account */}
+          {portalAccounts && portalAccounts.length > 0 && (
+            <Select
+              value={accountId || '__all__'}
+              onValueChange={(v) => set({ account: v === '__all__' ? '' : v, portal_account: '' })}
+            >
+              <SelectTrigger aria-label="RuPay Account" className={`${base} ${accountId ? activeFilter : ''}`}>
+                <SelectValue placeholder="All RuPay accounts" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">All RuPay accounts</SelectItem>
+                {portalAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Status */}
           <Select
