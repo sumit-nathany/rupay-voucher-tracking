@@ -124,9 +124,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     .select({
       last4: schema.cards.lastDigits,
       cardName: schema.bankCardTypes.displayName,
+      variantName: schema.cardVariants.name,
+      portalCardType: schema.cardVariants.portalCardType,
     })
     .from(schema.cards)
     .innerJoin(schema.bankCardTypes, eq(schema.cards.bankCardTypeId, schema.bankCardTypes.id))
+    .innerJoin(schema.cardVariants, eq(schema.bankCardTypes.variantId, schema.cardVariants.id))
     .where(eq(schema.cards.id, candidate.cardId));
 
   const [instanceRow] = await db
@@ -243,7 +246,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
 
   const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
-    headless: options?.headless ?? false,
+    headless: options?.headless ?? (process.argv.includes('--headless') ? true : false),
     slowMo: 15,
     viewport: { width: 1366, height: 860 },
   });
@@ -427,25 +430,179 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     }
   } catch {}
 
+async function addCardToPortalAccount(
+  page: Page,
+  options: {
+    cardName: string;
+    cardNumber: string;
+    portalCardType?: number | null;
+    bankCoreName: string;
+    accountLabel: string;
+  },
+) {
+  console.log(`\n======================================================`);
+  console.log(`➕ [portal] Automatically adding card "${options.cardName}" to portal account "${options.accountLabel}"...`);
+  console.log(`======================================================\n`);
+
+  const isDebit = options.portalCardType === 41 || options.cardName.toLowerCase().includes('debit');
+  const cardTypeKeyword = isDebit ? 'Debit' : 'Credit';
+  const cardTypeId = isDebit ? '41' : '42';
+
+  // 1. Query public card catalog to determine exact digitflag
+  let digitCount = 6;
+  try {
+    const res = await page.request.post('https://apirupayselect.truztee.com/api/Public/getCardNames', {
+      data: { cardtype: cardTypeId },
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (res.ok()) {
+      const json = await res.json();
+      const payload = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
+      const cards = payload?.response || [];
+      const matched = cards.find((c: any) =>
+        c.cardname.toLowerCase().includes(options.bankCoreName.toLowerCase()),
+      );
+      if (matched) {
+        console.log(`[portal] Matched catalog entry: ID=${matched.id}, Name="${matched.cardname}", digitflag="${matched.digitflag}"`);
+        digitCount = matched.digitflag === 'E' ? 8 : (matched.digitflag === 'N' ? 9 : 6);
+      }
+    }
+  } catch (err) {
+    console.warn('[portal] Warning checking public card names catalog:', err);
+  }
+
+  const startDigits = options.cardNumber.slice(0, digitCount);
+  console.log(`[portal] Card BIN prefix for card addition: ${startDigits} (${digitCount} digits)`);
+
+  // 2. Navigate to myaccount page
+  console.log('Navigating to https://rupayselect.truztee.com/#/myaccount ...');
+  await page.goto('https://rupayselect.truztee.com/#/myaccount', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500);
+
+  // 3. Switch to Cards tab
+  const cardsTab = page
+    .locator(':is(button, a)[data-bs-target="#cards"], :is(button, a):has-text("Cards"), a[href*="#cards"]')
+    .first();
+  await cardsTab.waitFor({ state: 'visible', timeout: 8000 });
+  await humanClick(cardsTab, { hesitateBeforeMs: 400, pauseAfterMs: 1200 });
+
+  // 4. Click "+ Add Card" button
+  const addCardBtn = page.locator('button:has-text("Add Card"), a:has-text("Add Card")').first();
+  await addCardBtn.waitFor({ state: 'visible', timeout: 6000 });
+  await humanClick(addCardBtn, { hesitateBeforeMs: 500, pauseAfterMs: 1500 });
+
+  // 5. In Add Card modal:
+  const modalContainer = page.locator('.modal.show, .modal:visible').first();
+  await modalContainer.waitFor({ state: 'visible', timeout: 6000 });
+
+  // 5a. Select Card Type
+  const cardTypeDropdownBtn = modalContainer
+    .locator('button')
+    .filter({ hasText: /select card type/i })
+    .first();
+  await cardTypeDropdownBtn.waitFor({ state: 'visible', timeout: 5000 });
+  await humanClick(cardTypeDropdownBtn, { hesitateBeforeMs: 400, pauseAfterMs: 800 });
+
+  const cardTypeItem = page
+    .locator('.dropdown-menu.show a, .modal.show a, a.dropdown-item:visible')
+    .filter({ hasText: new RegExp(cardTypeKeyword, 'i') })
+    .first();
+  await cardTypeItem.waitFor({ state: 'visible', timeout: 5000 });
+  await humanClick(cardTypeItem, { hesitateBeforeMs: 400, pauseAfterMs: 1800 });
+  console.log(`[portal] Selected Card Type program: ${cardTypeKeyword}`);
+
+  // 5b. Select Card Name
+  const cardNameDropdownBtn = modalContainer
+    .locator('button')
+    .filter({ hasText: /select card/i })
+    .first();
+  await cardNameDropdownBtn.waitFor({ state: 'visible', timeout: 5000 });
+  await humanClick(cardNameDropdownBtn, { hesitateBeforeMs: 400, pauseAfterMs: 800 });
+
+  const cardNameItem = page
+    .locator('.dropdown-menu.show a, .modal.show a, a.dropdown-item:visible')
+    .filter({ hasText: new RegExp(options.bankCoreName, 'i') })
+    .first();
+  await cardNameItem.waitFor({ state: 'visible', timeout: 6000 });
+  await humanClick(cardNameItem, { hesitateBeforeMs: 400, pauseAfterMs: 1200 });
+  console.log(`[portal] Selected Card Name matching: ${options.bankCoreName}`);
+
+  // 5c. Enter start digits
+  const digitsInput = modalContainer
+    .locator('input[formcontrolname="sixDigits"], input[type="text"], input[placeholder*="digit" i], input:visible')
+    .first();
+  await digitsInput.waitFor({ state: 'visible', timeout: 5000 });
+  await digitsInput.fill('');
+  await humanType(digitsInput, startDigits, { minCharDelayMs: 80, maxCharDelayMs: 140 });
+  await humanHesitate(500, 1000);
+
+  // 5d. Click Submit "Add Card"
+  const submitBtn = modalContainer
+    .locator('button[type="submit"]:has-text("Add Card"), button:has-text("Add Card")')
+    .last();
+  console.log('[portal] Clicking "Add Card" submit button...');
+  await humanClick(submitBtn, { hesitateBeforeMs: 500, pauseAfterMs: 3000 });
+
+  await page.waitForTimeout(2000);
+  console.log(`✓ Card addition submitted! Returning to offers page.`);
+}
+
   await humanHesitate(1200, 2000);
 
   console.log(`\n--- Step 3: Selecting Card for ${cardRow?.cardName || 'PNB'} (••${cardRow?.last4}) ---`);
   // The first dropdown trigger in the navbar is the Card selector
   const cardDropdownTrigger = page.locator(':is(button, a)[id*="card" i], button.nav-dropdown-trigger:not(:has-text("Explore Benefits")), :is(button, a):has-text("RuPay Select")').first();
   const currentCardHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
-  const targetBinKeyword = cardRow?.cardName?.includes('PNB') ? 'PNB' : (cardRow?.cardName?.includes('India') ? 'Bank of India' : 'PNB');
+  const bankCoreName = cardRow?.cardName?.replace(/RuPay|Select|Card|Debit|Credit/gi, '').trim() || (cardRow?.cardName?.includes('India') ? 'Bank of India' : 'PNB');
 
-  if (!currentCardHeader.toLowerCase().includes(targetBinKeyword.toLowerCase())) {
-    console.log(`Current card is "${currentCardHeader}", switching to "${targetBinKeyword}"...`);
+  const isCardAlreadySelected = currentCardHeader.toLowerCase().includes(bankCoreName.toLowerCase());
+
+  if (!isCardAlreadySelected) {
+    console.log(`Current card is "${currentCardHeader}". Checking if "${bankCoreName}" is available in dropdown...`);
     await humanClick(cardDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
-    const targetCardItem = page.locator(`.dropdown-menu.show a.dropdown-item:has-text("${targetBinKeyword}"), a.dropdown-item:has-text("${targetBinKeyword}")`).first();
-    await targetCardItem.waitFor({ state: 'visible', timeout: 5000 });
-    await humanClick(targetCardItem, { hesitateBeforeMs: 500, pauseAfterMs: 2500 });
-    // Wait for card benefits to finish loading
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await page.waitForTimeout(2000);
-    const newHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
-    console.log(`✓ Active card dropdown updated to: "${newHeader}"`);
+
+    const targetCardItem = page.locator(`.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible`).filter({
+      hasText: new RegExp(bankCoreName, 'i')
+    }).first();
+
+    const cardFoundInDropdown = await targetCardItem.isVisible({ timeout: 2500 }).catch(() => false);
+
+    if (cardFoundInDropdown) {
+      console.log(`✓ Found "${bankCoreName}" in dropdown. Switching...`);
+      await humanClick(targetCardItem, { hesitateBeforeMs: 500, pauseAfterMs: 2500 });
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(2000);
+      const newHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
+      console.log(`✓ Active card dropdown updated to: "${newHeader}"`);
+    } else {
+      // Card is not yet added to this portal account: close dropdown and add it!
+      await page.keyboard.press('Escape').catch(() => {});
+      console.log(`[portal] ⚠️ Card matching "${bankCoreName}" not found in account's card list.`);
+
+      await addCardToPortalAccount(page, {
+        cardName: cardRow?.cardName ?? 'Bank of India RuPay Select Card',
+        cardNumber: paymentDetails.cardNumber ?? '',
+        portalCardType: cardRow?.portalCardType ?? 41,
+        bankCoreName,
+        accountLabel: account.label,
+      });
+
+      // Navigate back to offers and select the new card
+      console.log('Navigating to https://rupayselect.truztee.com/#/offers ...');
+      await page.goto('https://rupayselect.truztee.com/#/offers', { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+
+      // Re-trigger dropdown and select newly added card
+      await humanClick(cardDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
+      const newCardItem = page.locator(`.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible`).filter({
+        hasText: new RegExp(bankCoreName, 'i')
+      }).first();
+      await newCardItem.waitFor({ state: 'visible', timeout: 8000 });
+      await humanClick(newCardItem, { hesitateBeforeMs: 500, pauseAfterMs: 2500 });
+      await page.waitForTimeout(2000);
+      const updatedHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
+      console.log(`✓ Active card dropdown updated to: "${updatedHeader}"`);
+    }
   } else {
     console.log(`✓ Target card "${currentCardHeader}" already selected.`);
   }
@@ -826,6 +983,21 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
         currUrl.includes('truztee.com/#/view-redeemed-offers');
 
       if (isPostPaymentSuccess) {
+        // 1. Direct match in URL (e.g. #/Success/RUPS-5C977ED8 or ?orderId=RUPS-5C977ED8)
+        const urlMatch = currUrl.match(/RUPS-[A-Za-z0-9]+/i);
+        if (urlMatch) {
+          bookingRef = urlMatch[0];
+          console.log(`[monitor] ✓ Extracted booking reference from URL: ${bookingRef}`);
+          break;
+        }
+
+        // 2. If tracked initiated order ID is confirmed on a success page
+        if (initiatedOrderId && (currUrl.includes('Success') || currUrl.includes('success'))) {
+          bookingRef = initiatedOrderId;
+          console.log(`[monitor] ✓ Confirmed tracked order ID from success redirect: ${bookingRef}`);
+          break;
+        }
+
         const pageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
         
         // Exclude pages that explicitly say "Initiated" or "Failure" without any "Success"
