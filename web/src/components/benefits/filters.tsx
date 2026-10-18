@@ -24,10 +24,12 @@ export function Filters({
   holders,
   cards,
   categories,
+  portalAccounts,
 }: {
   holders: FilterOption[];
   cards: FilterOption[];
   categories: FilterOption[];
+  portalAccounts?: FilterOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,6 +39,9 @@ export function Filters({
   const start = loadingStart || localStart;
   const holder = sp.get('holder') ?? '';
   const card = sp.get('card') ?? '';
+  const accountId = sp.get('account') ?? sp.get('portal_account') ?? '';
+  const currentAccount = portalAccounts?.find((a) => a.id === accountId);
+  const accountLabel = currentAccount?.label || 'Account Orders';
   const status = sp.get('status') ?? '';
   const sort = sp.get('sort') ?? '';
   const discounts = sp.get('discounts') ?? '';
@@ -87,6 +92,7 @@ export function Filters({
   const active =
     holder ||
     card ||
+    accountId ||
     category ||
     status ||
     (sort && sort !== 'value-desc') ||
@@ -111,6 +117,19 @@ export function Filters({
             Across everything
           </span>
         )}
+        {accountId && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary shadow-xs">
+            <span>Account: {accountLabel}</span>
+            <button
+              type="button"
+              onClick={() => set({ account: '', portal_account: '' })}
+              className="rounded-full p-0.5 hover:bg-primary/20 text-primary transition-colors cursor-pointer"
+              aria-label="Remove account filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        )}
         {active && (
           <button
             type="button"
@@ -120,6 +139,8 @@ export function Filters({
               set({
                 holder: '',
                 card: '',
+                account: '',
+                portal_account: '',
                 category: '',
                 benefit: '',
                 status: '',

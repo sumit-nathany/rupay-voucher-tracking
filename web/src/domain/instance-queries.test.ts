@@ -633,5 +633,54 @@ describe('discount coupons', () => {
     expect(row?.portalAccountId).toBe(acc.id);
     expect(row?.portalAccountLabel).toBe('test-rupay@example.com');
   });
+
+  it('filters instances by portalAccountId in view and lifetime scope', async () => {
+    const [acc1] = await db.insert(portalAccounts).values({
+      workspaceId: A.workspaceId,
+      label: 'acc1@example.com',
+      credentialsEncrypted: 'enc',
+      status: 'connected',
+    }).returning();
+
+    const [acc2] = await db.insert(portalAccounts).values({
+      workspaceId: A.workspaceId,
+      label: 'acc2@example.com',
+      credentialsEncrypted: 'enc',
+      status: 'connected',
+    }).returning();
+
+    // Assign instances to acc1 and acc2
+    await db.update(benefitInstances).set({ portalAccountId: acc1.id }).where(eq(benefitInstances.id, idQ3Beta));
+    await db.update(benefitInstances).set({ portalAccountId: acc1.id }).where(eq(benefitInstances.id, idQ2));
+    await db.update(benefitInstances).set({ portalAccountId: acc2.id }).where(eq(benefitInstances.id, idQ3Alpha));
+
+    // 1. Filter by acc1 in standard Q3 view: returns only idQ3Beta (idQ2 is in Q2)
+    const acc1Q3 = await listInstances(A, { view: Q3, portalAccountId: acc1.id });
+    expect(acc1Q3.map((x) => x.id)).toEqual([idQ3Beta]);
+    expect(acc1Q3[0].portalAccountId).toBe(acc1.id);
+    expect(acc1Q3[0].portalAccountLabel).toBe('acc1@example.com');
+
+    // 2. Filter by acc1 with scope: 'lifetime': returns both idQ3Beta and idQ2
+    const acc1Lifetime = await listInstances(A, { view: Q3, portalAccountId: acc1.id, scope: 'lifetime' });
+    const acc1LifetimeIds = acc1Lifetime.map((x) => x.id);
+    expect(acc1LifetimeIds).toContain(idQ3Beta);
+    expect(acc1LifetimeIds).toContain(idQ2);
+    expect(acc1LifetimeIds).not.toContain(idQ3Alpha);
+
+    // 3. Filter by acc2 in Q3 view: returns only idQ3Alpha
+    const acc2Q3 = await listInstances(A, { view: Q3, portalAccountId: acc2.id });
+    expect(acc2Q3.map((x) => x.id)).toEqual([idQ3Alpha]);
+
+    // 4. Non-matching UUID returns empty
+    const nonExistent = await listInstances(A, { view: Q3, portalAccountId: randomUUID() });
+    expect(nonExistent).toEqual([]);
+
+    // 5. Invalid UUID format throws ValidationError
+    await expect(listInstances(A, { view: Q3, portalAccountId: 'not-a-uuid' })).rejects.toThrow(ValidationError);
+
+    // 6. Tenant isolation: Workspace B querying with acc1 returns empty
+    const acc1InB = await listInstances(B, { view: Q3, portalAccountId: acc1.id });
+    expect(acc1InB).toEqual([]);
+  });
 });
 

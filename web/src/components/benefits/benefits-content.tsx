@@ -10,6 +10,7 @@ import { BenefitList } from './benefit-list';
 export type BenefitFilters = {
   holderId?: string;
   cardId?: string;
+  portalAccountId?: string;
   /** Catalog benefit id or card-override id. */
   benefitId?: string;
   category?: string;

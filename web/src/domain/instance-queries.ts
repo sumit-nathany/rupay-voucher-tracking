@@ -41,6 +41,7 @@ const filterSchema = z.strictObject({
   view: viewSchema,
   holderId: uuid.optional(),
   cardId: uuid.optional(),
+  portalAccountId: uuid.optional(),
   /** Catalog `benefit_id` or card-override id — matches either column on instances. */
   benefitId: uuid.optional(),
   category: z.string().trim().max(100).optional(),
@@ -395,6 +396,7 @@ export async function listInstances(
     view: ViewedPeriod;
     holderId?: string;
     cardId?: string;
+    portalAccountId?: string;
     benefitId?: string;
     category?: string;
     status?: OrderStatus;
@@ -409,6 +411,7 @@ export async function listInstances(
   const isAll = f.scope === 'all' || (f.searchScope === 'all' && Boolean(f.search));
   const conds: SQL[] = [];
   if (!isAll && f.scope !== 'lifetime') conds.push(periodClause(f.view, ctx.today));
+  if (f.portalAccountId) conds.push(eq(benefitInstances.portalAccountId, f.portalAccountId));
   if (!isAll) {
     if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
     if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));

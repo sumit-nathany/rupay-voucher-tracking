@@ -3,6 +3,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { listCards } from '@/actions/cards';
 import { listCategoryFilterOptionsAction } from '@/actions/instance-queries';
 import { listHolders } from '@/actions/holders';
+import { listPortalAccountsAction } from '@/actions/automation';
 import { BenefitsContent, type BenefitFilters } from '@/components/benefits/benefits-content';
 import { Filters, type FilterOption } from '@/components/benefits/filters';
 import { PageSkeleton } from '@/components/dashboard/error-panel';
@@ -23,12 +24,14 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
   holders: FilterOption[];
   cards: FilterOption[];
   categories: FilterOption[];
+  portalAccounts: FilterOption[];
 }> {
   try {
-    const [h, c, categories] = await Promise.all([
+    const [h, c, categories, accounts] = await Promise.all([
       listHolders(),
       listCards(),
       listCategoryFilterOptionsAction({ holderId, cardId }),
+      listPortalAccountsAction(),
     ]);
     const holderById = new Map(h.map((x) => [x.id, x.name]));
     return {
@@ -43,10 +46,11 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
         holderId: x.holderId,
       })),
       categories,
+      portalAccounts: accounts.map((a) => ({ id: a.id, label: a.label })),
     };
   } catch (e) {
     unstable_rethrow(e);
-    return { holders: [], cards: [], categories: [] }; // filters degrade; the list itself reports its own errors
+    return { holders: [], cards: [], categories: [], portalAccounts: [] }; // filters degrade; the list itself reports its own errors
   }
 }
 
@@ -61,6 +65,8 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   // Invalid filter values are ignored rather than erroring (decision: lenient URL parsing).
   const holder = first(sp.holder);
   const card = first(sp.card);
+  const accountParam = first(sp.account) ?? first(sp.portal_account);
+  const portalAccountId = accountParam && UUID.test(accountParam) ? accountParam : undefined;
   const status = first(sp.status);
   const q = first(sp.q)?.trim().slice(0, 100);
   const discountsRaw = first(sp.discounts);
@@ -75,6 +81,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
   const filters: BenefitFilters = {
     holderId: holder && UUID.test(holder) ? holder : undefined,
     cardId: card && UUID.test(card) ? card : undefined,
+    portalAccountId,
     category,
     status: ORDER_STATUSES.find((s) => s === status),
     search: q || undefined,
@@ -86,6 +93,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
     Boolean(
       filters.holderId ||
         filters.cardId ||
+        filters.portalAccountId ||
         filters.category ||
         filters.status ||
         filters.search ||
@@ -111,7 +119,12 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
           }
           actions={<PeriodSelector view={view} today={today} lifetime={lifetime} />}
         />
-        <Filters holders={options.holders} cards={options.cards} categories={options.categories} />
+        <Filters
+          holders={options.holders}
+          cards={options.cards}
+          categories={options.categories}
+          portalAccounts={options.portalAccounts}
+        />
         <div className="mt-10">
           <Suspense key={JSON.stringify([view, filters, lifetime, searchScope])} fallback={<PageSkeleton />}>
             <BenefitsContent

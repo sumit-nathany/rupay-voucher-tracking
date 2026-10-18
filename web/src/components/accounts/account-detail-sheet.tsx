@@ -1,14 +1,17 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
   Clock,
   CreditCard,
+  ExternalLink,
   KeyRound,
   Loader2,
+  PackageCheck,
   Pause,
   Pencil,
   Play,
@@ -285,6 +288,13 @@ export function AccountDetailSheet({
                       </SheetDescription>
                     </div>
                   </div>
+                  <div className="pt-2 flex items-center gap-2">
+                    <Button variant="outline" size="sm" asChild className="gap-1.5">
+                      <Link href={`/benefits?account=${encodeURIComponent(account.id)}&lifetime=1`}>
+                        <PackageCheck className="h-4 w-4" /> View Orders Placed
+                      </Link>
+                    </Button>
+                  </div>
                 </SheetHeader>
 
                 {/* Feedback Alerts */}
@@ -397,6 +407,15 @@ export function AccountDetailSheet({
                       <span className="font-medium text-foreground">
                         {formatDate(account.lastConfirmedOrderAt)}
                       </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
+                      <span className="text-muted-foreground">Orders Placed</span>
+                      <Link
+                        href={`/benefits?account=${encodeURIComponent(account.id)}&lifetime=1`}
+                        className="text-xs font-semibold text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        View all orders <ExternalLink className="h-3 w-3" />
+                      </Link>
                     </div>
                     <div className="flex items-center justify-between gap-2 py-1.5">
                       <span className="text-muted-foreground flex items-center gap-1.5">
