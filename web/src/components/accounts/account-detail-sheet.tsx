@@ -231,7 +231,7 @@ export function AccountDetailSheet({
                         </span>
                       )}
                     </div>
-                    {(account.status === 'needs_attention' || account.statusDetailCode) && (
+                    {account.status === 'needs_attention' && (
                       <p className="text-xs text-destructive font-medium break-words pt-0.5">
                         {getPortalStatusExplanation(account.status, account.statusDetailCode)}
                       </p>
@@ -372,7 +372,7 @@ export function AccountDetailSheet({
                         {account.status.replace(/_/g, ' ')}
                       </span>
                     </div>
-                    {account.statusDetailCode && (
+                    {account.status === 'needs_attention' && account.statusDetailCode && (
                       <div className="flex items-start justify-between gap-2 py-1.5 border-b border-border/40">
                         <span className="text-muted-foreground shrink-0">Issue Detail</span>
                         <span className="font-medium text-destructive text-xs text-right break-words max-w-[240px]">

@@ -153,7 +153,7 @@ export async function transcribeAudioWithGemini(
   audioBuffer: Buffer,
   apiKey: string,
 ): Promise<string | null> {
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
   const base64Audio = audioBuffer.toString('base64');
 
   for (const model of models) {
