@@ -1,6 +1,20 @@
 import { Suspense } from 'react';
-import { DashboardContent } from '@/components/dashboard/dashboard-content';
-import { PageSkeleton } from '@/components/dashboard/error-panel';
+import {
+  ActionQueueSection,
+  ExpiringSoonSection,
+  HolderProgressSection,
+  LifetimeSectionContainer,
+  RedeemedValueSection,
+  StatusCountsSection,
+} from '@/components/dashboard/dashboard-content';
+import {
+  ActionQueueSkeleton,
+  ExpiringSoonSkeleton,
+  HolderProgressSkeleton,
+  LifetimeSkeleton,
+  RedeemedValueSkeleton,
+  StatusCountsSkeleton,
+} from '@/components/dashboard/dashboard-skeletons';
 import { PeriodSelector } from '@/components/dashboard/period-selector';
 import { parseView, viewLabel } from '@/components/dashboard/view-params';
 import { ContentStage } from '@/components/layout/content-stage';
@@ -17,6 +31,8 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const today = istToday();
   const view = parseView(sp, today);
+  const viewKey = JSON.stringify(view);
+
   return (
     <ContentStage className="max-w-6xl [.nav-unpinned_&]:max-w-7xl [.nav-unpinned_&]:2xl:max-w-[1536px]">
       <PageHeader
@@ -25,9 +41,38 @@ export default async function DashboardPage({
         description="What needs ordering, what is in hand, and what is about to lapse."
         actions={<PeriodSelector view={view} today={today} />}
       />
-      <Suspense key={JSON.stringify(view)} fallback={<PageSkeleton />}>
-        <DashboardContent view={view} today={today} />
-      </Suspense>
+
+      <div className="space-y-6">
+        {/* Urgent Action Queue: Needs Ordering, Awaiting Coupon, Coupon to Use */}
+        <Suspense key={`action-${viewKey}`} fallback={<ActionQueueSkeleton />}>
+          <ActionQueueSection view={view} />
+        </Suspense>
+
+        {/* Current Quarter & Year Redeemed Values */}
+        <Suspense fallback={<RedeemedValueSkeleton />}>
+          <RedeemedValueSection today={today} />
+        </Suspense>
+
+        {/* Status Mix & Holder Progress Breakdown */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Suspense key={`status-${viewKey}`} fallback={<StatusCountsSkeleton />}>
+            <StatusCountsSection view={view} />
+          </Suspense>
+          <Suspense key={`holders-${viewKey}`} fallback={<HolderProgressSkeleton />}>
+            <HolderProgressSection view={view} />
+          </Suspense>
+        </div>
+
+        {/* Vouchers Expiring Within 30 Days */}
+        <Suspense fallback={<ExpiringSoonSkeleton />}>
+          <ExpiringSoonSection today={today} />
+        </Suspense>
+
+        {/* All-Time Lifetime Performance & Missed Savings */}
+        <Suspense fallback={<LifetimeSkeleton />}>
+          <LifetimeSectionContainer today={today} />
+        </Suspense>
+      </div>
     </ContentStage>
   );
 }

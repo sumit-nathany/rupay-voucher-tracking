@@ -8,7 +8,15 @@ import {
 } from '@/db/schema';
 import type { Ctx } from '@/lib/context';
 import { ValidationError } from './workspace-data';
-import { getDashboardSummary, listCategoryFilterOptions, listInstances } from './instance-queries';
+import {
+  getDashboardExpiringSoon,
+  getDashboardLifetime,
+  getDashboardPeriodSummary,
+  getDashboardRedeemedValues,
+  getDashboardSummary,
+  listCategoryFilterOptions,
+  listInstances,
+} from './instance-queries';
 
 let db: Ctx['db'];
 let close: () => Promise<void>;
@@ -682,5 +690,45 @@ describe('discount coupons', () => {
     const acc1InB = await listInstances(B, { view: Q3, portalAccountId: acc1.id });
     expect(acc1InB).toEqual([]);
   });
+
+  describe('granular dashboard queries (incremental streaming)', () => {
+    it('getDashboardPeriodSummary computes period counts, actionValues, and detects empty desk', async () => {
+      const periodA = await getDashboardPeriodSummary(A, Q3);
+      expect(periodA.totalCount).toBeGreaterThan(0);
+      expect(periodA.isDeskEmpty).toBe(false);
+      expect(periodA.counts['Coupon Redeemed']).toBeGreaterThanOrEqual(1);
+
+      // Empty workspace has isDeskEmpty === true
+      const emptyCtx: Ctx = { ...A, workspaceId: randomUUID() };
+      await db.insert(workspaces).values({ id: emptyCtx.workspaceId, name: 'Empty WS' });
+      const emptyPeriod = await getDashboardPeriodSummary(emptyCtx, Q3);
+      expect(emptyPeriod.totalCount).toBe(0);
+      expect(emptyPeriod.isDeskEmpty).toBe(true);
+    });
+
+    it('getDashboardRedeemedValues reports quarter and year redeemed metrics', async () => {
+      const redeemed = await getDashboardRedeemedValues(A);
+      expect(redeemed.redeemedThisQuarter).toBeDefined();
+      expect(redeemed.redeemedThisQuarterCount).toBeDefined();
+      expect(redeemed.redeemedThisYear).toBeDefined();
+      expect(redeemed.redeemedThisYearCount).toBeDefined();
+    });
+
+    it('getDashboardExpiringSoon returns vouchers expiring within EXPIRING_DAYS', async () => {
+      const expiring = await getDashboardExpiringSoon(A);
+      expect(expiring.expiringWithinDays).toBe(30);
+      expect(Array.isArray(expiring.expiringSoon)).toBe(true);
+      expect(expiring.expiringSoon.length).toBeGreaterThan(0);
+    });
+
+    it('getDashboardLifetime returns lifetime redeemed and missed ordering totals', async () => {
+      const lifetime = await getDashboardLifetime(A);
+      expect(lifetime.redeemedLifetime).toBeGreaterThan(0);
+      expect(lifetime.redeemedLifetimeCount).toBeGreaterThan(0);
+      expect(lifetime.missedOrderLifetime).toBeDefined();
+      expect(lifetime.missedOrderLifetimeCount).toBeDefined();
+    });
+  });
 });
+
 

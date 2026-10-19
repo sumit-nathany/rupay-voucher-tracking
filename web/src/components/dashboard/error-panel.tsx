@@ -12,16 +12,4 @@ export function ErrorPanel({ message }: { message: string }) {
   );
 }
 
-export function PageSkeleton() {
-  return (
-    <div className="space-y-4" aria-busy="true" aria-label="Loading">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        {Array.from({ length: 5 }, (_, i) => (
-          <div key={i} className="skeleton-shimmer h-24 rounded-xl" />
-        ))}
-      </div>
-      <div className="skeleton-shimmer h-44 rounded-xl" />
-      <div className="skeleton-shimmer h-44 rounded-xl" />
-    </div>
-  );
-}
+export { PageSkeleton } from './dashboard-skeletons';

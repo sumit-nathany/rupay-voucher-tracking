@@ -31,6 +31,51 @@ export async function loadDashboardAction(view: Parameters<typeof q.getDashboard
   }
 }
 
+/** Dashboard incremental stream: ensure instances and summarize current period. */
+export async function loadDashboardPeriodAction(view: Parameters<typeof q.getDashboardPeriodSummary>[1]) {
+  try {
+    const ctx = await getCtx();
+    await ensureInstances(ctx, view);
+    return await q.getDashboardPeriodSummary(ctx, view);
+  } catch (err) {
+    console.error('[loadDashboardPeriodAction] failed:', err);
+    throw err;
+  }
+}
+
+/** Dashboard incremental stream: get redeemed values for current quarter and year. */
+export async function loadDashboardRedeemedValuesAction(today?: string) {
+  try {
+    const ctx = await getCtx();
+    return await q.getDashboardRedeemedValues(ctx, today);
+  } catch (err) {
+    console.error('[loadDashboardRedeemedValuesAction] failed:', err);
+    throw err;
+  }
+}
+
+/** Dashboard incremental stream: get vouchers expiring in the next 30 days. */
+export async function loadDashboardExpiringSoonAction(today?: string) {
+  try {
+    const ctx = await getCtx();
+    return await q.getDashboardExpiringSoon(ctx, today);
+  } catch (err) {
+    console.error('[loadDashboardExpiringSoonAction] failed:', err);
+    throw err;
+  }
+}
+
+/** Dashboard incremental stream: get lifetime redeemed and missed totals. */
+export async function loadDashboardLifetimeAction(today?: string) {
+  try {
+    const ctx = await getCtx();
+    return await q.getDashboardLifetime(ctx, today);
+  } catch (err) {
+    console.error('[loadDashboardLifetimeAction] failed:', err);
+    throw err;
+  }
+}
+
 /** Read-only variants (no generation), e.g. for refreshing after an edit. */
 export async function listInstancesAction(input: Parameters<typeof q.listInstances>[1]) {
   return q.listInstances(await getCtx(), input);

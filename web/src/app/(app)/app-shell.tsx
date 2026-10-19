@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { signOut } from '@/app/auth/actions';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { NavigationProgressProvider } from '@/components/layout/navigation-progress';
 import { BrandMark } from './brand-mark';
 import { NavLinks } from './nav-links';
 
@@ -49,7 +50,9 @@ export function AppShell({
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <div className="min-h-dvh flex">
+    <Suspense fallback={null}>
+      <NavigationProgressProvider>
+        <div className="min-h-dvh flex">
       {/* Desktop sidebar: visible only on lg+ when pinned */}
       <aside
         className={cn(
@@ -279,6 +282,8 @@ export function AppShell({
           </div>
         </SheetContent>
       </Sheet>
-    </div>
+        </div>
+      </NavigationProgressProvider>
+    </Suspense>
   );
 }

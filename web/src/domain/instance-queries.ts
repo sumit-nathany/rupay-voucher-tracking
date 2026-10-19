@@ -145,6 +145,50 @@ export interface ActionQueueValues {
   couponToUseCount: number;
 }
 
+export interface DashboardPeriodSummary {
+  /** Every status present (zero-filled), over the viewed period set. */
+  counts: StatusCounts;
+  /** Cash value (instance or catalog default) for actionable status queues. */
+  actionValues: ActionQueueValues;
+  /** Instances excluding Skipped and Withdrawn. */
+  totalCount: number;
+  /** Sum of `value` over those instances. */
+  totalValue: number;
+  /** Ordered or beyond: Ordered-but-not-received + Coupon Received + Coupon Redeemed. */
+  orderedValue: number;
+  /** Coupon Redeemed. */
+  redeemedValue: number;
+  /** Not Ordered + Ordered-but-not-received + Coupon Received, excluding sold (sold_for set). */
+  outstandingValue: number;
+  /** Subset of outstanding: Not Ordered whose period has ended. */
+  lapsedCount: number;
+  lapsedValue: number;
+  /** Sum of sold_for over instances with sold_for set (any non-Skipped/Withdrawn status). */
+  soldValue: number;
+  perHolder: HolderProgress[];
+  /** True when the workspace has zero cards configured. */
+  isDeskEmpty: boolean;
+}
+
+export interface DashboardRedeemedValues {
+  redeemedThisQuarter: number;
+  redeemedThisQuarterCount: number;
+  redeemedThisYear: number;
+  redeemedThisYearCount: number;
+}
+
+export interface DashboardExpiringSoon {
+  expiringSoon: InstanceListItem[];
+  expiringWithinDays: number;
+}
+
+export interface DashboardLifetime {
+  redeemedLifetime: number;
+  redeemedLifetimeCount: number;
+  missedOrderLifetime: number;
+  missedOrderLifetimeCount: number;
+}
+
 export interface DashboardSummary {
   /** Every status present (zero-filled), over the viewed period set. */
   counts: StatusCounts;
@@ -605,10 +649,10 @@ function addDays(iso: string, days: number): string {
  *    [today, today+30], across the whole workspace (a coupon from an earlier
  *    quarter still needs using), soonest first.
  */
-export async function getDashboardSummary(
+export async function getDashboardPeriodSummary(
   ctx: Ctx,
   view: ViewedPeriod,
-): Promise<DashboardSummary> {
+): Promise<DashboardPeriodSummary> {
   const v = parse(viewSchema, view);
   const items = await query(ctx, periodClause(v, ctx.today));
 
@@ -658,40 +702,15 @@ export async function getDashboardSummary(
     holders.set(it.holderId, h);
   }
 
-  const expiring = await query(
-    ctx,
-    and(
-      eq(benefitInstances.orderStatus, 'Coupon Received'),
-      sql`${benefitInstances.soldFor} IS NULL`,
-      sql`${benefitInstances.expiryDate} >= ${ctx.today}`,
-      sql`${benefitInstances.expiryDate} <= ${addDays(ctx.today, EXPIRING_DAYS)}`,
-    ),
-  );
-  const expiringVouchers = expiring.filter((it) => it.offerKind !== 'discount');
-  expiringVouchers.sort(
-    (a, b) =>
-      (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '') ||
-      a.benefitName.localeCompare(b.benefitName),
-  );
-
-  const todayYear = Number(ctx.today.slice(0, 4));
-  const [quarterRedeemedItems, yearRedeemedItems, lifetimeRedeemedItems, lifetimeMissedItems] =
-    await Promise.all([
-      query(ctx, periodClause(calendarQuarterForDate(ctx.today), ctx.today)),
-      query(ctx, periodClause({ kind: 'year', year: todayYear }, ctx.today)),
-      query(ctx, eq(benefitInstances.orderStatus, 'Coupon Redeemed')),
-      query(
-        ctx,
-        and(
-          eq(benefitInstances.orderStatus, 'Not Ordered'),
-          sql`${benefitInstances.periodEnd} < ${ctx.today}`,
-        ),
-      ),
-    ]);
-  const missedLifetime = sumMissedOrdering(lifetimeMissedItems);
-  const redeemedQuarter = sumRedeemed(quarterRedeemedItems);
-  const redeemedYear = sumRedeemed(yearRedeemedItems);
-  const redeemedLifetime = sumRedeemed(lifetimeRedeemedItems);
+  let isDeskEmpty = false;
+  if (items.length === 0) {
+    const [card] = await ctx.db
+      .select({ id: cards.id })
+      .from(cards)
+      .where(eq(cards.workspaceId, ctx.workspaceId))
+      .limit(1);
+    isDeskEmpty = !card;
+  }
 
   return {
     counts,
@@ -712,15 +731,113 @@ export async function getDashboardSummary(
     lapsedValue: round2(lapsedValue),
     soldValue: round2(soldValue),
     perHolder: [...holders.values()].sort((a, b) => a.holderName.localeCompare(b.holderName)),
-    expiringSoon: expiringVouchers,
-    expiringWithinDays: EXPIRING_DAYS,
+    isDeskEmpty,
+  };
+}
+
+export async function getDashboardRedeemedValues(
+  ctx: Ctx,
+  today?: string,
+): Promise<DashboardRedeemedValues> {
+  const todayStr = today ?? ctx.today;
+  const todayYear = Number(todayStr.slice(0, 4));
+  const [quarterRedeemedItems, yearRedeemedItems] = await Promise.all([
+    query(ctx, periodClause(calendarQuarterForDate(todayStr), todayStr)),
+    query(ctx, periodClause({ kind: 'year', year: todayYear }, todayStr)),
+  ]);
+  const redeemedQuarter = sumRedeemed(quarterRedeemedItems);
+  const redeemedYear = sumRedeemed(yearRedeemedItems);
+  return {
     redeemedThisQuarter: redeemedQuarter.value,
     redeemedThisQuarterCount: redeemedQuarter.count,
     redeemedThisYear: redeemedYear.value,
     redeemedThisYearCount: redeemedYear.count,
+  };
+}
+
+export async function getDashboardExpiringSoon(
+  ctx: Ctx,
+  today?: string,
+): Promise<DashboardExpiringSoon> {
+  const todayStr = today ?? ctx.today;
+  const expiring = await query(
+    ctx,
+    and(
+      eq(benefitInstances.orderStatus, 'Coupon Received'),
+      sql`${benefitInstances.soldFor} IS NULL`,
+      sql`${benefitInstances.expiryDate} >= ${todayStr}`,
+      sql`${benefitInstances.expiryDate} <= ${addDays(todayStr, EXPIRING_DAYS)}`,
+    ),
+  );
+  const expiringVouchers = expiring.filter((it) => it.offerKind !== 'discount');
+  expiringVouchers.sort(
+    (a, b) =>
+      (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '') ||
+      a.benefitName.localeCompare(b.benefitName),
+  );
+  return {
+    expiringSoon: expiringVouchers,
+    expiringWithinDays: EXPIRING_DAYS,
+  };
+}
+
+export async function getDashboardLifetime(
+  ctx: Ctx,
+  today?: string,
+): Promise<DashboardLifetime> {
+  const todayStr = today ?? ctx.today;
+  const [lifetimeRedeemedItems, lifetimeMissedItems] = await Promise.all([
+    query(ctx, eq(benefitInstances.orderStatus, 'Coupon Redeemed')),
+    query(
+      ctx,
+      and(
+        eq(benefitInstances.orderStatus, 'Not Ordered'),
+        sql`${benefitInstances.periodEnd} < ${todayStr}`,
+      ),
+    ),
+  ]);
+  const missedLifetime = sumMissedOrdering(lifetimeMissedItems);
+  const redeemedLifetime = sumRedeemed(lifetimeRedeemedItems);
+  return {
     redeemedLifetime: redeemedLifetime.value,
     redeemedLifetimeCount: redeemedLifetime.count,
     missedOrderLifetime: missedLifetime.value,
     missedOrderLifetimeCount: missedLifetime.count,
+  };
+}
+
+export async function getDashboardSummary(
+  ctx: Ctx,
+  view: ViewedPeriod,
+): Promise<DashboardSummary> {
+  const [period, redeemed, expiring, lifetime] = await Promise.all([
+    getDashboardPeriodSummary(ctx, view),
+    getDashboardRedeemedValues(ctx, ctx.today),
+    getDashboardExpiringSoon(ctx, ctx.today),
+    getDashboardLifetime(ctx, ctx.today),
+  ]);
+
+  return {
+    counts: period.counts,
+    actionValues: period.actionValues,
+    totalCount: period.totalCount,
+    totalValue: period.totalValue,
+    orderedValue: period.orderedValue,
+    redeemedValue: period.redeemedValue,
+    outstandingValue: period.outstandingValue,
+    lapsedCount: period.lapsedCount,
+    lapsedValue: period.lapsedValue,
+    soldValue: period.soldValue,
+    perHolder: period.perHolder,
+    expiringSoon: expiring.expiringSoon,
+    expiringWithinDays: expiring.expiringWithinDays,
+    redeemedThisQuarter: redeemed.redeemedThisQuarter,
+    redeemedThisQuarterCount: redeemed.redeemedThisQuarterCount,
+    redeemedThisYear: redeemed.redeemedThisYear,
+    redeemedThisYearCount: redeemed.redeemedThisYearCount,
+    redeemedLifetime: lifetime.redeemedLifetime,
+    redeemedLifetimeCount: lifetime.redeemedLifetimeCount,
+    missedOrderLifetime: lifetime.missedOrderLifetime,
+    missedOrderLifetimeCount: lifetime.missedOrderLifetimeCount,
   };
 }
