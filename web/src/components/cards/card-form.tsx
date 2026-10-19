@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { Pencil, Plus, Lock } from 'lucide-react';
 import { createCard, updateCard } from '@/actions/cards';
+import { createHolder } from '@/actions/holders';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,7 +54,43 @@ function CardFormBody({
   close: () => void;
 }) {
   const { run, pending, error, setError } = useRunAction();
+  const [holderList, setHolderList] = React.useState<HolderOption[]>(holders);
   const [holderId, setHolderId] = React.useState(card?.holderId ?? holders[0]?.id ?? '');
+  const [isAddingHolder, setIsAddingHolder] = React.useState(holders.length === 0);
+  const [newHolderName, setNewHolderName] = React.useState('');
+  const [creatingHolder, setCreatingHolder] = React.useState(false);
+  const [holderCreateError, setHolderCreateError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setHolderList((prev) => {
+      const map = new Map(prev.map((h) => [h.id, h]));
+      holders.forEach((h) => map.set(h.id, h));
+      return Array.from(map.values());
+    });
+  }, [holders]);
+
+  async function handleQuickAddHolder() {
+    const trimmed = newHolderName.trim();
+    if (!trimmed) {
+      setHolderCreateError('Holder name is required');
+      return;
+    }
+    setCreatingHolder(true);
+    setHolderCreateError(null);
+    try {
+      const created = await createHolder({ name: trimmed });
+      const newOption = { id: created.id, name: created.name };
+      setHolderList((prev) => [...prev, newOption]);
+      setHolderId(created.id);
+      setNewHolderName('');
+      setIsAddingHolder(false);
+    } catch (err) {
+      setHolderCreateError(err instanceof Error ? err.message : 'Failed to add holder');
+    } finally {
+      setCreatingHolder(false);
+    }
+  }
+
   const [type, setType] = React.useState<CardTypeOption | null>(
     card ? (types.find((t) => t.id === card.bankCardTypeId) ?? null) : null,
   );
@@ -151,17 +188,83 @@ function CardFormBody({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
-      <Field id="card-holder" label="Holder">
-        <Select value={holderId} onValueChange={setHolderId}>
-          <SelectTrigger id="card-holder" aria-label="Holder" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {holders.map((h) => (
-              <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <Field
+        id="card-holder"
+        label="Holder"
+        hint={holderList.length === 0 ? 'Cards belong to a holder (yourself or family).' : undefined}
+      >
+        {isAddingHolder || holderList.length === 0 ? (
+          <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-2.5">
+            <div className="flex items-center justify-between text-xs font-medium text-foreground">
+              <span>{holderList.length === 0 ? 'Add your primary holder first:' : 'New card holder:'}</span>
+              {holderList.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingHolder(false);
+                    setHolderCreateError(null);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g. Self, Mom, Spouse"
+                value={newHolderName}
+                onChange={(e) => setNewHolderName(e.target.value)}
+                className="h-8 text-xs"
+                autoFocus={holderList.length === 0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleQuickAddHolder();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleQuickAddHolder}
+                disabled={creatingHolder || !newHolderName.trim()}
+                className="h-8 text-xs shrink-0"
+              >
+                {creatingHolder ? 'Adding...' : 'Add Holder'}
+              </Button>
+            </div>
+            {holderCreateError && (
+              <p className="text-[11px] text-destructive">{holderCreateError}</p>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <Select value={holderId} onValueChange={setHolderId}>
+                <SelectTrigger id="card-holder" aria-label="Holder" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {holderList.map((h) => (
+                    <SelectItem key={h.id} value={h.id}>
+                      {h.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddingHolder(true)}
+              className="text-xs shrink-0"
+            >
+              + New
+            </Button>
+          </div>
+        )}
       </Field>
 
       {card ? (
@@ -433,7 +536,6 @@ export function CardFormSheet({
   return (
     <FormSheet
       trigger={<><Plus className="h-4 w-4" aria-hidden />Add card</>}
-      triggerProps={{ disabled: holders.length === 0 }}
       title="Add card"
       description="Benefits are generated automatically from the card."
     >

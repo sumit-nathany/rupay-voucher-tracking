@@ -38,14 +38,12 @@ export default async function CardsPage() {
         actions={<CardFormSheet holders={holderOptions} types={typeOptions} variants={variants} />}
       />
 
-      {holders.length === 0 && (
-        <p className="rounded-md bg-warning/10 px-3 py-2 text-sm">
-          Add a holder first (see Holders); cards belong to a holder.
-        </p>
-      )}
-
       {cards.length === 0 ? (
-        <EmptyState title="No cards yet" description="Add a card to start tracking benefits for that holder." />
+        <EmptyState
+          title="No cards yet"
+          description="Add a RuPay card to start tracking perks, vouchers, and order deadlines automatically."
+          action={<CardFormSheet holders={holderOptions} types={typeOptions} variants={variants} />}
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {cards.map((c) => {

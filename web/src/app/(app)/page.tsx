@@ -50,7 +50,7 @@ export default async function DashboardPage({
 
         {/* Current Quarter & Year Redeemed Values */}
         <Suspense fallback={<RedeemedValueSkeleton />}>
-          <RedeemedValueSection today={today} />
+          <RedeemedValueSection today={today} view={view} />
         </Suspense>
 
         {/* Status Mix & Holder Progress Breakdown */}
@@ -65,12 +65,12 @@ export default async function DashboardPage({
 
         {/* Vouchers Expiring Within 30 Days */}
         <Suspense fallback={<ExpiringSoonSkeleton />}>
-          <ExpiringSoonSection today={today} />
+          <ExpiringSoonSection today={today} view={view} />
         </Suspense>
 
         {/* All-Time Lifetime Performance & Missed Savings */}
         <Suspense fallback={<LifetimeSkeleton />}>
-          <LifetimeSectionContainer today={today} />
+          <LifetimeSectionContainer today={today} view={view} />
         </Suspense>
       </div>
     </ContentStage>

@@ -228,6 +228,8 @@ export interface DashboardSummary {
   /** Not Ordered, period ended, gift vouchers only — whole workspace, all periods. */
   missedOrderLifetime: number;
   missedOrderLifetimeCount: number;
+  /** True when the workspace has zero cards configured. */
+  isDeskEmpty: boolean;
 }
 
 // ── internals ───────────────────────────────────────────────────────────────
@@ -839,5 +841,6 @@ export async function getDashboardSummary(
     redeemedLifetimeCount: lifetime.redeemedLifetimeCount,
     missedOrderLifetime: lifetime.missedOrderLifetime,
     missedOrderLifetimeCount: lifetime.missedOrderLifetimeCount,
+    isDeskEmpty: period.isDeskEmpty,
   };
 }

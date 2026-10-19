@@ -1,5 +1,4 @@
 import { cache } from 'react';
-import Link from 'next/link';
 import { unstable_rethrow } from 'next/navigation';
 import {
   loadDashboardAction,
@@ -10,8 +9,7 @@ import {
 } from '@/actions/instance-queries';
 import type { DashboardSummary } from '@/domain/instance-queries';
 import type { ViewedPeriod } from '@/lib/periods';
-import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/layout/empty-state';
+import { WelcomeOnboardingCard } from './welcome-onboarding-card';
 import { ActionQueueCards } from './action-queue-cards';
 import { ErrorPanel } from './error-panel';
 import { ExpiringSoon } from './expiring-soon';
@@ -29,17 +27,7 @@ export async function ActionQueueSection({ view }: { view: ViewedPeriod }) {
   try {
     const s = await getPeriodData(view);
     if (s.isDeskEmpty) {
-      return (
-        <EmptyState
-          title="Your desk is empty"
-          description="Add a holder and a card from the Cards page. Benefits for the period you selected will show up here automatically."
-          action={
-            <Button asChild>
-              <Link href="/cards">Add your first card</Link>
-            </Button>
-          }
-        />
-      );
+      return <WelcomeOnboardingCard />;
     }
     return <ActionQueueCards view={view} s={s as unknown as DashboardSummary} />;
   } catch (e) {
@@ -50,8 +38,12 @@ export async function ActionQueueSection({ view }: { view: ViewedPeriod }) {
   }
 }
 
-export async function RedeemedValueSection({ today }: { today: string }) {
+export async function RedeemedValueSection({ today, view }: { today: string; view?: ViewedPeriod }) {
   try {
+    if (view) {
+      const p = await getPeriodData(view);
+      if (p.isDeskEmpty) return null;
+    }
     const s = await loadDashboardRedeemedValuesAction(today);
     return <RedeemedValueCards s={s as unknown as DashboardSummary} today={today} />;
   } catch (e) {
@@ -88,8 +80,12 @@ export async function HolderProgressSection({ view }: { view: ViewedPeriod }) {
   }
 }
 
-export async function ExpiringSoonSection({ today }: { today: string }) {
+export async function ExpiringSoonSection({ today, view }: { today: string; view?: ViewedPeriod }) {
   try {
+    if (view) {
+      const p = await getPeriodData(view);
+      if (p.isDeskEmpty) return null;
+    }
     const s = await loadDashboardExpiringSoonAction(today);
     return <ExpiringSoon items={s.expiringSoon} days={s.expiringWithinDays} today={today} />;
   } catch (e) {
@@ -100,8 +96,12 @@ export async function ExpiringSoonSection({ today }: { today: string }) {
   }
 }
 
-export async function LifetimeSectionContainer({ today }: { today?: string }) {
+export async function LifetimeSectionContainer({ today, view }: { today?: string; view?: ViewedPeriod }) {
   try {
+    if (view) {
+      const p = await getPeriodData(view);
+      if (p.isDeskEmpty) return null;
+    }
     const s = await loadDashboardLifetimeAction(today);
     return <LifetimeSection s={s as unknown as DashboardSummary} />;
   } catch (e) {
@@ -124,18 +124,8 @@ export async function DashboardContent({ view, today }: { view: ViewedPeriod; to
     return <ErrorPanel message={`The dashboard could not be loaded: ${msg}`} />;
   }
 
-  if (s.counts && Object.values(s.counts).every((n) => n === 0) && s.expiringSoon.length === 0) {
-    return (
-      <EmptyState
-        title="Your desk is empty"
-        description="Add a holder and a card from the Cards page. Benefits for the period you selected will show up here automatically."
-        action={
-          <Button asChild>
-            <Link href="/cards">Add your first card</Link>
-          </Button>
-        }
-      />
-    );
+  if (s.isDeskEmpty || (s.counts && Object.values(s.counts).every((n) => n === 0) && s.expiringSoon.length === 0)) {
+    return <WelcomeOnboardingCard />;
   }
 
   return (
