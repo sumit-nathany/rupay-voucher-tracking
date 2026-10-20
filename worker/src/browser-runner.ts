@@ -265,6 +265,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     await installVisualMouseCursor(newPage);
   });
 
+  page.on('close', () => console.log('[runner] >>> Main page was closed.'));
+  page.on('crash', () => console.log('[runner] >>> Main page crashed!'));
+  context.on('close', () => console.log('[runner] >>> Browser context was closed.'));
+
   // Log console and requests to see errors and APIs
   page.on('console', (msg) => console.log(`[console ${msg.type()}]`, msg.text()));
   page.on('request', (req) => {
@@ -322,14 +326,60 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   console.log('Navigating to https://rupayselect.truztee.com ...');
   await page.goto('https://rupayselect.truztee.com/#/offers', { waitUntil: 'networkidle' });
 
-  // Check if session is already active
+  // Check if session is already active and verify it belongs to the intended account
   const cookies = await context.cookies();
   let jwtCookie = cookies.find((c) => c.name === 'jwt');
+  let activeSessionMatches = false;
 
-  if (!jwtCookie) {
-    console.log('Not signed in yet. Starting login sequence...');
-    const loginButton = page.locator('button:has-text("Login")').first();
-    if (await loginButton.isVisible()) {
+  if (jwtCookie) {
+    const sessionEmail = await page.evaluate(() => {
+      try {
+        const raw = localStorage.getItem('UserDetails');
+        if (raw) {
+          const ud = JSON.parse(raw);
+          return ud.emailid || ud.email || ud.loginId || '';
+        }
+      } catch {}
+      return '';
+    });
+
+    const targetEmail = (creds.loginId || account.label).toLowerCase().trim();
+    const currentEmail = (sessionEmail || '').toLowerCase().trim();
+
+    if (currentEmail && (currentEmail === targetEmail || currentEmail.includes(targetEmail) || targetEmail.includes(currentEmail))) {
+      activeSessionMatches = true;
+      console.log(`✓ Active session verified for target account "${account.label}" (${currentEmail}). Login & CAPTCHA bypassed!`);
+    } else {
+      console.log(`\n======================================================`);
+      console.log(`⚠️ Active session in browser belongs to "${currentEmail || 'unknown'}", but target account is "${account.label}" (${targetEmail})!`);
+      console.log(`Logging out to switch to correct account...`);
+      console.log(`======================================================\n`);
+
+      // Try to click Logout button if present
+      const logoutBtn = page.locator(':is(button, a):has-text("Logout"), button.btn-logout').first();
+      if (await logoutBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await humanClick(logoutBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1000 }).catch(() => {});
+      }
+
+      // Clear cookies and storage for clean session reset
+      await context.clearCookies();
+      await page.evaluate(() => {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch {}
+      }).catch(() => {});
+
+      await page.goto('https://rupayselect.truztee.com/#/login', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+      jwtCookie = undefined;
+    }
+  }
+
+  if (!jwtCookie || !activeSessionMatches) {
+    console.log(`Starting login sequence for "${account.label}" (${creds.loginId})...`);
+    const loginButton = page.locator('button:has-text("Login"), a:has-text("Login")').first();
+    if (await loginButton.isVisible().catch(() => false)) {
       await humanClick(loginButton, { hesitateBeforeMs: 400, pauseAfterMs: 600 });
     }
 
@@ -403,8 +453,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     }
 
     console.log(`✓ Login complete! Session token saved in profile for ${account.label}.`);
-  } else {
-    console.log(`✓ Active session exists in profile for "${account.label}". Login & CAPTCHA bypassed!`);
   }
 
   // Extract user details and registered mobile number from portal storage
@@ -652,12 +700,10 @@ async function addCardToPortalAccount(
   if (await categoryItem.isVisible({ timeout: 2000 })) {
     console.log(`Clicking matched category: "${await categoryItem.textContent().catch(() => '')}"`);
     await humanClick(categoryItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-    await categoryItem.evaluate((el: HTMLElement) => el.click()).catch(() => {});
   } else {
     console.log(`Dropdown item for "${targetCategory}" not found directly. Checking first available item...`);
     const fallbackItem = page.locator(`.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible`).first();
     await humanClick(fallbackItem, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-    await fallbackItem.evaluate((el: HTMLElement) => el.click()).catch(() => {});
   }
   await page.waitForLoadState('domcontentloaded').catch(() => {});
   await page.waitForTimeout(2000);
@@ -798,7 +844,6 @@ async function addCardToPortalAccount(
   await redeemBtn.scrollIntoViewIfNeeded().catch(() => {});
   await redeemBtn.waitFor({ state: 'visible', timeout: 5000 });
   await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
-  await redeemBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
 
   console.log('\n--- Step 6: Checking Benefit Page / Payment Modal ---');
   await humanHesitate(1800, 2800);
