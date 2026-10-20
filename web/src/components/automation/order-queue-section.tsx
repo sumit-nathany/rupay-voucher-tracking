@@ -154,17 +154,6 @@ export function OrderQueueSection({
     return displayedItems.slice(0, visibleCount);
   }, [displayedItems, visibleCount]);
 
-  const handleRefresh = () => {
-    startTransition(async () => {
-      try {
-        const fresh = await listOrderingQueueAction();
-        setItems(fresh);
-      } catch (err) {
-        console.error('Failed to refresh queue:', err);
-      }
-    });
-  };
-
   const handleAutoSort = (strategy: 'nearest_expiring' | 'highest_value') => {
     startTransition(async () => {
       try {
@@ -317,37 +306,23 @@ export function OrderQueueSection({
   return (
     <div className="space-y-5">
       {/* 1. Header: Section title, description & stats */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-              Order Queue
-            </h2>
-            <Badge variant="secondary" className="text-xs font-semibold px-2 py-0.5">
-              {displayedItems.length} {displayedItems.length === 1 ? 'voucher' : 'vouchers'}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+            Order Queue
+          </h2>
+          <Badge variant="secondary" className="text-xs font-semibold px-2 py-0.5">
+            {displayedItems.length} {displayedItems.length === 1 ? 'voucher' : 'vouchers'}
+          </Badge>
+          {totalValue > 0 && (
+            <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold px-2 py-0.5">
+              ₹{Math.round(totalValue)} queued
             </Badge>
-            {totalValue > 0 && (
-              <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold px-2 py-0.5">
-                ₹{Math.round(totalValue)} queued
-              </Badge>
-            )}
-          </div>
-          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
-            The worker orders these vouchers top-to-bottom, one per account every 24h. Reorder, skip, or pick a benefit option.
-          </p>
+          )}
         </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={isPending}
-          className="h-8 px-2.5 text-xs font-medium gap-1.5 rounded-lg border-border/80 self-start shrink-0 cursor-pointer hover:bg-accent"
-          title="Refresh Queue"
-        >
-          <RefreshCw className={cn('h-3.5 w-3.5 text-muted-foreground', isPending && 'animate-spin')} />
-          <span>Refresh</span>
-        </Button>
+        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
+          The worker orders these vouchers top-to-bottom, one per account every 24h. Reorder, skip, or pick a benefit option.
+        </p>
       </div>
 
       {/* 2. Dedicated Filter & Sort Toolbar */}

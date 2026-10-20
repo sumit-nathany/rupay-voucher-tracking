@@ -1,7 +1,7 @@
 import { listPortalAccountsAction, listPortalCardMappingsAction } from '@/actions/automation';
 import { listCards } from '@/actions/cards';
 import { listHolders } from '@/actions/holders';
-import { AccountDetailSheet } from '@/components/accounts/account-detail-sheet';
+import { AccountsView } from '@/components/accounts/accounts-view';
 import { AccountFormSheet } from '@/components/accounts/account-form-sheet';
 import { ContentStage } from '@/components/layout/content-stage';
 import { EmptyState } from '@/components/layout/empty-state';
@@ -83,18 +83,11 @@ export default async function AccountsPage() {
       {accounts.length === 0 ? (
         <EmptyState title="No accounts yet" description="Add a RuPay portal account to enable automated ordering." />
       ) : (
-        <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
-          {accounts.map((account: PortalAccountView) => (
-            <li key={account.id}>
-              <AccountDetailSheet
-                account={account}
-                allAccounts={accounts}
-                mappings={mappings}
-                availableCards={availableCards}
-              />
-            </li>
-          ))}
-        </ul>
+        <AccountsView
+          accounts={accounts}
+          mappings={mappings}
+          availableCards={availableCards}
+        />
       )}
     </ContentStage>
   );

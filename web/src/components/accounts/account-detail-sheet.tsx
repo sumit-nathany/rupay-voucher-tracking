@@ -46,6 +46,7 @@ import {
   getPortalStatusExplanation,
   getPortalStatusResolution,
 } from '@/lib/portal-status';
+import { cn } from '@/lib/utils';
 
 import { useRunAction } from '../holders/form-kit';
 
@@ -102,6 +103,25 @@ export function AccountDetailSheet({
   const isCooldown =
     account.status === 'connected' &&
     Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
+
+  const isPaused = account.status === 'paused';
+  const [isTogglePending, startToggleTransition] = React.useTransition();
+
+  function handleQuickToggle(e: React.MouseEvent | React.KeyboardEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    startToggleTransition(async () => {
+      try {
+        if (account.status === 'paused') {
+          await resumePortalAccountAction({ id: account.id });
+        } else {
+          await pausePortalAccountAction({ id: account.id });
+        }
+      } catch (err) {
+        console.error('[AccountDetailSheet] quick toggle status failed:', err);
+      }
+    });
+  }
 
   const formattedCooldownTime = formatCooldown(account.cooldownUntil);
   const accountMappings = localMappings.filter((m) => m.portalAccountId === account.id);
@@ -187,23 +207,49 @@ export function AccountDetailSheet({
     <>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
-          <button
-            type="button"
-            className="group w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl"
+          <div
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                setOpen(true);
+              }
+            }}
+            className="group w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-2xl cursor-pointer"
             aria-label={`View details for ${account.label}`}
           >
-            <Card className="h-full overflow-hidden rounded-2xl border border-border/70 transition-all hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20 cursor-pointer">
+            <Card
+              className={cn(
+                'h-full overflow-hidden rounded-2xl transition-all cursor-pointer',
+                isPaused
+                  ? 'opacity-75 bg-muted/20 border border-dashed border-border/80 hover:opacity-100 hover:border-border hover:shadow-xs'
+                  : 'border border-border/70 hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20',
+              )}
+            >
               <CardContent className="flex flex-row items-center justify-between gap-3.5 p-4 sm:p-5">
                 <div className="flex min-w-0 flex-1 items-center gap-3.5">
                   <div
                     aria-hidden
-                    className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary shadow-xs transition-transform group-hover:scale-105"
+                    className={cn(
+                      'grid h-11 w-11 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
+                      isPaused
+                        ? 'bg-muted/60 border border-border/60 text-muted-foreground'
+                        : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
+                    )}
                   >
                     <KeyRound className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 space-y-1 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-base leading-snug text-foreground group-hover:text-primary transition-colors [overflow-wrap:anywhere]">
+                      <span
+                        className={cn(
+                          'font-semibold text-base leading-snug transition-colors [overflow-wrap:anywhere]',
+                          isPaused
+                            ? 'text-muted-foreground group-hover:text-foreground'
+                            : 'text-foreground group-hover:text-primary',
+                        )}
+                      >
                         {account.label}
                       </span>
                       {isCooldown ? (
@@ -213,6 +259,14 @@ export function AccountDetailSheet({
                         >
                           <Clock className="h-3 w-3" />
                           Cooldown
+                        </Badge>
+                      ) : isPaused ? (
+                        <Badge
+                          variant="outline"
+                          className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-xs font-medium gap-1 shrink-0"
+                        >
+                          <Pause className="h-2.5 w-2.5" />
+                          Paused
                         </Badge>
                       ) : (
                         <Badge
@@ -241,12 +295,63 @@ export function AccountDetailSheet({
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 items-center pl-1 text-muted-foreground group-hover:text-foreground">
-                  <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                <div className="flex shrink-0 items-center gap-3 pl-1">
+                  <div
+                    className="flex items-center"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!isPaused}
+                      aria-label={isPaused ? `Resume account ${account.label}` : `Pause account ${account.label}`}
+                      title={
+                        isTogglePending
+                          ? 'Updating account status...'
+                          : isPaused
+                          ? 'Click to resume automated ordering for this account'
+                          : 'Click to pause automated ordering for this account'
+                      }
+                      disabled={isTogglePending}
+                      onClick={handleQuickToggle}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.stopPropagation();
+                          handleQuickToggle(e);
+                        }
+                      }}
+                      className={cn(
+                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                        isPaused
+                          ? 'bg-muted-foreground/30 hover:bg-muted-foreground/45'
+                          : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'pointer-events-none flex h-5 w-5 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
+                          isPaused ? 'translate-x-0' : 'translate-x-5',
+                        )}
+                      >
+                        {isTogglePending ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                        ) : isPaused ? (
+                          <Pause className="h-2.5 w-2.5 text-muted-foreground" />
+                        ) : (
+                          <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="text-muted-foreground group-hover:text-foreground">
+                    <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          </button>
+          </div>
         </SheetTrigger>
 
         <SheetContent className="sm:max-w-lg w-full flex flex-col justify-between overflow-y-auto">
@@ -273,6 +378,14 @@ export function AccountDetailSheet({
                           >
                             <Clock className="h-3 w-3" />
                             Cooldown
+                          </Badge>
+                        ) : account.status === 'paused' ? (
+                          <Badge
+                            variant="outline"
+                            className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-xs font-medium gap-1 shrink-0"
+                          >
+                            <Pause className="h-2.5 w-2.5" />
+                            Paused
                           </Badge>
                         ) : (
                           <Badge
