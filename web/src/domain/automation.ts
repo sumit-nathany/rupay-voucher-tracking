@@ -1324,6 +1324,7 @@ export async function findCandidateFromGlobalQueue(
       position: orderingQueueItems.position,
       enabled: orderingQueueItems.enabled,
       chosenOptionId: orderingQueueItems.chosenOptionId,
+      portalAccountId: orderingQueueItems.portalAccountId,
     })
     .from(orderingQueueItems)
     .where(
@@ -1406,7 +1407,24 @@ export async function findCandidateFromGlobalQueue(
 
         // Find an eligible mapping whose portal account has NOT already redeemed this (card_type, benefit, period)
         const instKey = (accId: string) => `${accId}:${inst.bankCardTypeId}:${inst.benefitId || inst.overrideId}:${inst.periodStart}`;
-        const mapping = eligibleCardMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
+        
+        let mapping: typeof eligibleCardMappings[0] | undefined;
+        if (qItem.portalAccountId) {
+          const explicit = eligibleCardMappings.find(
+            (m) => m.portalAccountId === qItem.portalAccountId && !accountRedemptionSet.has(instKey(m.portalAccountId))
+          );
+          if (explicit) {
+            mapping = explicit;
+          } else {
+            console.warn(
+              `[queue] User-selected portal account "${qItem.portalAccountId}" is currently in cooldown or already redeemed for this benefit. Falling back to next eligible.`
+            );
+          }
+        }
+
+        if (!mapping) {
+          mapping = eligibleCardMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
+        }
         if (!mapping) continue;
 
         const account = eligibleAccountsMap.get(mapping.portalAccountId);
@@ -1605,6 +1623,7 @@ export async function findCandidatesForAccount(
       position: orderingQueueItems.position,
       enabled: orderingQueueItems.enabled,
       chosenOptionId: orderingQueueItems.chosenOptionId,
+      portalAccountId: orderingQueueItems.portalAccountId,
     })
     .from(orderingQueueItems)
     .where(

@@ -642,6 +642,7 @@ export const orderingQueueItems = app.table(
     position: integer("position").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
     chosenOptionId: uuid("chosen_option_id").references(() => benefitOptions.id, { onDelete: "set null" }),
+    portalAccountId: uuid("portal_account_id").references(() => portalAccounts.id, { onDelete: "set null" }),
     createdAt: createdAt().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

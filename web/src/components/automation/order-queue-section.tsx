@@ -280,6 +280,36 @@ export function OrderQueueSection({
     });
   };
 
+  const handleSelectAccount = (instanceId: string, portalAccountId: string | null) => {
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.instanceId !== instanceId) return i;
+        const matched = i.portalAccounts.find((a) => a.id === portalAccountId);
+        const suggested = i.suggestedAccounts.find((a) => a.accountId === portalAccountId);
+        const nextSuggested = i.suggestedAccounts.map((s) => ({
+          ...s,
+          isChosen: Boolean(portalAccountId && s.accountId === portalAccountId),
+        }));
+        return {
+          ...i,
+          portalAccountId,
+          portalAccountLabel: matched?.label ?? suggested?.accountLabel ?? null,
+          chosenPortalAccountId: portalAccountId,
+          suggestedAccounts: nextSuggested,
+        };
+      }),
+    );
+
+    startTransition(async () => {
+      try {
+        await updateQueueItemAction({ instanceId, portalAccountId });
+      } catch (err) {
+        console.error('Failed to update queue item account:', err);
+        setItems(initialQueue);
+      }
+    });
+  };
+
   const totalValue = displayedItems
     .filter((i) => i.enabled)
     .reduce((sum, i) => sum + i.cashValue, 0);
@@ -647,41 +677,80 @@ export function OrderQueueSection({
                       </div>
                     )}
 
-                    {/* Suggested RuPay Accounts for Redemption */}
-                    <div className="pt-2 border-t border-border/40 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                    {/* RuPay Account Selection & Suggestions */}
+                    <div className="pt-2.5 border-t border-border/40 space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/80">
                           <KeyRound className="h-3.5 w-3.5 text-primary shrink-0" />
-                          <span>Suggested RuPay Accounts:</span>
+                          <span>Redeem using RuPay Account:</span>
                         </div>
-                        {item.suggestedAccounts?.some((a) => a.isEligible && a.status === 'ready') ? (
-                          <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> Ready to order
-                          </span>
-                        ) : item.suggestedAccounts?.some((a) => a.status === 'cooldown') ? (
-                          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> 24h Cooldown
-                          </span>
-                        ) : item.suggestedAccounts?.some((a) => a.status === 'conflict') ? (
-                          <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> Account conflict
-                          </span>
-                        ) : null}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <select
+                            value={item.chosenPortalAccountId || ''}
+                            onChange={(e) => handleSelectAccount(item.instanceId, e.target.value || null)}
+                            className="h-8 text-xs rounded-md border border-input bg-background px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                          >
+                            <option value="">
+                              Auto-select (Recommended: {item.suggestedAccounts?.find((a) => a.isRecommended)?.accountLabel || 'First eligible'})
+                            </option>
+                            {item.suggestedAccounts
+                              ?.filter((a) => a.isMapped)
+                              .map((acc) => {
+                                const statusLabel =
+                                  acc.status === 'ready'
+                                    ? 'Ready'
+                                    : acc.status === 'cooldown'
+                                    ? '24h Cooldown'
+                                    : acc.status === 'conflict'
+                                    ? 'Used this period'
+                                    : acc.status === 'missing_details'
+                                    ? 'Missing CVV'
+                                    : acc.status;
+                                return (
+                                  <option key={acc.accountId} value={acc.accountId}>
+                                    {acc.accountLabel} ({statusLabel})
+                                  </option>
+                                );
+                              })}
+                          </select>
+                          {item.chosenPortalAccountId && (
+                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 shrink-0 font-medium">
+                              Explicit
+                            </Badge>
+                          )}
+                          {item.suggestedAccounts?.some((a) => a.isEligible && a.status === 'ready') ? (
+                            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Ready
+                            </span>
+                          ) : item.suggestedAccounts?.some((a) => a.status === 'cooldown') ? (
+                            <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> Cooldown
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-wrap">
                         {item.suggestedAccounts && item.suggestedAccounts.length > 0 ? (
                           item.suggestedAccounts.map((acc) => {
+                            const isSelected = acc.isChosen || (Boolean(item.portalAccountId) && acc.accountId === item.portalAccountId);
                             if (acc.status === 'ready') {
                               return (
                                 <Badge
                                   key={acc.accountId}
                                   variant="outline"
-                                  className="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  className={`bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 gap-1.5 text-xs font-medium py-1 px-2.5 ${
+                                    isSelected ? 'ring-2 ring-primary ring-offset-1 border-primary font-semibold' : ''
+                                  }`}
                                   title={`${acc.accountLabel}: Ready to order. No conflict in this period.`}
                                 >
                                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                                   <span>{acc.accountLabel}</span>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold text-primary-foreground bg-primary px-1 py-0.5 rounded">
+                                      {acc.isChosen ? 'Selected' : 'Active'}
+                                    </span>
+                                  )}
                                   <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded">
                                     Ready
                                   </span>
@@ -694,11 +763,18 @@ export function OrderQueueSection({
                                 <Badge
                                   key={acc.accountId}
                                   variant="outline"
-                                  className="bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  className={`bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/30 gap-1.5 text-xs font-medium py-1 px-2.5 ${
+                                    isSelected ? 'ring-2 ring-primary ring-offset-1 border-primary font-semibold' : ''
+                                  }`}
                                   title={`${acc.accountLabel}: Eligible, but currently under 24-hour rate limit cooldown.`}
                                 >
                                   <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                                   <span>{acc.accountLabel}</span>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold text-primary-foreground bg-primary px-1 py-0.5 rounded">
+                                      {acc.isChosen ? 'Selected' : 'Active'}
+                                    </span>
+                                  )}
                                   <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-500/20 px-1 py-0.5 rounded">
                                     24h Cooldown
                                   </span>

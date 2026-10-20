@@ -25,6 +25,8 @@ export interface BrowserRunnerOptions {
   ignoreCooldown?: boolean;
 }
 
+let activeBrowserContext: BrowserContext | null = null;
+
 export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
   if (!dbUrl) {
@@ -250,6 +252,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     slowMo: 15,
     viewport: { width: 1366, height: 860 },
   });
+  activeBrowserContext = context;
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
   await installVisualMouseCursor(page);
@@ -1259,8 +1262,19 @@ async function addCardToPortalAccount(
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runBrowserTest().catch((err) => {
+  const cleanupAndExit = async (code: number) => {
+    if (activeBrowserContext) {
+      await activeBrowserContext.close().catch(() => {});
+      activeBrowserContext = null;
+    }
+    process.exit(code);
+  };
+
+  process.on('SIGINT', () => cleanupAndExit(130));
+  process.on('SIGTERM', () => cleanupAndExit(143));
+
+  runBrowserTest().catch(async (err) => {
     console.error('Test run error:', err);
-    process.exit(1);
+    await cleanupAndExit(1);
   });
 }

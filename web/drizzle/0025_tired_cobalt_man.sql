@@ -1,0 +1,2 @@
+ALTER TABLE "app"."ordering_queue_items" ADD COLUMN "portal_account_id" uuid;--> statement-breakpoint
+ALTER TABLE "app"."ordering_queue_items" ADD CONSTRAINT "ordering_queue_items_portal_account_id_portal_accounts_id_fk" FOREIGN KEY ("portal_account_id") REFERENCES "app"."portal_accounts"("id") ON DELETE set null ON UPDATE no action;
