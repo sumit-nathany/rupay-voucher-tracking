@@ -878,6 +878,22 @@ describe('automation domain', () => {
     expect(nomC).not.toBeNull();
     expect(nomC?.candidate.instanceId).toBe(inst1.id);
     expect(nomC?.account.id).toBe(acc1.id);
+
+    // Test D: If an instance's card is mapped to multiple accounts, explicit portalAccountId wins
+    await savePortalCardMapping(ctx, {
+      portalAccountId: acc2.id,
+      cardId: card1.id,
+      portalCardId: '109',
+      portalCardbinId: '209',
+    });
+    // Set inst1 at Position 1 with chosen portalAccountId = acc2.id
+    await db.update(orderingQueueItems).set({ position: 1, portalAccountId: acc2.id }).where(eq(orderingQueueItems.instanceId, inst1.id));
+    await db.update(orderingQueueItems).set({ position: 2 }).where(eq(orderingQueueItems.instanceId, inst2.id));
+
+    const nomD = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    expect(nomD).not.toBeNull();
+    expect(nomD?.candidate.instanceId).toBe(inst1.id);
+    expect(nomD?.account.id).toBe(acc2.id);
     expect(nomC?.candidate.rulePriority).toBe(1);
   });
 

@@ -19,6 +19,7 @@ export interface AccountSuggestion {
     | 'needs_attention';
   reason: string;
   cooldownUntil?: string | null;
+  isChosen?: boolean;
 }
 
 export interface QueueItemView {
@@ -32,6 +33,7 @@ export interface QueueItemView {
   periodLabel?: string | null;
   portalAccountId: string | null;
   portalAccountLabel: string | null;
+  chosenPortalAccountId?: string | null;
   portalAccounts: Array<{ id: string; label: string }>;
   suggestedAccounts: AccountSuggestion[];
   benefitType: string;
@@ -267,6 +269,7 @@ async function fetchRawQueueCandidates(
       queuePosition: schema.orderingQueueItems.position,
       queueEnabled: schema.orderingQueueItems.enabled,
       queueChosenOptionId: schema.orderingQueueItems.chosenOptionId,
+      queuePortalAccountId: schema.orderingQueueItems.portalAccountId,
     })
     .from(schema.benefitInstances)
     .innerJoin(schema.cards, eq(schema.benefitInstances.cardId, schema.cards.id))
@@ -463,6 +466,15 @@ async function fetchRawQueueCandidates(
       firstEligible.isRecommended = true;
     }
 
+    // Check if user explicitly chose a portalAccountId for this queue item
+    const explicitQueueAccount = row.queuePortalAccountId
+      ? allWorkspaceAccounts.find((a) => a.id === row.queuePortalAccountId)
+      : null;
+
+    suggestedAccounts.forEach((acc) => {
+      acc.isChosen = Boolean(row.queuePortalAccountId && acc.accountId === row.queuePortalAccountId);
+    });
+
     // If filter specified a portalAccountId, ensure that account is picked as primary
     const matchedAccount = filter?.portalAccountId
       ? mappedAccounts.find((a) => a.id === filter.portalAccountId)
@@ -470,7 +482,7 @@ async function fetchRawQueueCandidates(
     const recommendedMappedAccount = firstEligible?.isMapped
       ? mappedAccounts.find((a) => a.id === firstEligible.accountId)
       : null;
-    const primaryAccount = matchedAccount ?? recommendedMappedAccount ?? mappedAccounts[0];
+    const primaryAccount = explicitQueueAccount ?? matchedAccount ?? recommendedMappedAccount ?? mappedAccounts[0];
 
     candidates.push({
       hasStoredPosition: row.queuePosition !== null && row.queuePosition !== undefined,
@@ -483,8 +495,9 @@ async function fetchRawQueueCandidates(
         holderName: row.holderName,
         bankCardTypeId: row.bankCardTypeId,
         periodLabel: row.periodLabel,
-        portalAccountId: primaryAccount?.id ?? null,
-        portalAccountLabel: primaryAccount?.label ?? null,
+        portalAccountId: row.queuePortalAccountId ?? primaryAccount?.id ?? null,
+        portalAccountLabel: (explicitQueueAccount ?? primaryAccount)?.label ?? null,
+        chosenPortalAccountId: row.queuePortalAccountId ?? null,
         portalAccounts: mappedAccounts,
         suggestedAccounts,
         benefitType,
@@ -583,6 +596,7 @@ export async function syncGlobalOrderingQueue(ctx: Ctx): Promise<QueueItemView[]
           position: newPos,
           enabled: c.item.enabled,
           chosenOptionId: c.item.chosenOptionId,
+          portalAccountId: c.item.chosenPortalAccountId ?? null,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -676,6 +690,7 @@ export async function populateAndSortQueue(
         position: newPos,
         enabled: item.enabled,
         chosenOptionId: item.chosenOptionId,
+        portalAccountId: item.chosenPortalAccountId ?? null,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -712,9 +727,25 @@ export async function updateQueueItem(
     instanceId: string;
     enabled?: boolean;
     chosenOptionId?: string | null;
+    portalAccountId?: string | null;
     position?: number;
   },
 ): Promise<void> {
+  if (input.portalAccountId) {
+    const [acc] = await ctx.db
+      .select({ id: schema.portalAccounts.id })
+      .from(schema.portalAccounts)
+      .where(
+        and(
+          eq(schema.portalAccounts.workspaceId, ctx.workspaceId),
+          eq(schema.portalAccounts.id, input.portalAccountId),
+        ),
+      );
+    if (!acc) {
+      throw new Error(`Portal account not found or not in workspace.`);
+    }
+  }
+
   let defaultOptionId: string | null = input.chosenOptionId ?? null;
   if (input.chosenOptionId === undefined) {
     const [inst] = await ctx.db
@@ -739,6 +770,7 @@ export async function updateQueueItem(
       position: input.position ?? 0,
       enabled: input.enabled ?? true,
       chosenOptionId: defaultOptionId,
+      portalAccountId: input.portalAccountId ?? null,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
@@ -746,6 +778,7 @@ export async function updateQueueItem(
       set: {
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         ...(input.chosenOptionId !== undefined ? { chosenOptionId: input.chosenOptionId } : {}),
+        ...(input.portalAccountId !== undefined ? { portalAccountId: input.portalAccountId } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
         updatedAt: new Date(),
       },

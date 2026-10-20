@@ -345,6 +345,34 @@ describe('ordering-queue domain', () => {
     expect(found?.chosenOptionId).toBe(opt.id);
   });
 
+  it('allows picking a chosen portalAccountId and persists it across queue updates', async () => {
+    const queue = await listOrderingQueue(ctxA);
+    const item = queue[0];
+
+    const [acc] = await db
+      .select()
+      .from(schema.portalAccounts)
+      .where(eq(schema.portalAccounts.workspaceId, W_A))
+      .limit(1);
+    expect(acc).toBeDefined();
+
+    await updateQueueItem(ctxA, { instanceId: item.instanceId, portalAccountId: acc.id });
+
+    const updated = await listOrderingQueue(ctxA);
+    const found = updated.find((q) => q.instanceId === item.instanceId);
+    expect(found?.chosenPortalAccountId).toBe(acc.id);
+    expect(found?.portalAccountId).toBe(acc.id);
+
+    const chosenSuggestion = found?.suggestedAccounts.find((s) => s.accountId === acc.id);
+    expect(chosenSuggestion?.isChosen).toBe(true);
+
+    // Can clear it back to auto-select
+    await updateQueueItem(ctxA, { instanceId: item.instanceId, portalAccountId: null });
+    const cleared = await listOrderingQueue(ctxA);
+    const foundCleared = cleared.find((q) => q.instanceId === item.instanceId);
+    expect(foundCleared?.chosenPortalAccountId).toBeNull();
+  });
+
   it('enforces tenant isolation (workspace B cannot see workspace A items)', async () => {
     const queueB = await listOrderingQueue(ctxB);
     expect(queueB).toHaveLength(0);

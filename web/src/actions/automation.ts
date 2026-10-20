@@ -302,6 +302,7 @@ const updateQueueItemSchema = z.object({
   instanceId: z.string().uuid(),
   enabled: z.boolean().optional(),
   chosenOptionId: z.string().uuid().nullable().optional(),
+  portalAccountId: z.string().uuid().nullable().optional(),
   position: z.number().int().min(0).optional(),
 });
 
