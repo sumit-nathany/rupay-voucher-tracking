@@ -281,13 +281,20 @@ export async function solveRecaptchaViaAudio(
     let lastAudioUrl: string | null = null;
 
     for (let round = 1; round <= maxRounds; round++) {
+      if (page.isClosed()) return false;
+      const currentUrl = page.url();
+      if (!currentUrl.includes('login') && (currentUrl.includes('#/') || currentUrl.includes('offers'))) {
+        console.log('[captcha] Page has already navigated past login. Stopping audio solver.');
+        return true;
+      }
+
       console.log(`[captcha] Audio challenge round ${round} of ${maxRounds}...`);
 
       // Check if already solved
       const isSolved = await page.evaluate(() => {
         const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
         return Boolean(textarea && textarea.value.length > 0);
-      });
+      }).catch(() => false);
       if (isSolved) {
         console.log(`[captcha] ✓ reCAPTCHA solved after round ${round - 1}!`);
         return true;

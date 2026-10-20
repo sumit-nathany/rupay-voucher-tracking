@@ -1423,7 +1423,13 @@ export async function findCandidateFromGlobalQueue(
         }
 
         if (!mapping) {
-          mapping = eligibleCardMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
+          // Sort eligible mappings by account label ascending (matching UI recommendation order)
+          const sortedMappings = [...eligibleCardMappings].sort((a, b) => {
+            const labelA = eligibleAccountsMap.get(a.portalAccountId)?.label || '';
+            const labelB = eligibleAccountsMap.get(b.portalAccountId)?.label || '';
+            return labelA.localeCompare(labelB);
+          });
+          mapping = sortedMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
         }
         if (!mapping) continue;
 
