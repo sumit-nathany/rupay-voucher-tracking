@@ -317,6 +317,7 @@ export async function solveRecaptchaViaAudio(
       const blockedMsg = await bframe.locator('.rc-dostitle, .rc-audiochallenge-error-message, div:has-text("automated queries")').first().textContent().catch(() => '');
       if (blockedMsg?.includes('automated queries')) {
         console.warn('[captcha] Google blocked audio challenge:', blockedMsg.trim());
+        console.log('👉 Please complete the visual puzzle in the open Chrome window — the automation will automatically resume as soon as it is solved.');
         return false;
       }
 
@@ -484,14 +485,16 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 5. Strategy C: Audio Challenge with Gemini
+  // 5. Strategy C: Audio Challenge with Gemini (Disabled by default to prevent Google automated query detection)
+  const enableAudioBypass = process.env.ENABLE_AUDIO_CAPTCHA_BYPASS === 'true';
   const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (geminiApiKey) {
+  if (enableAudioBypass && geminiApiKey) {
     console.log('[captcha] Using Audio Challenge bypass with Gemini multimodal...');
     const solved = await solveRecaptchaViaAudio(page, geminiApiKey);
     if (solved) return true;
   }
 
-  console.log('[captcha] Automated solver strategies completed. Standing by for challenge completion...');
+  console.log('[captcha] Standing by for manual or external visual puzzle completion in browser...');
+  console.log('👉 Please solve the visual puzzle in the Chrome window — the automation will automatically resume as soon as it is verified.');
   return false;
 }

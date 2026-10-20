@@ -254,9 +254,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const launchArgs = [
     '--disable-blink-features=AutomationControlled',
     '--disable-features=IsolateOrigins,site-per-process',
-    '--no-sandbox',
     '--disable-infobars',
   ];
+
+  // Only pass --no-sandbox if running as root in Linux containers without user namespaces
+  if (process.platform === 'linux' && typeof (process as any).getuid === 'function' && (process as any).getuid() === 0) {
+    launchArgs.push('--no-sandbox');
+  }
 
   let context: BrowserContext;
   try {
