@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
 import type { Database, Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
+import { encryptPaymentDetails } from '@/lib/card-payment-details';
 import {
   listOrderingQueue,
   populateAndSortQueue,
@@ -34,7 +36,10 @@ describe('ordering-queue domain', () => {
     today: TODAY,
   };
 
+  const origKey = process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY;
+
   beforeAll(async () => {
+    process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString('base64');
     const testDb = await createTestDb();
     db = testDb.db;
     close = testDb.close;
@@ -202,6 +207,7 @@ describe('ordering-queue domain', () => {
   });
 
   afterAll(async () => {
+    process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY = origKey;
     await close();
   });
 
@@ -406,5 +412,93 @@ describe('ordering-queue domain', () => {
       .where(eq(schema.orderingQueueItems.instanceId, newInst.id));
     expect(dbRow).toBeDefined();
     expect(dbRow.position).toBe(withNew.length);
+  });
+
+  it('suggests RuPay accounts for each benefit, flagging conflicts, ready accounts, and unmapped accounts', async () => {
+    // 1. Create a second portal account in Workspace A
+    const [account2] = await db.insert(schema.portalAccounts).values({
+      workspaceId: W_A,
+      label: 'account2@example.com',
+      credentialsEncrypted: 'mock_encrypted_creds',
+      status: 'connected',
+    }).returning();
+
+    // 2. Create a third portal account (not mapped to any card)
+    const [account3] = await db.insert(schema.portalAccounts).values({
+      workspaceId: W_A,
+      label: 'account3@example.com',
+      credentialsEncrypted: 'mock_encrypted_creds',
+      status: 'connected',
+    }).returning();
+
+    // Map Card A to account2 as well
+    const [cardA] = await db
+      .select()
+      .from(schema.cards)
+      .where(eq(schema.cards.workspaceId, W_A))
+      .limit(1);
+
+    // Provide valid payment details on Card A
+    await db
+      .update(schema.cards)
+      .set({
+        paymentDetailsEncrypted: encryptPaymentDetails(
+          { version: 1, mode: 'saved_card', cvv: '123' },
+          cardA.id,
+        ),
+      })
+      .where(eq(schema.cards.id, cardA.id));
+
+    await db.insert(schema.portalCardMappings).values({
+      workspaceId: W_A,
+      portalAccountId: account2.id,
+      cardId: cardA.id,
+      active: true,
+    });
+
+    // 3. Mark an order attempt on account2 for the Cult.fit benefit in 2026 (entitlement conflict)
+    const queue = await listOrderingQueue(ctxA);
+    const cultfit = queue.find((q) => q.benefitProvider === 'Cult.fit');
+    expect(cultfit).toBeDefined();
+
+    await db.insert(schema.portalOrderAttempts).values({
+      workspaceId: W_A,
+      portalAccountId: account2.id,
+      instanceId: cultfit!.instanceId,
+      state: 'confirmed',
+      bookingReference: 'CONF-CULTFIT-ACC2',
+    });
+
+    // 4. Query ordering queue again
+    const refreshed = await listOrderingQueue(ctxA);
+    const cultfitItem = refreshed.find((q) => q.benefitProvider === 'Cult.fit');
+    expect(cultfitItem).toBeDefined();
+
+    // 5. Inspect suggestedAccounts on the Cult.fit item
+    const suggestions = cultfitItem!.suggestedAccounts;
+    expect(suggestions).toBeDefined();
+    expect(suggestions.length).toBeGreaterThanOrEqual(3);
+
+    // Account 1: mapped, connected, no conflict -> status: 'ready', isRecommended: true
+    const s1 = suggestions.find((s) => s.accountLabel === 'user@example.com');
+    expect(s1).toBeDefined();
+    expect(s1?.status).toBe('ready');
+    expect(s1?.isMapped).toBe(true);
+    expect(s1?.isEligible).toBe(true);
+    expect(s1?.isRecommended).toBe(true);
+
+    // Account 2: mapped, but already redeemed in this period -> status: 'conflict', isEligible: false
+    const s2 = suggestions.find((s) => s.accountLabel === 'account2@example.com');
+    expect(s2).toBeDefined();
+    expect(s2?.status).toBe('conflict');
+    expect(s2?.isMapped).toBe(true);
+    expect(s2?.isEligible).toBe(false);
+
+    // Account 3: not mapped to card -> status: 'available_to_map', isEligible: false
+    const s3 = suggestions.find((s) => s.accountLabel === 'account3@example.com');
+    expect(s3).toBeDefined();
+    expect(s3?.accountId).toBe(account3.id);
+    expect(s3?.status).toBe('available_to_map');
+    expect(s3?.isMapped).toBe(false);
   });
 });

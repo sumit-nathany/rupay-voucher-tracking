@@ -115,7 +115,11 @@ export function AutomationDashboard({
         </div>
 
         <TabsContent value="queue" className="focus-visible:outline-none">
-          <OrderQueueSection initialQueue={queue} accounts={accounts} />
+          <OrderQueueSection
+            initialQueue={queue}
+            accounts={accounts}
+            cards={availableCards}
+          />
         </TabsContent>
 
         <TabsContent value="activity" className="focus-visible:outline-none">

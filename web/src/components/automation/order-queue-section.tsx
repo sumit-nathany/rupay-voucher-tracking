@@ -16,6 +16,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Link2,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import type { QueueItemView } from '@/domain/ordering-queue';
 import type { PortalAccountView } from '@/domain/automation';
+import type { CardOption } from './mapping-dialogs';
 import {
   populateAndSortQueueAction,
   updateQueueItemAction,
@@ -41,13 +45,70 @@ const DEFAULT_PAGE_SIZE = 5;
 interface OrderQueueSectionProps {
   initialQueue: QueueItemView[];
   accounts?: PortalAccountView[];
+  cards?: CardOption[];
 }
 
 export function OrderQueueSection({
   initialQueue,
   accounts = [],
+  cards = [],
 }: OrderQueueSectionProps) {
   const [items, setItems] = useState<QueueItemView[]>(initialQueue);
+
+  // Compile unique cards from queue items and available cards
+  const cardSummaries = useMemo(() => {
+    const cardMap = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        last4: string;
+        holderName: string;
+        count: number;
+        totalCashValue: number;
+      }
+    >();
+
+    for (const item of items) {
+      const existing = cardMap.get(item.cardId);
+      if (existing) {
+        existing.count += 1;
+        existing.totalCashValue += item.cashValue;
+      } else {
+        cardMap.set(item.cardId, {
+          id: item.cardId,
+          name: item.cardName,
+          last4: item.cardLast4,
+          holderName: item.holderName,
+          count: 1,
+          totalCashValue: item.cashValue,
+        });
+      }
+    }
+
+    // Also include registered cards with 0 pending vouchers so user can inspect them
+    for (const c of cards) {
+      if (!cardMap.has(c.id)) {
+        cardMap.set(c.id, {
+          id: c.id,
+          name: c.name,
+          last4: c.lastDigits ?? '••••',
+          holderName: c.holderName,
+          count: 0,
+          totalCashValue: 0,
+        });
+      }
+    }
+
+    return Array.from(cardMap.values());
+  }, [items, cards]);
+
+  // Default view is on a card basis: select the first card with benefits, or 'all'
+  const [selectedCardId, setSelectedCardId] = useState<string>(() => {
+    const firstWithBenefits = cardSummaries.find((c) => c.count > 0);
+    return firstWithBenefits?.id ?? cardSummaries[0]?.id ?? 'all';
+  });
+
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState<number>(DEFAULT_PAGE_SIZE);
   const [isPending, startTransition] = useTransition();
@@ -58,17 +119,36 @@ export function OrderQueueSection({
 
   useEffect(() => {
     setVisibleCount(DEFAULT_PAGE_SIZE);
-  }, [selectedAccountId]);
+  }, [selectedCardId, selectedAccountId]);
 
-  // Filter items based on the selected RuPay account scope
+  // If selected card is no longer valid, fallback to first available card with benefits
+  useEffect(() => {
+    if (selectedCardId !== 'all' && !cardSummaries.some((c) => c.id === selectedCardId)) {
+      const firstWithBenefits = cardSummaries.find((c) => c.count > 0);
+      setSelectedCardId(firstWithBenefits?.id ?? 'all');
+    }
+  }, [cardSummaries, selectedCardId]);
+
+  // Filter items based on selected Card (primary) and RuPay account (secondary)
   const displayedItems = useMemo(() => {
-    if (selectedAccountId === 'all') return items;
-    return items.filter(
-      (i) =>
-        i.portalAccountId === selectedAccountId ||
-        i.portalAccounts.some((a) => a.id === selectedAccountId),
-    );
-  }, [items, selectedAccountId]);
+    let result = items;
+    if (selectedCardId !== 'all') {
+      result = result.filter((i) => i.cardId === selectedCardId);
+    }
+    if (selectedAccountId !== 'all') {
+      result = result.filter(
+        (i) =>
+          i.portalAccountId === selectedAccountId ||
+          i.portalAccounts.some((a) => a.id === selectedAccountId),
+      );
+    }
+    return result;
+  }, [items, selectedCardId, selectedAccountId]);
+
+  const activeCardSummary = useMemo(() => {
+    if (selectedCardId === 'all') return null;
+    return cardSummaries.find((c) => c.id === selectedCardId) ?? null;
+  }, [cardSummaries, selectedCardId]);
 
   const visibleItems = useMemo(() => {
     return displayedItems.slice(0, visibleCount);
@@ -225,6 +305,42 @@ export function OrderQueueSection({
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+          {/* Card Filter Dropdown (Default view is on a card basis) */}
+          <div className="flex items-center gap-1.5">
+            <Select
+              value={selectedCardId}
+              onValueChange={setSelectedCardId}
+              disabled={isPending}
+            >
+              <SelectTrigger className="h-9 min-w-[210px] sm:min-w-[260px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+                <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground text-xs font-normal">Card:</span>
+                <SelectValue placeholder="All Cards" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+                  All Cards ({items.length})
+                </SelectItem>
+                {cardSummaries.map((c) => (
+                  <SelectItem key={c.id} value={c.id} className="text-xs sm:text-sm">
+                    {c.name} ••{c.last4} · {c.holderName} ({c.count})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedCardId !== 'all' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedCardId('all')}
+                className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                title="Show all cards"
+              >
+                All Cards
+              </Button>
+            )}
+          </div>
+
           {/* Account Filter */}
           <div className="flex items-center gap-1.5">
             <Select
@@ -232,14 +348,14 @@ export function OrderQueueSection({
               onValueChange={setSelectedAccountId}
               disabled={isPending}
             >
-              <SelectTrigger className="h-9 min-w-[210px] sm:min-w-[250px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+              <SelectTrigger className="h-9 min-w-[190px] sm:min-w-[220px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
                 <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="text-muted-foreground text-xs font-normal">Account:</span>
                 <SelectValue placeholder="All Accounts" />
               </SelectTrigger>
               <SelectContent className="rounded-xl">
                 <SelectItem value="all" className="text-xs sm:text-sm font-medium">
-                  All Accounts ({items.length})
+                  All Accounts
                 </SelectItem>
                 {accounts.map((acc) => {
                   const count = items.filter(
@@ -260,8 +376,8 @@ export function OrderQueueSection({
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedAccountId('all')}
-                className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
-                title="Reset account filter to show all accounts"
+                className="h-9 px-2 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                title="Reset account filter"
               >
                 Reset
               </Button>
@@ -303,24 +419,77 @@ export function OrderQueueSection({
         </div>
       </div>
 
+      {/* Active Card Summary Banner (when viewing on a per-card basis) */}
+      {activeCardSummary && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-card border border-border/80 shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm sm:text-base text-foreground">
+                  {activeCardSummary.name}
+                </span>
+                <span className="text-xs text-muted-foreground font-mono font-medium">
+                  ••{activeCardSummary.last4}
+                </span>
+                <Badge variant="outline" className="text-xs">
+                  {activeCardSummary.holderName}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {activeCardSummary.count} {activeCardSummary.count === 1 ? 'benefit' : 'benefits'} available for this card
+                {activeCardSummary.totalCashValue > 0 && ` · ₹${Math.round(activeCardSummary.totalCashValue)} total value`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedCardId('all')}
+              className="h-8 text-xs font-medium rounded-xl border-border/80 gap-1.5"
+            >
+              View All Cards
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Queue Items List */}
       {displayedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
           <ListOrdered className="h-10 w-10 text-muted-foreground/60 mb-3" />
           <p className="text-base font-semibold text-foreground">No Vouchers In This Queue</p>
           <p className="text-sm text-muted-foreground max-w-md mt-1.5">
-            {selectedAccountId === 'all'
+            {selectedCardId !== 'all'
+              ? `No pending voucher benefits found for ${activeCardSummary?.name ?? 'this card'}.`
+              : selectedAccountId === 'all'
               ? 'No pending voucher benefits found in this workspace.'
               : 'No voucher benefits found for cards linked to this RuPay account.'}
           </p>
-          <Button
-            onClick={() => handleAutoSort('nearest_expiring')}
-            disabled={isPending}
-            className="mt-4 gap-2 text-xs sm:text-sm font-medium rounded-xl"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Check & Auto-Sort Queue
-          </Button>
+          <div className="flex items-center gap-2 mt-4 flex-wrap justify-center">
+            {selectedCardId !== 'all' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedCardId('all')}
+                className="gap-2 text-xs sm:text-sm font-medium rounded-xl"
+              >
+                <CreditCard className="h-4 w-4" />
+                View All Cards
+              </Button>
+            )}
+            <Button
+              onClick={() => handleAutoSort('nearest_expiring')}
+              disabled={isPending}
+              className="gap-2 text-xs sm:text-sm font-medium rounded-xl"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Check & Auto-Sort Queue
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">
@@ -421,54 +590,6 @@ export function OrderQueueSection({
                         <span>{item.cardName} ••{item.cardLast4} · {item.holderName}</span>
                       </span>
 
-                      {/* Portal Account Indicator */}
-                      {(() => {
-                        if (selectedAccountId !== 'all') {
-                          const matched = item.portalAccounts.find((a) => a.id === selectedAccountId);
-                          const accountLabel = matched?.label ?? accounts.find((a) => a.id === selectedAccountId)?.label ?? item.portalAccountLabel;
-                          const otherCount = item.portalAccounts.length - 1;
-                          return (
-                            <span
-                              className="flex items-center gap-1 text-primary dark:text-primary font-medium"
-                              title={item.portalAccounts.length > 1 ? `Mapped to: ${item.portalAccounts.map((a) => a.label).join(', ')}` : undefined}
-                            >
-                              <KeyRound className="h-3 w-3 shrink-0" />
-                              <span>{accountLabel}</span>
-                              {otherCount > 0 && (
-                                <span className="text-[10px] text-muted-foreground font-normal">
-                                  (+{otherCount} other)
-                                </span>
-                              )}
-                            </span>
-                          );
-                        }
-
-                        if (item.portalAccounts.length > 0) {
-                          const primaryLabel = item.portalAccountLabel ?? item.portalAccounts[0]?.label;
-                          const otherCount = item.portalAccounts.length - 1;
-                          return (
-                            <span
-                              className="flex items-center gap-1"
-                              title={item.portalAccounts.length > 1 ? `Mapped to: ${item.portalAccounts.map((a) => a.label).join(', ')}` : undefined}
-                            >
-                              <KeyRound className="h-3 w-3 shrink-0" />
-                              <span>{primaryLabel}</span>
-                              {otherCount > 0 && (
-                                <span className="text-[10px] text-muted-foreground font-medium">
-                                  (+{otherCount} more)
-                                </span>
-                              )}
-                            </span>
-                          );
-                        }
-
-                        return (
-                          <span className="text-amber-600 dark:text-amber-400 font-medium">
-                            Not mapped to a RuPay account
-                          </span>
-                        );
-                      })()}
-
                       <span
                         className={`flex items-center gap-1 ${
                           isUrgent ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
@@ -525,6 +646,148 @@ export function OrderQueueSection({
                         )}
                       </div>
                     )}
+
+                    {/* Suggested RuPay Accounts for Redemption */}
+                    <div className="pt-2 border-t border-border/40 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/80">
+                          <KeyRound className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span>Suggested RuPay Accounts:</span>
+                        </div>
+                        {item.suggestedAccounts?.some((a) => a.isEligible && a.status === 'ready') ? (
+                          <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Ready to order
+                          </span>
+                        ) : item.suggestedAccounts?.some((a) => a.status === 'cooldown') ? (
+                          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                            <Clock className="h-3 w-3" /> 24h Cooldown
+                          </span>
+                        ) : item.suggestedAccounts?.some((a) => a.status === 'conflict') ? (
+                          <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Account conflict
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {item.suggestedAccounts && item.suggestedAccounts.length > 0 ? (
+                          item.suggestedAccounts.map((acc) => {
+                            if (acc.status === 'ready') {
+                              return (
+                                <Badge
+                                  key={acc.accountId}
+                                  variant="outline"
+                                  className="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  title={`${acc.accountLabel}: Ready to order. No conflict in this period.`}
+                                >
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                  <span>{acc.accountLabel}</span>
+                                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded">
+                                    Ready
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            if (acc.status === 'cooldown') {
+                              return (
+                                <Badge
+                                  key={acc.accountId}
+                                  variant="outline"
+                                  className="bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  title={`${acc.accountLabel}: Eligible, but currently under 24-hour rate limit cooldown.`}
+                                >
+                                  <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                                  <span>{acc.accountLabel}</span>
+                                  <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-500/20 px-1 py-0.5 rounded">
+                                    24h Cooldown
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            if (acc.status === 'conflict') {
+                              return (
+                                <Badge
+                                  key={acc.accountId}
+                                  variant="outline"
+                                  className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  title={`${acc.accountLabel}: ${acc.reason}`}
+                                >
+                                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                  <span>{acc.accountLabel}</span>
+                                  <span className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
+                                    (Used this period)
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            if (acc.status === 'available_to_map') {
+                              return (
+                                <Badge
+                                  key={acc.accountId}
+                                  variant="outline"
+                                  className="bg-muted/40 text-muted-foreground border-border/80 gap-1.5 text-xs font-normal py-1 px-2.5"
+                                  title={`Map this card to ${acc.accountLabel} to redeem this benefit.`}
+                                >
+                                  <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  <span>{acc.accountLabel}</span>
+                                  <span className="text-[10px] text-muted-foreground/80">
+                                    (Can redeem if mapped)
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            if (acc.status === 'missing_details') {
+                              return (
+                                <Badge
+                                  key={acc.accountId}
+                                  variant="outline"
+                                  className="bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
+                                  title={`${acc.accountLabel}: Card lacks payment details (CVV/expiry).`}
+                                >
+                                  <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                                  <span>{acc.accountLabel}</span>
+                                  <span className="text-[10px] font-normal text-red-700 dark:text-red-400">
+                                    (Missing CVV)
+                                  </span>
+                                </Badge>
+                              );
+                            }
+
+                            return (
+                              <Badge
+                                key={acc.accountId}
+                                variant="outline"
+                                className="bg-muted/30 text-muted-foreground/80 border-border/60 gap-1.5 text-xs font-normal py-1 px-2.5"
+                                title={`${acc.accountLabel}: ${acc.reason}`}
+                              >
+                                <span>{acc.accountLabel}</span>
+                                <span className="text-[10px]">({acc.reason})</span>
+                              </Badge>
+                            );
+                          })
+                        ) : item.portalAccounts.length > 0 ? (
+                          item.portalAccounts.map((a) => (
+                            <Badge
+                              key={a.id}
+                              variant="outline"
+                              className="text-xs font-medium py-1 px-2.5 gap-1"
+                            >
+                              <KeyRound className="h-3 w-3 text-muted-foreground" />
+                              <span>{a.label}</span>
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            No RuPay accounts mapped to this card yet.
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 

@@ -1,8 +1,25 @@
-import { eq, and, gte, asc, inArray, notInArray, isNull } from 'drizzle-orm';
+import { eq, and, gte, asc, inArray, notInArray, isNull, isNotNull, ne } from 'drizzle-orm';
 import type { Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
 import { resolveOfferKind } from '@/domain/benefit-offer-kind';
 import { decryptPaymentDetails, isValidPaymentDetails } from '@/lib/card-payment-details';
+
+export interface AccountSuggestion {
+  accountId: string;
+  accountLabel: string;
+  isMapped: boolean;
+  isEligible: boolean;
+  isRecommended: boolean;
+  status:
+    | 'ready'
+    | 'cooldown'
+    | 'conflict'
+    | 'available_to_map'
+    | 'missing_details'
+    | 'needs_attention';
+  reason: string;
+  cooldownUntil?: string | null;
+}
 
 export interface QueueItemView {
   id: string;
@@ -11,9 +28,12 @@ export interface QueueItemView {
   cardName: string;
   cardLast4: string;
   holderName: string;
+  bankCardTypeId?: string | null;
+  periodLabel?: string | null;
   portalAccountId: string | null;
   portalAccountLabel: string | null;
   portalAccounts: Array<{ id: string; label: string }>;
+  suggestedAccounts: AccountSuggestion[];
   benefitType: string;
   exactBenefit: string;
   benefitProvider: string | null;
@@ -74,13 +94,25 @@ async function fetchRawQueueCandidates(
 
   if (activeCards.length === 0) return [];
 
-  // 2. Fetch portal mappings for all cards in workspace (only cards with valid payment details and connected portal accounts)
-  const mappings = await ctx.db
+  // 2. Fetch all portal accounts for workspace
+  const allWorkspaceAccounts = await ctx.db
+    .select({
+      id: schema.portalAccounts.id,
+      label: schema.portalAccounts.label,
+      status: schema.portalAccounts.status,
+      cooldownUntil: schema.portalAccounts.cooldownUntil,
+    })
+    .from(schema.portalAccounts)
+    .where(eq(schema.portalAccounts.workspaceId, ctx.workspaceId));
+
+  // 3. Fetch all active portal card mappings for workspace
+  const rawMappings = await ctx.db
     .select({
       id: schema.portalCardMappings.id,
       cardId: schema.portalCardMappings.cardId,
-      portalAccountId: schema.portalAccounts.id,
+      portalAccountId: schema.portalCardMappings.portalAccountId,
       portalAccountLabel: schema.portalAccounts.label,
+      portalAccountStatus: schema.portalAccounts.status,
       mappingPaymentDetailsEncrypted: schema.portalCardMappings.paymentDetailsEncrypted,
       cardPaymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted,
     })
@@ -97,13 +129,13 @@ async function fetchRawQueueCandidates(
       and(
         eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
         eq(schema.portalCardMappings.active, true),
-        eq(schema.portalAccounts.status, 'connected'),
       ),
     );
 
   const cardToAccountsMap = new Map<string, Array<{ id: string; label: string }>>();
   const accountToCardIdsMap = new Map<string, Set<string>>();
-  for (const m of mappings) {
+  for (const m of rawMappings) {
+    if (m.portalAccountStatus !== 'connected') continue;
     let hasValid = false;
     if (m.cardPaymentDetailsEncrypted) {
       try {
@@ -128,7 +160,69 @@ async function fetchRawQueueCandidates(
     accountToCardIdsMap.set(m.portalAccountId, cardSet);
   }
 
-  // 3. Determine target card IDs based on filter
+  // 4. Fetch consumed entitlements to detect (account, card_type, benefit, period) conflicts
+  const consumedAttempts = await ctx.db
+    .select({
+      portalAccountId: schema.portalOrderAttempts.portalAccountId,
+      bankCardTypeId: schema.benefitInstances.bankCardTypeId,
+      benefitId: schema.benefitInstances.benefitId,
+      overrideId: schema.benefitInstances.overrideId,
+      periodStart: schema.benefitInstances.periodStart,
+    })
+    .from(schema.portalOrderAttempts)
+    .innerJoin(
+      schema.benefitInstances,
+      eq(schema.portalOrderAttempts.instanceId, schema.benefitInstances.id),
+    )
+    .where(
+      and(
+        eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
+        inArray(schema.portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+      ),
+    );
+
+  const directRedemptions = await ctx.db
+    .select({
+      portalAccountId: schema.benefitInstances.portalAccountId,
+      bankCardTypeId: schema.benefitInstances.bankCardTypeId,
+      benefitId: schema.benefitInstances.benefitId,
+      overrideId: schema.benefitInstances.overrideId,
+      periodStart: schema.benefitInstances.periodStart,
+    })
+    .from(schema.benefitInstances)
+    .where(
+      and(
+        eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
+        isNotNull(schema.benefitInstances.portalAccountId),
+        ne(schema.benefitInstances.orderStatus, 'Not Ordered'),
+      ),
+    );
+
+  const accountConsumedSet = new Set<string>();
+  for (const r of consumedAttempts) {
+    accountConsumedSet.add(`${r.portalAccountId}:${r.bankCardTypeId}:${r.benefitId || r.overrideId}:${r.periodStart}`);
+  }
+  for (const r of directRedemptions) {
+    if (r.portalAccountId) {
+      accountConsumedSet.add(`${r.portalAccountId}:${r.bankCardTypeId}:${r.benefitId || r.overrideId}:${r.periodStart}`);
+    }
+  }
+
+  // 24-hour rate limit check
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const recentAttempts = await ctx.db
+    .select({ portalAccountId: schema.portalOrderAttempts.portalAccountId })
+    .from(schema.portalOrderAttempts)
+    .where(
+      and(
+        eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
+        gte(schema.portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
+        inArray(schema.portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
+      ),
+    );
+  const accountsIn24hCooldown = new Set(recentAttempts.map((r) => r.portalAccountId));
+
+  // 5. Determine target card IDs based on filter
   let targetCardIds = activeCards.map((c) => c.id);
 
   if (filter?.portalAccountId) {
@@ -141,11 +235,16 @@ async function fetchRawQueueCandidates(
 
   if (targetCardIds.length === 0) return [];
 
-  // 4. Fetch pending benefit instances for target cards
+  // 6. Fetch pending benefit instances for target cards
   const instances = await ctx.db
     .select({
       id: schema.benefitInstances.id,
       cardId: schema.benefitInstances.cardId,
+      bankCardTypeId: schema.benefitInstances.bankCardTypeId,
+      benefitId: schema.benefitInstances.benefitId,
+      overrideId: schema.benefitInstances.overrideId,
+      periodStart: schema.benefitInstances.periodStart,
+      periodLabel: schema.benefitInstances.periodLabel,
       orderDeadline: schema.benefitInstances.orderDeadline,
       cashValue: schema.benefitInstances.cashValue,
       chosenOptionId: schema.benefitInstances.chosenOptionId,
@@ -199,7 +298,7 @@ async function fetchRawQueueCandidates(
 
   if (instances.length === 0) return [];
 
-  // 5. Collect version IDs to fetch options for pick-one benefits
+  // 7. Collect version IDs to fetch options for pick-one benefits
   const versionIds = Array.from(
     new Set(instances.map((i) => i.catVersionId).filter((v): v is string => Boolean(v))),
   );
@@ -262,11 +361,116 @@ async function fetchRawQueueCandidates(
     const cashVal = row.cashValue ? parseFloat(row.cashValue) : 0;
     const daysRemaining = computeDaysRemaining(row.orderDeadline, ctx.today);
 
+    // Compute RuPay account suggestions for this benefit instance
+    const cardMappings = rawMappings.filter((m) => m.cardId === row.cardId);
+    const cardMappingByAccount = new Map(cardMappings.map((m) => [m.portalAccountId, m]));
+
+    const suggestedAccounts: AccountSuggestion[] = allWorkspaceAccounts.map((acc) => {
+      const mapping = cardMappingByAccount.get(acc.id);
+      const isMapped = Boolean(mapping);
+
+      let hasValidPayment = false;
+      if (mapping) {
+        if (mapping.cardPaymentDetailsEncrypted) {
+          try {
+            const dec = decryptPaymentDetails(mapping.cardPaymentDetailsEncrypted, row.cardId);
+            if (isValidPaymentDetails(dec)) hasValidPayment = true;
+          } catch {}
+        }
+        if (!hasValidPayment && mapping.mappingPaymentDetailsEncrypted) {
+          try {
+            const dec = decryptPaymentDetails(mapping.mappingPaymentDetailsEncrypted, mapping.id);
+            if (isValidPaymentDetails(dec)) hasValidPayment = true;
+          } catch {}
+        }
+      }
+
+      const isConnected = acc.status === 'connected';
+      const entitlementKey = `${acc.id}:${row.bankCardTypeId}:${row.benefitId || row.overrideId}:${row.periodStart}`;
+      const hasConflict = accountConsumedSet.has(entitlementKey);
+      const isInCooldown =
+        (acc.cooldownUntil && new Date(acc.cooldownUntil) > new Date()) ||
+        accountsIn24hCooldown.has(acc.id);
+
+      let status: AccountSuggestion['status'];
+      let reason: string;
+      let isEligible = false;
+
+      if (isMapped) {
+        if (!hasValidPayment) {
+          status = 'missing_details';
+          reason = 'Card lacks payment details';
+        } else if (!isConnected) {
+          status = 'needs_attention';
+          reason = acc.status.replace(/_/g, ' ');
+        } else if (hasConflict) {
+          status = 'conflict';
+          reason = `Already redeemed for ${row.cardDisplayName} type in ${row.periodLabel || 'this period'}`;
+        } else if (isInCooldown) {
+          status = 'cooldown';
+          reason = 'Account in 24h rate limit cooldown';
+          isEligible = true;
+        } else {
+          status = 'ready';
+          reason = 'Ready to order';
+          isEligible = true;
+        }
+      } else {
+        if (hasConflict) {
+          status = 'conflict';
+          reason = `Already redeemed in ${row.periodLabel || 'this period'} (not mapped)`;
+        } else if (isConnected) {
+          status = 'available_to_map';
+          reason = 'Can redeem if card is mapped to this account';
+        } else {
+          status = 'needs_attention';
+          reason = `Account ${acc.status.replace(/_/g, ' ')}`;
+        }
+      }
+
+      return {
+        accountId: acc.id,
+        accountLabel: acc.label,
+        isMapped,
+        isEligible,
+        isRecommended: false,
+        status,
+        reason,
+        cooldownUntil: acc.cooldownUntil ? new Date(acc.cooldownUntil).toISOString() : null,
+      };
+    });
+
+    const statusOrder: Record<AccountSuggestion['status'], number> = {
+      ready: 1,
+      cooldown: 2,
+      available_to_map: 3,
+      conflict: 4,
+      missing_details: 5,
+      needs_attention: 6,
+    };
+
+    suggestedAccounts.sort((a, b) => {
+      const orderA = statusOrder[a.status] ?? 99;
+      const orderB = statusOrder[b.status] ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.accountLabel.localeCompare(b.accountLabel);
+    });
+
+    const firstEligible =
+      suggestedAccounts.find((a) => a.isEligible && a.status === 'ready') ??
+      suggestedAccounts.find((a) => a.isEligible);
+    if (firstEligible) {
+      firstEligible.isRecommended = true;
+    }
+
     // If filter specified a portalAccountId, ensure that account is picked as primary
     const matchedAccount = filter?.portalAccountId
       ? mappedAccounts.find((a) => a.id === filter.portalAccountId)
       : null;
-    const primaryAccount = matchedAccount ?? mappedAccounts[0];
+    const recommendedMappedAccount = firstEligible?.isMapped
+      ? mappedAccounts.find((a) => a.id === firstEligible.accountId)
+      : null;
+    const primaryAccount = matchedAccount ?? recommendedMappedAccount ?? mappedAccounts[0];
 
     candidates.push({
       hasStoredPosition: row.queuePosition !== null && row.queuePosition !== undefined,
@@ -277,9 +481,12 @@ async function fetchRawQueueCandidates(
         cardName: row.cardDisplayName,
         cardLast4: row.cardLastDigits,
         holderName: row.holderName,
+        bankCardTypeId: row.bankCardTypeId,
+        periodLabel: row.periodLabel,
         portalAccountId: primaryAccount?.id ?? null,
         portalAccountLabel: primaryAccount?.label ?? null,
         portalAccounts: mappedAccounts,
+        suggestedAccounts,
         benefitType,
         exactBenefit,
         benefitProvider,
