@@ -1,8 +1,10 @@
 # Review request: RuPay Voucher/Benefit Tracker — REQUIREMENTS.md + PLAN.md
 
 > **Status:** reusable review harness. This prompt produced five review rounds against the
-> pre-build spec (2026-10-09); the resulting files are archived in `docs/archive/` and every
-> finding has been reconciled into `REQUIREMENTS.md` / `PLAN.md` (spec v8.0).
+> pre-build spec (2026-10-09). Every finding was reconciled into `REQUIREMENTS.md` / `PLAN.md`
+> (spec v8.0); the round-by-round files were deleted after reconciliation — git history has them
+> (`git log --diff-filter=D --name-only -- "*Review Feedback*"`), and the surviving "why" for each
+> rule is kept as a row in [review-history.md](review-history.md), which the specs cite as `RH#N`.
 >
 > **Before reusing it, check the premises below against the current spec** — several have
 > since changed (most importantly, signup is now **invite-only**, not public). The "Files to

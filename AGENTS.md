@@ -10,7 +10,7 @@ Read before any non-trivial change:
 
 - **REQUIREMENTS.md** — what the product must do. If it and PLAN.md disagree, REQUIREMENTS.md wins on product scope.
 - **PLAN.md** — how it's built (schema, security model, build phases). Very large; read the section you need, not the whole file.
-- **docs/** — per-feature requirements and implementation plans (e.g. automated RuPay ordering, portal API, zero-knowledge encryption), plus `docs/backlog.md` — the prioritized, agent-pickable improvement queue — and `docs/archive/` — archived external review rounds (historical, not requirements).
+- **docs/** — per-feature requirements and implementation plans (e.g. automated RuPay ordering, portal API, zero-knowledge encryption), plus `docs/backlog.md` — the prioritized, agent-pickable improvement queue — and `docs/review-history.md` — the `RH#N` rationale index behind the subtler rules in the specs.
 
 ## Repo layout
 

@@ -1,6 +1,6 @@
 # RuPay Voucher Tracker — Core Functional Requirements
 
-> States **what the product must do**. Implementation detail lives in [PLAN.md](./PLAN.md). Both files are reconciled as of this revision — if they ever drift again, this file is authoritative on product scope.
+> States **what the product must do**. Implementation detail lives in [PLAN.md](./PLAN.md). Both files are reconciled as of this revision — if they ever drift again, this file is authoritative on product scope. `RH#N` markers point at the rationale index in [docs/review-history.md](docs/review-history.md).
 
 ---
 
@@ -126,7 +126,7 @@ The app must let a user answer, at a glance:
 
 ## 9. Later phases (explicitly deferred, not forgotten)
 
-- Reminders: coupon-expiry warning (use it before it expires), order-lapse warning (order it before the deadline), stale-order warning. — **Tracked and scheduled in [docs/backlog.md](docs/backlog.md) (items A-01 … A-06); the `notification_preferences` / `reminder_log` schema already exists in `web/src/db/schema.ts` but is unwired.**
+- Reminders: coupon-expiry warning (use it before it expires), order-lapse warning (order it before the deadline), stale-order warning (RH#11). — **Tracked and scheduled in [docs/backlog.md](docs/backlog.md) (items A-01 … A-06); the `notification_preferences` / `reminder_log` schema already exists in `web/src/db/schema.ts` but is unwired.**
 - Browser automation of the ordering step on the RuPay Benefits website.
 - Anything related to the 24-hours-per-account ordering limit (e.g. suggestions on sequencing orders across holders) — not required; users handle this themselves today.
 
