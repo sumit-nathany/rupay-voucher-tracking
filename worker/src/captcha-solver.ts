@@ -248,15 +248,39 @@ export async function injectRecaptchaToken(page: Page, token: string): Promise<b
 }
 
 /**
- * Attempts to solve reCAPTCHA via the audio challenge bypass.
+ * Attempts to solve reCAPTCHA via browser audio capture / playback without external downloads.
  */
 export async function solveRecaptchaViaAudio(
   page: Page,
   geminiApiKey: string,
 ): Promise<boolean> {
-  console.log('[captcha] Attempting reCAPTCHA Audio Challenge bypass...');
+  console.log('[captcha] Attempting non-intrusive reCAPTCHA Audio capture...');
+  let latestCapturedAudio: Buffer | null = null;
+
+  // 1. Passively capture audio payloads from the browser's own network stream
+  const responseHandler = async (response: any) => {
+    try {
+      const url = response.url();
+      const contentType = response.headers()['content-type'] || '';
+      if (
+        contentType.includes('audio') ||
+        url.includes('audio.mp3') ||
+        url.includes('/payload?pk=') ||
+        url.includes('/recaptcha/api2/payload')
+      ) {
+        const body = await response.body().catch(() => null);
+        if (body && body.length > 500) {
+          latestCapturedAudio = body;
+          console.log(`[captcha] Passively intercepted audio payload from browser network (${body.length} bytes).`);
+        }
+      }
+    } catch {}
+  };
+
+  page.on('response', responseHandler);
+
   try {
-    // 1. Locate the bframe (challenge popup iframe)
+    // 2. Locate the bframe (challenge popup iframe)
     let bframe = page.frames().find((f) => f.url().includes('recaptcha/api2/bframe'));
     if (!bframe) {
       for (let i = 0; i < 6; i++) {
@@ -270,7 +294,7 @@ export async function solveRecaptchaViaAudio(
       return false;
     }
 
-    // 2. Click the audio challenge button if not already in audio mode
+    // 3. Switch to audio mode if not already active
     const audioBtn = bframe.locator('#recaptcha-audio-button, button#recaptcha-audio-button').first();
     if (await audioBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       await humanClick(audioBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1200 });
@@ -278,12 +302,11 @@ export async function solveRecaptchaViaAudio(
     }
 
     const maxRounds = 5;
-    let lastAudioUrl: string | null = null;
 
     for (let round = 1; round <= maxRounds; round++) {
       if (page.isClosed()) return false;
 
-      // Stop if already authenticated or login modal/recaptcha has been dismissed
+      // Stop if already authenticated
       const cookies = await page.context().cookies().catch(() => []);
       if (cookies.some((c) => c.name === 'jwt')) {
         console.log('[captcha] Active JWT session cookie detected. Stopping audio solver.');
@@ -297,7 +320,7 @@ export async function solveRecaptchaViaAudio(
       }).catch(() => false);
 
       if (!hasLoginOrCaptcha) {
-        console.log('[captcha] Login form / reCAPTCHA iframe no longer present on page. Stopping audio solver.');
+        console.log('[captcha] Login form / reCAPTCHA iframe no longer present on page.');
         return true;
       }
 
@@ -317,35 +340,68 @@ export async function solveRecaptchaViaAudio(
       const blockedMsg = await bframe.locator('.rc-dostitle, .rc-audiochallenge-error-message, div:has-text("automated queries")').first().textContent().catch(() => '');
       if (blockedMsg?.includes('automated queries')) {
         console.warn('[captcha] Google blocked audio challenge:', blockedMsg.trim());
-        console.log('👉 Please complete the visual puzzle in the open Chrome window — the automation will automatically resume as soon as it is solved.');
+        const imageBtn = bframe.locator('#recaptcha-image-button, button#recaptcha-image-button').first();
+        if (await imageBtn.isVisible().catch(() => false)) {
+          await humanClick(imageBtn, { hesitateBeforeMs: 300, pauseAfterMs: 600 }).catch(() => {});
+        }
+        console.log('👉 Google blocked audio endpoint; switched back to visual puzzle. Standing by for manual or external visual puzzle resolution...');
         return false;
       }
 
-      // 3. Obtain audio download link (wait for new audio URL if subsequent round)
-      const downloadLink = bframe.locator('.rc-audiochallenge-tdownload-link, a[href*="audio.mp3"]').first();
-      let audioUrl: string | null = null;
+      // Reset captured audio for this round
+      latestCapturedAudio = null;
+
+      // 4. Trigger audio playback inside browser (clicking PLAY button naturally)
+      const playBtn = bframe.locator('button:has-text("PLAY"), .rc-audiochallenge-play-button, button.rc-button-audio').first();
+      if (await playBtn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await humanClick(playBtn, { hesitateBeforeMs: 300, pauseAfterMs: 600 });
+      } else {
+        // Alternatively trigger playback on in-page audio element
+        await bframe.evaluate(() => {
+          const audio = document.querySelector('audio#player, audio[src]') as HTMLAudioElement | null;
+          if (audio) audio.play().catch(() => {});
+        }).catch(() => {});
+      }
+
+      // Wait up to 5 seconds for the browser's audio stream to be captured
       for (let w = 0; w < 10; w++) {
-        audioUrl = await downloadLink.getAttribute('href').catch(() => null);
-        if (!audioUrl) {
-          const audioElement = bframe.locator('audio#player, audio[src], source[src]').first();
-          audioUrl = await audioElement.getAttribute('src').catch(() => null);
-        }
-        if (audioUrl && (round === 1 || audioUrl !== lastAudioUrl)) break;
+        if (latestCapturedAudio) break;
         await page.waitForTimeout(500);
       }
 
-      if (!audioUrl) {
-        console.warn(`[captcha] Could not retrieve audio challenge URL in round ${round}.`);
+      // 5. Fallback: If not intercepted via network listener, read buffer in-page via window.fetch
+      if (!latestCapturedAudio) {
+        const base64Audio = await bframe.evaluate(async () => {
+          try {
+            const audioEl = document.querySelector('audio#player, audio[src], source[src]') as HTMLAudioElement | HTMLSourceElement | null;
+            const url = (audioEl as HTMLAudioElement)?.src || audioEl?.getAttribute('src');
+            if (!url) return null;
+            const res = await window.fetch(url, { credentials: 'include' });
+            const blob = await res.blob();
+            return await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(((reader.result as string) || '').split(',')[1] || '');
+              reader.readAsDataURL(blob);
+            });
+          } catch {
+            return null;
+          }
+        }).catch(() => null);
+
+        if (base64Audio) {
+          latestCapturedAudio = Buffer.from(base64Audio, 'base64');
+          console.log(`[captcha] Retrieved audio payload via in-page browser fetch (${latestCapturedAudio.length} bytes).`);
+        }
+      }
+
+      if (!latestCapturedAudio) {
+        console.warn(`[captcha] Could not capture browser audio in round ${round}.`);
         return false;
       }
-      lastAudioUrl = audioUrl;
 
-      console.log(`[captcha] Downloading audio challenge file (round ${round})...`);
-      const audioRes = await page.request.get(audioUrl);
-      const audioBuf = await audioRes.body();
-
-      // 4. Transcribe audio
-      const transcription = await transcribeAudioWithGemini(audioBuf, geminiApiKey);
+      // 6. Transcribe audio with Gemini
+      console.log(`[captcha] Transcribing browser audio with Gemini...`);
+      const transcription = await transcribeAudioWithGemini(latestCapturedAudio, geminiApiKey);
       if (!transcription) {
         console.warn(`[captcha] Transcription failed in round ${round}.`);
         const reloadBtn = bframe.locator('#recaptcha-reload-button').first();
@@ -355,7 +411,7 @@ export async function solveRecaptchaViaAudio(
         continue;
       }
 
-      // 5. Enter transcription into input
+      // 7. Enter transcription into input naturally
       const cleanTranscription = transcription.replace(/["'\.,;]/g, '').trim();
       console.log(`[captcha] Entering transcription: "${cleanTranscription}"`);
       const responseInput = bframe.locator('#audio-response').first();
@@ -363,10 +419,9 @@ export async function solveRecaptchaViaAudio(
       await humanType(responseInput, cleanTranscription, { minCharDelayMs: 80, maxCharDelayMs: 160 });
       await humanHesitate(400, 800);
 
-      // 6. Click verify
+      // 8. Click verify
       const verifyBtn = bframe.locator('#recaptcha-verify-button').first();
       await humanClick(verifyBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-
       await humanDelay(1500, 2500);
 
       const checkSolved = await page.evaluate(() => {
@@ -386,8 +441,10 @@ export async function solveRecaptchaViaAudio(
 
     return false;
   } catch (err) {
-    console.error('[captcha] Audio challenge bypass error:', err);
+    console.error('[captcha] Audio challenge capture error:', err);
     return false;
+  } finally {
+    page.off('response', responseHandler);
   }
 }
 
@@ -485,11 +542,10 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 5. Strategy C: Audio Challenge with Gemini (Disabled by default to prevent Google automated query detection)
-  const enableAudioBypass = process.env.ENABLE_AUDIO_CAPTCHA_BYPASS === 'true';
+  // 5. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
   const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (enableAudioBypass && geminiApiKey) {
-    console.log('[captcha] Using Audio Challenge bypass with Gemini multimodal...');
+  if (geminiApiKey) {
+    console.log('[captcha] Attempting in-browser audio capture & Gemini transcription...');
     const solved = await solveRecaptchaViaAudio(page, geminiApiKey);
     if (solved) return true;
   }
