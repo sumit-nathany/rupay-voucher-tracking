@@ -663,76 +663,139 @@ async function addCardToPortalAccount(
   await humanHesitate(1500, 2500);
   let redeemBtn: Locator | null = null;
 
-  if (benefitDetails.benefitProvider) {
-    const targetProvider = benefitDetails.benefitProvider.trim();
-    console.log(`[step 5] Searching for offer card specific to provider: "${targetProvider}"...`);
+  const targetProvider = (benefitDetails.benefitProvider || '').trim();
+  const targetOffer = (benefitDetails.exactBenefit || '').trim();
+  console.log(`[step 5] Searching for offer card specific to provider: "${targetProvider}", exactOffer: "${targetOffer}"...`);
 
-    // Strategy 1: Match by DOM hierarchy (evaluating which Redeem button sits in a container with provider text or logo)
-    const matchingBtnIndex = await page.evaluate(({ provider }) => {
-      const pLower = provider.toLowerCase();
-      const allButtons = Array.from(document.querySelectorAll('button, a')).filter((el) => {
-        const t = el.textContent?.trim().toLowerCase() || '';
-        return t.includes('redeem');
-      });
+  // Identify the target card using scoring on provider, duration, and keywords
+  const matched = await page.evaluate(({ provider, exactOffer }) => {
+    const pLower = (provider || '').toLowerCase().trim();
+    const offerLower = (exactOffer || '').toLowerCase().trim();
 
-      for (let i = 0; i < allButtons.length; i++) {
-        const btn = allButtons[i];
-        let curr = btn.parentElement;
-        for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
-          // If container contains more than 1 Redeem button, we have climbed out of the individual card into a parent grid/row!
-          const innerRedeemCount = Array.from(curr.querySelectorAll('button, a')).filter((el) => {
-            const t = el.textContent?.trim().toLowerCase() || '';
-            return t.includes('redeem');
-          }).length;
-          if (innerRedeemCount > 1) {
-            break;
-          }
+    // Clear previous attributes
+    document.querySelectorAll('[data-target-offer]').forEach((el) => el.removeAttribute('data-target-offer'));
 
-          const text = curr.textContent?.toLowerCase() || '';
-          const hasImg = Array.from(curr.querySelectorAll('img')).some((img) => {
-            const src = (img.src || '').toLowerCase();
-            const alt = (img.alt || '').toLowerCase();
-            return src.includes(pLower) || alt.includes(pLower);
-          });
-          if (text.includes(pLower) || hasImg) {
-            return i;
-          }
-          curr = curr.parentElement;
-        }
-      }
-      return -1;
-    }, { provider: targetProvider });
+    // Find all candidate action elements (buttons / links with 'redeem')
+    const allActionEls = Array.from(document.querySelectorAll('button, a, [role="button"], div.od-redeem-btn')).filter((el) => {
+      const t = el.textContent?.trim().toLowerCase() || '';
+      return t.includes('redeem');
+    });
 
-    if (matchingBtnIndex >= 0) {
-      console.log(`[step 5] ✓ Found matching provider card for "${targetProvider}" at button index ${matchingBtnIndex}!`);
-      const buttons = page.locator('button:has-text("Redeem"), a:has-text("Redeem"), button.od-redeem-btn');
-      redeemBtn = buttons.nth(matchingBtnIndex);
-    } else {
-      // Strategy 2: Playwright container filters
-      const containerCandidates = [
-        page.locator('div, section, article').filter({
-          has: page.locator(`:is(:text-matches("${targetProvider}", "i"), img[src*="${targetProvider.toLowerCase()}" i], img[alt*="${targetProvider.toLowerCase()}" i])`),
-        }).locator('button:has-text("Redeem"), a:has-text("Redeem"), button.od-redeem-btn').first(),
-        page.locator(`.offer-card:has-text("${targetProvider}"), .card:has-text("${targetProvider}"), div[class*="card" i]:has-text("${targetProvider}")`).locator('button:has-text("Redeem")').first(),
-      ];
+    let bestContainer: HTMLElement | null = null;
+    let bestScore = -999;
+    let bestIndex = -1;
 
-      for (const cand of containerCandidates) {
-        if (await cand.isVisible({ timeout: 1500 }).catch(() => false)) {
-          redeemBtn = cand;
+    for (let i = 0; i < allActionEls.length; i++) {
+      const btn = allActionEls[i] as HTMLElement;
+      let curr: HTMLElement | null = btn;
+      let cardContainer: HTMLElement | null = null;
+
+      // Walk up DOM hierarchy to find the card container
+      for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
+        const innerActionCount = Array.from(curr.querySelectorAll('button, a, [role="button"], div.od-redeem-btn')).filter((el) => {
+          const t = el.textContent?.trim().toLowerCase() || '';
+          return t.includes('redeem');
+        }).length;
+        if (innerActionCount > 1) {
           break;
         }
+        cardContainer = curr;
+        curr = curr.parentElement;
+      }
+
+      if (!cardContainer) continue;
+
+      const cardText = (cardContainer.textContent || '').toLowerCase();
+      const imgs = Array.from(cardContainer.querySelectorAll('img'));
+      const imgMatches = imgs.some((img) => {
+        const src = (img.src || '').toLowerCase();
+        const alt = (img.alt || '').toLowerCase();
+        return pLower && (src.includes(pLower) || alt.includes(pLower));
+      });
+
+      let score = 0;
+
+      // Check provider match
+      if (pLower) {
+        if (cardText.includes(pLower) || imgMatches) {
+          score += 50;
+        } else {
+          continue; // Must match provider if specified
+        }
+      }
+
+      // Check exact offer match
+      if (offerLower && !offerLower.startsWith('any one of')) {
+        if (cardText.includes(offerLower)) {
+          score += 100;
+        }
+
+        // Check duration match (e.g. "1 month" vs "3 month", "12 month")
+        const durationMatch = offerLower.match(/(\d+)\s*month/i);
+        if (durationMatch) {
+          const months = durationMatch[1];
+          const hasExactMonths =
+            cardText.includes(`${months} month`) ||
+            cardText.includes(`${months}-month`) ||
+            cardText.includes(`${months}month`) ||
+            cardText.includes(`${months} m`);
+          if (hasExactMonths) {
+            score += 60;
+          } else {
+            // Check if card explicitly specifies a conflicting duration (e.g. 3 Month when looking for 1 Month)
+            const otherDurationMatch = cardText.match(/(\d+)\s*month/i);
+            if (otherDurationMatch && otherDurationMatch[1] !== months) {
+              score -= 80; // Heavy penalty for conflicting duration!
+            }
+          }
+        }
+
+        // Check key distinctive keywords in exactOffer
+        const keywords = offerLower
+          .split(/[\s-]+/)
+          .map((w) => w.trim().toLowerCase())
+          .filter((w) => w.length > 3 && !['month', 'pass', 'subscription', 'free', 'access', 'card'].includes(w));
+        for (const kw of keywords) {
+          if (cardText.includes(kw)) {
+            score += 30;
+          }
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestContainer = cardContainer;
+        bestIndex = i;
       }
     }
 
-    if (!redeemBtn) {
-      throw new Error(`Target provider "${targetProvider}" card could NOT be found on the category page! Aborting to avoid redeeming the wrong offer.`);
+    if (bestContainer) {
+      bestContainer.setAttribute('data-target-offer', 'true');
+      return { found: true, score: bestScore, index: bestIndex, cardTextSnippet: (bestContainer.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) };
     }
+
+    return { found: false, score: bestScore, index: -1, cardTextSnippet: '' };
+  }, { provider: targetProvider, exactOffer: targetOffer });
+
+  if (matched.found) {
+    console.log(`[step 5] ✓ Matched exact target card (score: ${matched.score}, index: ${matched.index}): "${matched.cardTextSnippet}"`);
+    const cardEl = page.locator('[data-target-offer="true"]').first();
+    await cardEl.scrollIntoViewIfNeeded().catch(() => {});
+    redeemBtn = cardEl.locator('button:has-text("Redeem"), a:has-text("Redeem"), [role="button"]:has-text("Redeem"), div.od-redeem-btn, button').first();
   } else {
+    // Fallback: standard Redeem locator
     redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
   }
 
-  await redeemBtn.waitFor({ state: 'visible', timeout: 10000 });
+  if (!redeemBtn || !(await redeemBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+    throw new Error(`Target offer "${targetOffer}" (${targetProvider}) could NOT be found or its Redeem button was not visible. Aborting to avoid redeeming the wrong offer.`);
+  }
+
+  console.log('[step 5] Scrolling Redeem button into view and clicking naturally...');
+  await redeemBtn.scrollIntoViewIfNeeded().catch(() => {});
+  await redeemBtn.waitFor({ state: 'visible', timeout: 5000 });
   await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
+  await redeemBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
 
   console.log('\n--- Step 6: Checking Benefit Page / Payment Modal ---');
   await humanHesitate(1800, 2800);
@@ -742,8 +805,10 @@ async function addCardToPortalAccount(
   } else {
     const redeemNowBtn = page.locator('button:has-text("Redeem Now"), a:has-text("Redeem Now"), button.btn-redeem-now:visible').first();
     if (await redeemNowBtn.isVisible({ timeout: 4000 })) {
-      console.log('[step 6] Found "Redeem Now" button, clicking...');
+      console.log('[step 6] Found "Redeem Now" button, scrolling and clicking...');
+      await redeemNowBtn.scrollIntoViewIfNeeded().catch(() => {});
       await humanClick(redeemNowBtn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
+      await redeemNowBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
     } else {
       console.log('[step 6] "Redeem Now" not present or already on payment step, checking for confirmation modal...');
       await page.screenshot({ path: 'step6-debug.png' }).catch(() => {});
@@ -770,9 +835,9 @@ async function addCardToPortalAccount(
   console.log('[modal]', JSON.stringify(modalInfo));
 
   const continueToPaymentBtn = page
-    .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, .modal button:has-text("Continue"):visible, button:has-text("Continue"):visible, button.btn-custom_modal:visible')
+    .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, .modal button:has-text("Continue"):visible, button:has-text("Continue"):visible, button.btn-custom_modal:visible, button:has-text("Proceed"):visible')
     .first();
-  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 12000 });
+  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 15000 });
   console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
   await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
   // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler
@@ -975,24 +1040,26 @@ async function addCardToPortalAccount(
       if (sec % 10 === 0) {
         console.log(`[monitor] Waiting for transaction completion (${sec}s / 120s) - URL: ${currUrl}`);
       }
+
+      // 1. Immediate match in URL (e.g. #/Success/RUPS-E4084B90 or ?orderId=RUPS-E4084B90)
+      const urlMatch = currUrl.match(/RUPS-[A-Za-z0-9]+/i);
+      if (urlMatch) {
+        bookingRef = urlMatch[0].toUpperCase();
+        console.log(`[monitor] ✓ Extracted booking reference from URL: ${bookingRef}`);
+        break;
+      }
+
+      const urlLower = currUrl.toLowerCase();
       const isPostPaymentSuccess =
-        currUrl.includes('success') ||
-        currUrl.includes('confirm') ||
-        currUrl.includes('booking') ||
-        currUrl.includes('truztee.com/#/myaccount') ||
-        currUrl.includes('truztee.com/#/view-redeemed-offers');
+        urlLower.includes('success') ||
+        urlLower.includes('confirm') ||
+        urlLower.includes('booking') ||
+        urlLower.includes('truztee.com/#/myaccount') ||
+        urlLower.includes('truztee.com/#/view-redeemed-offers');
 
       if (isPostPaymentSuccess) {
-        // 1. Direct match in URL (e.g. #/Success/RUPS-5C977ED8 or ?orderId=RUPS-5C977ED8)
-        const urlMatch = currUrl.match(/RUPS-[A-Za-z0-9]+/i);
-        if (urlMatch) {
-          bookingRef = urlMatch[0];
-          console.log(`[monitor] ✓ Extracted booking reference from URL: ${bookingRef}`);
-          break;
-        }
-
         // 2. If tracked initiated order ID is confirmed on a success page
-        if (initiatedOrderId && (currUrl.includes('Success') || currUrl.includes('success'))) {
+        if (initiatedOrderId && urlLower.includes('success')) {
           bookingRef = initiatedOrderId;
           console.log(`[monitor] ✓ Confirmed tracked order ID from success redirect: ${bookingRef}`);
           break;
@@ -1146,6 +1213,13 @@ async function addCardToPortalAccount(
         });
         console.log(`[gateway] Sent booking confirmation via WhatsApp to ${targetPhoneNumber}.`);
       }
+
+      console.log('\n🎉 Order completed and confirmed. Closing browser cleanly...');
+      await page.waitForTimeout(1500).catch(() => {});
+      await context.close().catch(() => {});
+      await client.end().catch(() => {});
+      console.log('✓ Automation finished cleanly.');
+      process.exit(0);
     }
 
     // If loop finished without finding a booking reference, check if order is still pending or failed
@@ -1164,6 +1238,10 @@ async function addCardToPortalAccount(
         .update(schema.portalOrderAttempts)
         .set({ state: 'uncertain', failureCode: 'gateway_declined', finishedAt: new Date() })
         .where(eq(schema.portalOrderAttempts.id, attempt.id));
+      await activePaymentPage.waitForTimeout(2000).catch(() => {});
+      await context.close().catch(() => {});
+      await client.end().catch(() => {});
+      process.exit(1);
     }
   } else {
     console.log(`\n⚠️ OTP was not completed or timed out.`);
@@ -1173,11 +1251,11 @@ async function addCardToPortalAccount(
       .where(eq(schema.portalOrderAttempts.id, attempt.id));
   }
 
-  // Never kill the browser context abruptly: keep open for inspection if unresolved
-  await activePaymentPage.waitForTimeout(10000);
-  await context.close();
-  await client.end();
+  await activePaymentPage.waitForTimeout(2000).catch(() => {});
+  await context.close().catch(() => {});
+  await client.end().catch(() => {});
   console.log('Done.');
+  process.exit(0);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

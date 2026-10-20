@@ -45,6 +45,8 @@ export async function solveWith2Captcha(
   return null;
 }
 
+let capSolverDisabled = false;
+
 /**
  * Solves reCAPTCHA v2 using CapSolver API.
  */
@@ -53,6 +55,7 @@ export async function solveWithCapSolver(
   siteKey: string,
   pageUrl: string,
 ): Promise<string | null> {
+  if (capSolverDisabled) return null;
   console.log('[captcha] Requesting CapSolver token for sitekey:', siteKey);
   try {
     const inRes = await fetch('https://api.capsolver.com/createTask', {
@@ -70,6 +73,9 @@ export async function solveWithCapSolver(
     const inData = (await inRes.json()) as { errorId: number; taskId?: string; errorDescription?: string };
     if (inData.errorId !== 0 || !inData.taskId) {
       console.error('[captcha] CapSolver task creation error:', inData.errorDescription);
+      if (inData.errorDescription?.includes('invalid') || inData.errorDescription?.includes('insufficient') || inData.errorDescription?.includes('denied')) {
+        capSolverDisabled = true;
+      }
       return null;
     }
 
@@ -153,7 +159,7 @@ export async function transcribeAudioWithGemini(
   audioBuffer: Buffer,
   apiKey: string,
 ): Promise<string | null> {
-  const models = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+  const models = ['gemini-3.5-transcribe', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
   const base64Audio = audioBuffer.toString('base64');
 
   for (const model of models) {
@@ -164,14 +170,14 @@ export async function transcribeAudioWithGemini(
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(8000),
         body: JSON.stringify({
           contents: [
             {
               role: 'user',
               parts: [
                 {
-                  text: 'Listen to this audio challenge carefully. Transcribe ONLY the numbers or words spoken. Return just the plain transcribed digits or words separated by space and nothing else.',
+                  text: 'You are an accurate audio transcription system for a reCAPTCHA audio challenge. Transcribe the spoken numbers or words in this audio challenge completely from start to finish. Output ONLY the transcribed numbers or words separated by single spaces (e.g. "4 8 2 1 9" or "word word"). Do not add any punctuation, quotes, markdown, or explanatory text.',
                 },
                 {
                   inlineData: {
@@ -183,7 +189,7 @@ export async function transcribeAudioWithGemini(
             },
           ],
           generationConfig: {
-            maxOutputTokens: 60,
+            maxOutputTokens: 100,
             temperature: 0.1,
           },
         }),
@@ -329,9 +335,11 @@ export async function solveRecaptchaViaAudio(
       }
 
       // 5. Enter transcription into input
+      const cleanTranscription = transcription.replace(/["'\.,;]/g, '').trim();
+      console.log(`[captcha] Entering transcription: "${cleanTranscription}"`);
       const responseInput = bframe.locator('#audio-response').first();
       await responseInput.fill('');
-      await humanType(responseInput, transcription, { minCharDelayMs: 90, maxCharDelayMs: 180 });
+      await humanType(responseInput, cleanTranscription, { minCharDelayMs: 80, maxCharDelayMs: 160 });
       await humanHesitate(400, 800);
 
       // 6. Click verify
