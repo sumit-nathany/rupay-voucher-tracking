@@ -17,8 +17,8 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Link2,
   AlertCircle,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import type { QueueItemView } from '@/domain/ordering-queue';
 import type { PortalAccountView } from '@/domain/automation';
 import type { CardOption } from './mapping-dialogs';
@@ -317,7 +318,7 @@ export function OrderQueueSection({
   return (
     <div className="space-y-5">
       {/* Header & Controls */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
@@ -334,88 +335,62 @@ export function OrderQueueSection({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
-          {/* Card Filter Dropdown (Default view is on a card basis) */}
-          <div className="flex items-center gap-1.5">
-            <Select
-              value={selectedCardId}
-              onValueChange={setSelectedCardId}
-              disabled={isPending}
-            >
-              <SelectTrigger className="h-9 min-w-[210px] sm:min-w-[260px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
-                <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground text-xs font-normal">Card:</span>
-                <SelectValue placeholder="All Cards" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="all" className="text-xs sm:text-sm font-medium">
-                  All Cards ({items.length})
+        <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto shrink-0">
+          {/* Card Filter Dropdown */}
+          <Select
+            value={selectedCardId}
+            onValueChange={setSelectedCardId}
+            disabled={isPending}
+          >
+            <SelectTrigger className="h-9 min-w-[200px] sm:min-w-[240px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+              <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs font-normal">Card:</span>
+              <SelectValue placeholder="All Cards" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+                All Cards ({items.length})
+              </SelectItem>
+              {cardSummaries.map((c) => (
+                <SelectItem key={c.id} value={c.id} className="text-xs sm:text-sm">
+                  {c.name} ••{c.last4} · {c.holderName} ({c.count})
                 </SelectItem>
-                {cardSummaries.map((c) => (
-                  <SelectItem key={c.id} value={c.id} className="text-xs sm:text-sm">
-                    {c.name} ••{c.last4} · {c.holderName} ({c.count})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedCardId !== 'all' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedCardId('all')}
-                className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground rounded-xl"
-                title="Show all cards"
-              >
-                All Cards
-              </Button>
-            )}
-          </div>
+              ))}
+            </SelectContent>
+          </Select>
 
           {/* Account Filter */}
-          <div className="flex items-center gap-1.5">
-            <Select
-              value={selectedAccountId}
-              onValueChange={setSelectedAccountId}
-              disabled={isPending}
-            >
-              <SelectTrigger className="h-9 min-w-[190px] sm:min-w-[220px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
-                <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground text-xs font-normal">Account:</span>
-                <SelectValue placeholder="All Accounts" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="all" className="text-xs sm:text-sm font-medium">
-                  All Accounts
-                </SelectItem>
-                {accounts.map((acc) => {
-                  const count = items.filter(
-                    (i) =>
-                      i.portalAccountId === acc.id ||
-                      i.portalAccounts.some((a) => a.id === acc.id),
-                  ).length;
-                  return (
-                    <SelectItem key={acc.id} value={acc.id} className="text-xs sm:text-sm">
-                      {acc.label} ({count})
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            {selectedAccountId !== 'all' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedAccountId('all')}
-                className="h-9 px-2 text-xs text-muted-foreground hover:text-foreground rounded-xl"
-                title="Reset account filter"
-              >
-                Reset
-              </Button>
-            )}
-          </div>
+          <Select
+            value={selectedAccountId}
+            onValueChange={setSelectedAccountId}
+            disabled={isPending}
+          >
+            <SelectTrigger className="h-9 min-w-[170px] sm:min-w-[200px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground text-xs font-normal">Account:</span>
+              <SelectValue placeholder="All Accounts" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+                All Accounts
+              </SelectItem>
+              {accounts.map((acc) => {
+                const count = items.filter(
+                  (i) =>
+                    i.portalAccountId === acc.id ||
+                    i.portalAccounts.some((a) => a.id === acc.id),
+                ).length;
+                return (
+                  <SelectItem key={acc.id} value={acc.id} className="text-xs sm:text-sm">
+                    {acc.label} ({count})
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
 
           {/* Quick Auto-Sort */}
-          <div className="w-48 sm:w-52">
+          <div className="w-44 sm:w-48">
             <Select
               defaultValue="nearest_expiring"
               onValueChange={(v) => handleAutoSort(v as 'nearest_expiring' | 'highest_value')}
@@ -423,7 +398,7 @@ export function OrderQueueSection({
             >
               <SelectTrigger className="h-9 text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
                 <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
-                <SelectValue placeholder="Auto-Sort..." />
+                <SelectValue placeholder="Sort..." />
               </SelectTrigger>
               <SelectContent className="rounded-xl">
                 <SelectItem value="nearest_expiring" className="text-xs sm:text-sm">
@@ -438,10 +413,10 @@ export function OrderQueueSection({
 
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={handleRefresh}
             disabled={isPending}
-            className="h-9 px-2.5 rounded-xl text-muted-foreground hover:text-foreground"
+            className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground"
             title="Refresh Queue"
           >
             <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
@@ -449,41 +424,53 @@ export function OrderQueueSection({
         </div>
       </div>
 
-      {/* Active Card Summary Banner (when viewing on a per-card basis) */}
-      {activeCardSummary && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-card border border-border/80 shadow-2xs">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <CreditCard className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-sm sm:text-base text-foreground">
-                  {activeCardSummary.name}
-                </span>
-                <span className="text-xs text-muted-foreground font-mono font-medium">
-                  ••{activeCardSummary.last4}
-                </span>
-                <Badge variant="outline" className="text-xs">
-                  {activeCardSummary.holderName}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {activeCardSummary.count} {activeCardSummary.count === 1 ? 'benefit' : 'benefits'} available for this card
-                {activeCardSummary.totalCashValue > 0 && ` · ₹${Math.round(activeCardSummary.totalCashValue)} total value`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedCardId('all')}
-              className="h-8 text-xs font-medium rounded-xl border-border/80 gap-1.5"
-            >
-              View All Cards
-            </Button>
-          </div>
+      {/* Active Filter Strip (sleek & non-intrusive) */}
+      {(selectedCardId !== 'all' || selectedAccountId !== 'all') && (
+        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground bg-muted/30 border border-border/60 rounded-xl px-3.5 py-2">
+          <span className="font-medium text-foreground/80">Active filter:</span>
+          {activeCardSummary && (
+            <Badge variant="secondary" className="gap-1.5 text-xs font-medium py-0.5">
+              <CreditCard className="h-3 w-3" />
+              <span>
+                {activeCardSummary.name} ••{activeCardSummary.last4} ({activeCardSummary.count} vouchers)
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedCardId('all')}
+                className="ml-1 hover:text-destructive cursor-pointer"
+                title="Clear card filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {selectedAccountId !== 'all' && (
+            <Badge variant="secondary" className="gap-1.5 text-xs font-medium py-0.5">
+              <KeyRound className="h-3 w-3" />
+              <span>
+                Account: {accounts.find((a) => a.id === selectedAccountId)?.label ?? selectedAccountId}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedAccountId('all')}
+                className="ml-1 hover:text-destructive cursor-pointer"
+                title="Clear account filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedCardId('all');
+              setSelectedAccountId('all');
+            }}
+            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground ml-auto cursor-pointer"
+          >
+            Clear all
+          </Button>
         </div>
       )}
 
@@ -531,345 +518,189 @@ export function OrderQueueSection({
             const hasOptions = item.availableOptions.length > 0;
             const optionNeeded = hasOptions && !item.chosenOptionId;
 
+            // Mapped accounts for this card
+            const mappedAccounts = (item.suggestedAccounts || []).filter((a) => a.isMapped);
+
+            // Active/selected redemption account
+            const activeAccount = item.chosenPortalAccountId
+              ? item.suggestedAccounts?.find((a) => a.accountId === item.chosenPortalAccountId)
+              : item.suggestedAccounts?.find((a) => a.isRecommended) ||
+                mappedAccounts.find((a) => a.isEligible) ||
+                mappedAccounts[0] ||
+                null;
+
+            // Status badge for the active redemption account
+            let activeStatusBadge = null;
+            if (!activeAccount) {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 gap-1 text-xs font-medium"
+                >
+                  <AlertTriangle className="h-3 w-3" /> No account mapped
+                </Badge>
+              );
+            } else if (activeAccount.status === 'ready') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 gap-1 text-xs font-medium"
+                >
+                  <CheckCircle2 className="h-3 w-3" /> Ready
+                </Badge>
+              );
+            } else if (activeAccount.status === 'cooldown') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400 gap-1 text-xs font-medium"
+                >
+                  <Clock className="h-3 w-3" /> 24h Cooldown
+                </Badge>
+              );
+            } else if (activeAccount.status === 'conflict') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 gap-1 text-xs font-medium"
+                >
+                  <AlertTriangle className="h-3 w-3" /> Used this period
+                </Badge>
+              );
+            } else if (activeAccount.status === 'missing_details') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400 gap-1 text-xs font-medium"
+                >
+                  <AlertCircle className="h-3 w-3" /> Missing CVV
+                </Badge>
+              );
+            } else {
+              activeStatusBadge = (
+                <Badge variant="outline" className="text-muted-foreground gap-1 text-xs font-medium">
+                  {activeAccount.status}
+                </Badge>
+              );
+            }
+
             return (
               <div
                 key={item.instanceId}
-                className={`relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border transition-all ${
+                className={cn(
+                  'relative flex flex-col gap-3 p-4 sm:p-5 rounded-2xl border transition-all shadow-xs',
                   item.enabled
                     ? isGlobalFirst
-                      ? 'bg-primary/5 border-primary/30 shadow-xs ring-1 ring-primary/20'
-                      : 'bg-card border-border/80 hover:border-border shadow-xs'
-                    : 'bg-muted/30 border-dashed border-border/60 opacity-60'
-                }`}
+                      ? 'bg-primary/[0.03] border-primary/40 ring-1 ring-primary/20'
+                      : 'bg-card border-border/80 hover:border-border'
+                    : 'bg-muted/20 border-dashed border-border/60 opacity-60'
+                )}
               >
-                {/* Left: Reorder Controls + Rank + Info */}
-                <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
-                  {/* Position Badge & Reorder Controls */}
-                  <div className="flex flex-col sm:flex-row items-center gap-1.5 shrink-0">
-                    <div className="flex items-center sm:flex-col justify-center gap-0.5">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isGlobalFirst || isPending}
-                        onClick={() => handleMoveToTop(item.instanceId)}
-                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
-                        title="Move to Top of Global Queue (Rank #1)"
-                      >
-                        <ArrowUpToLine className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isFirstInDisplay || isPending}
-                        onClick={() => handleMove(item.instanceId, 'up')}
-                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
-                        title="Move Up in Queue"
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isLastInDisplay || isPending}
-                        onClick={() => handleMove(item.instanceId, 'down')}
-                        className="h-6 w-6 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
-                        title="Move Down in Queue"
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-
-                    <div
-                      className={`flex items-center justify-center h-8 px-2 min-w-8 rounded-xl font-bold text-xs sm:text-sm tracking-tight ${
-                        isGlobalFirst && item.enabled
-                          ? 'bg-primary text-primary-foreground shadow-xs'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                      title={`Global Queue Position #${item.position}`}
-                    >
-                      #{item.position}
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {item.benefitType && (
-                        <Badge variant="outline" className="text-xs font-semibold shrink-0">
-                          {item.benefitType}
-                        </Badge>
-                      )}
-
-                      <span className="font-semibold text-sm sm:text-base text-foreground truncate">
-                        {item.benefitProvider
-                          ? `${item.benefitProvider} - ${item.exactBenefit}`
-                          : item.exactBenefit}
-                      </span>
-
-                      {item.cashValue > 0 && (
-                        <span className="text-xs sm:text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                          ₹{Math.round(item.cashValue)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Metadata: one quiet line */}
-                    <div className="flex items-center gap-x-3 gap-y-1 text-xs text-muted-foreground flex-wrap">
-                      <span className="flex items-center gap-1 font-medium text-foreground/80">
-                        <CreditCard className="h-3 w-3 text-muted-foreground" />
-                        <span>{item.cardName} ••{item.cardLast4} · {item.holderName}</span>
-                      </span>
-
-                      <span
-                        className={`flex items-center gap-1 ${
-                          isUrgent ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
-                        }`}
-                      >
-                        <Calendar className="h-3 w-3" />
-                        <span>
-                          Expires {item.orderDeadline} ({item.daysRemaining}d)
-                        </span>
-                      </span>
-
-                      {!item.enabled && (
-                        <span className="font-medium text-muted-foreground/70">Skipped</span>
-                      )}
-                    </div>
-
-                    {/* Pick-One Category Option Selector */}
-                    {hasOptions && (
-                      <div className="pt-1 flex items-center gap-2 flex-wrap">
-                        <div className="min-w-[240px] max-w-sm">
-                          <Select
-                            value={item.chosenOptionId ?? ''}
-                            onValueChange={(val) => handleSelectOption(item.instanceId, val)}
-                            disabled={!item.enabled || isPending}
+                {/* Row 1: Position, Benefit Details, and Active Switch */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                    {/* Position Badge & Controls */}
+                    <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                      <div className="flex flex-col items-center justify-center -space-y-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={isGlobalFirst || isPending}
+                          onClick={() => handleMoveToTop(item.instanceId)}
+                          className="h-5 w-5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-20 cursor-pointer"
+                          title="Move to top (#1)"
+                        >
+                          <ArrowUpToLine className="h-3 w-3" />
+                        </Button>
+                        <div className="flex items-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={isFirstInDisplay || isPending}
+                            onClick={() => handleMove(item.instanceId, 'up')}
+                            className="h-5 w-5 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-20 cursor-pointer"
+                            title="Move up"
                           >
-                            <SelectTrigger
-                              className="h-8 text-xs rounded-xl border-border/80 bg-background font-medium"
-                              aria-label={`Pick ${item.benefitType || 'benefit'} option`}
-                            >
-                              <SelectValue placeholder={`Pick ${item.benefitType || 'benefit'} option...`} />
-                            </SelectTrigger>
-                            <SelectContent className="rounded-xl">
-                              {item.availableOptions.map((opt) => (
-                                <SelectItem key={opt.id} value={opt.id} className="text-xs">
-                                  {opt.provider} - {opt.offerName}
-                                  {opt.cashValue ? ` (₹${Math.round(opt.cashValue)})` : ''}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <ArrowUp className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={isLastInDisplay || isPending}
+                            onClick={() => handleMove(item.instanceId, 'down')}
+                            className="h-5 w-5 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-20 cursor-pointer"
+                            title="Move down"
+                          >
+                            <ArrowDown className="h-3 w-3" />
+                          </Button>
                         </div>
-                        {optionNeeded ? (
-                          <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                            <AlertTriangle className="h-3 w-3 shrink-0" />
-                            Choice required
+                      </div>
+
+                      <div
+                        className={cn(
+                          'flex items-center justify-center h-8 min-w-8 px-2 rounded-xl font-bold text-xs sm:text-sm tracking-tight',
+                          isGlobalFirst && item.enabled
+                            ? 'bg-primary text-primary-foreground shadow-2xs'
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                        title={`Queue position #${item.position}`}
+                      >
+                        #{item.position}
+                      </div>
+                    </div>
+
+                    {/* Benefit Details & Title */}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {item.benefitType && (
+                          <Badge variant="outline" className="text-xs font-semibold shrink-0 bg-muted/40">
+                            {item.benefitType}
+                          </Badge>
+                        )}
+
+                        <span className="font-semibold text-sm sm:text-base text-foreground truncate">
+                          {item.benefitProvider
+                            ? `${item.benefitProvider} - ${item.exactBenefit}`
+                            : item.exactBenefit}
+                        </span>
+
+                        {item.cashValue > 0 && (
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md shrink-0">
+                            ₹{Math.round(item.cashValue)}
                           </span>
-                        ) : (
-                          item.chosenOptionName && (
-                            <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="h-3 w-3" />
-                              Selected
-                            </span>
-                          )
                         )}
                       </div>
-                    )}
 
-                    {/* RuPay Account Selection & Suggestions */}
-                    <div className="pt-2.5 border-t border-border/40 space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/80">
-                          <KeyRound className="h-3.5 w-3.5 text-primary shrink-0" />
-                          <span>Redeem using RuPay Account:</span>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <select
-                            value={item.chosenPortalAccountId || ''}
-                            onChange={(e) => handleSelectAccount(item.instanceId, e.target.value || null)}
-                            className="h-8 text-xs rounded-md border border-input bg-background px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
-                          >
-                            <option value="">
-                              Auto-select (Recommended: {item.suggestedAccounts?.find((a) => a.isRecommended)?.accountLabel || 'First eligible'})
-                            </option>
-                            {item.suggestedAccounts
-                              ?.filter((a) => a.isMapped)
-                              .map((acc) => {
-                                const statusLabel =
-                                  acc.status === 'ready'
-                                    ? 'Ready'
-                                    : acc.status === 'cooldown'
-                                    ? '24h Cooldown'
-                                    : acc.status === 'conflict'
-                                    ? 'Used this period'
-                                    : acc.status === 'missing_details'
-                                    ? 'Missing CVV'
-                                    : acc.status;
-                                return (
-                                  <option key={acc.accountId} value={acc.accountId}>
-                                    {acc.accountLabel} ({statusLabel})
-                                  </option>
-                                );
-                              })}
-                          </select>
-                          {item.chosenPortalAccountId && (
-                            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 shrink-0 font-medium">
-                              Explicit
-                            </Badge>
+                      {/* Card & Expiry Meta Line */}
+                      <div className="flex items-center gap-x-3 gap-y-1 text-xs text-muted-foreground flex-wrap">
+                        <span className="flex items-center gap-1 font-medium text-foreground/80">
+                          <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>{item.cardName} ••{item.cardLast4} · {item.holderName}</span>
+                        </span>
+
+                        <span
+                          className={cn(
+                            'flex items-center gap-1',
+                            isUrgent ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''
                           )}
-                          {item.suggestedAccounts?.some((a) => a.isEligible && a.status === 'ready') ? (
-                            <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <CheckCircle2 className="h-3 w-3" /> Ready
-                            </span>
-                          ) : item.suggestedAccounts?.some((a) => a.status === 'cooldown') ? (
-                            <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                              <Clock className="h-3 w-3" /> Cooldown
-                            </span>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {item.suggestedAccounts && item.suggestedAccounts.length > 0 ? (
-                          item.suggestedAccounts.map((acc) => {
-                            const isSelected = acc.isChosen || (Boolean(item.portalAccountId) && acc.accountId === item.portalAccountId);
-                            if (acc.status === 'ready') {
-                              return (
-                                <Badge
-                                  key={acc.accountId}
-                                  variant="outline"
-                                  className={`bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 gap-1.5 text-xs font-medium py-1 px-2.5 ${
-                                    isSelected ? 'ring-2 ring-primary ring-offset-1 border-primary font-semibold' : ''
-                                  }`}
-                                  title={`${acc.accountLabel}: Ready to order. No conflict in this period.`}
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                                  <span>{acc.accountLabel}</span>
-                                  {isSelected && (
-                                    <span className="text-[9px] font-bold text-primary-foreground bg-primary px-1 py-0.5 rounded">
-                                      {acc.isChosen ? 'Selected' : 'Active'}
-                                    </span>
-                                  )}
-                                  <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded">
-                                    Ready
-                                  </span>
-                                </Badge>
-                              );
-                            }
-
-                            if (acc.status === 'cooldown') {
-                              return (
-                                <Badge
-                                  key={acc.accountId}
-                                  variant="outline"
-                                  className={`bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/30 gap-1.5 text-xs font-medium py-1 px-2.5 ${
-                                    isSelected ? 'ring-2 ring-primary ring-offset-1 border-primary font-semibold' : ''
-                                  }`}
-                                  title={`${acc.accountLabel}: Eligible, but currently under 24-hour rate limit cooldown.`}
-                                >
-                                  <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                                  <span>{acc.accountLabel}</span>
-                                  {isSelected && (
-                                    <span className="text-[9px] font-bold text-primary-foreground bg-primary px-1 py-0.5 rounded">
-                                      {acc.isChosen ? 'Selected' : 'Active'}
-                                    </span>
-                                  )}
-                                  <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-500/20 px-1 py-0.5 rounded">
-                                    24h Cooldown
-                                  </span>
-                                </Badge>
-                              );
-                            }
-
-                            if (acc.status === 'conflict') {
-                              return (
-                                <Badge
-                                  key={acc.accountId}
-                                  variant="outline"
-                                  className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
-                                  title={`${acc.accountLabel}: ${acc.reason}`}
-                                >
-                                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                                  <span>{acc.accountLabel}</span>
-                                  <span className="text-[10px] font-normal text-amber-700 dark:text-amber-400">
-                                    (Used this period)
-                                  </span>
-                                </Badge>
-                              );
-                            }
-
-                            if (acc.status === 'available_to_map') {
-                              return (
-                                <Badge
-                                  key={acc.accountId}
-                                  variant="outline"
-                                  className="bg-muted/40 text-muted-foreground border-border/80 gap-1.5 text-xs font-normal py-1 px-2.5"
-                                  title={`Map this card to ${acc.accountLabel} to redeem this benefit.`}
-                                >
-                                  <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                  <span>{acc.accountLabel}</span>
-                                  <span className="text-[10px] text-muted-foreground/80">
-                                    (Can redeem if mapped)
-                                  </span>
-                                </Badge>
-                              );
-                            }
-
-                            if (acc.status === 'missing_details') {
-                              return (
-                                <Badge
-                                  key={acc.accountId}
-                                  variant="outline"
-                                  className="bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/30 gap-1.5 text-xs font-medium py-1 px-2.5"
-                                  title={`${acc.accountLabel}: Card lacks payment details (CVV/expiry).`}
-                                >
-                                  <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
-                                  <span>{acc.accountLabel}</span>
-                                  <span className="text-[10px] font-normal text-red-700 dark:text-red-400">
-                                    (Missing CVV)
-                                  </span>
-                                </Badge>
-                              );
-                            }
-
-                            return (
-                              <Badge
-                                key={acc.accountId}
-                                variant="outline"
-                                className="bg-muted/30 text-muted-foreground/80 border-border/60 gap-1.5 text-xs font-normal py-1 px-2.5"
-                                title={`${acc.accountLabel}: ${acc.reason}`}
-                              >
-                                <span>{acc.accountLabel}</span>
-                                <span className="text-[10px]">({acc.reason})</span>
-                              </Badge>
-                            );
-                          })
-                        ) : item.portalAccounts.length > 0 ? (
-                          item.portalAccounts.map((a) => (
-                            <Badge
-                              key={a.id}
-                              variant="outline"
-                              className="text-xs font-medium py-1 px-2.5 gap-1"
-                            >
-                              <KeyRound className="h-3 w-3 text-muted-foreground" />
-                              <span>{a.label}</span>
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            No RuPay accounts mapped to this card yet.
+                        >
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>
+                            Expires {item.orderDeadline} ({item.daysRemaining}d left)
                           </span>
+                        </span>
+
+                        {!item.enabled && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground py-0">
+                            Skipped
+                          </Badge>
                         )}
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Right: Toggle Active / Skip */}
-                <div className="flex items-center gap-3 self-end sm:self-center shrink-0 pl-2">
-                  <div className="flex items-center gap-2">
+                  {/* Toggle Active Switch (Top Right) */}
+                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
                     <span className="text-xs text-muted-foreground hidden sm:inline font-medium">
                       {item.enabled ? 'Active' : 'Skipped'}
                     </span>
@@ -879,18 +710,114 @@ export function OrderQueueSection({
                       aria-checked={item.enabled}
                       disabled={isPending}
                       onClick={() => handleToggleEnabled(item.instanceId, !item.enabled)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+                      className={cn(
+                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                         item.enabled ? 'bg-primary' : 'bg-muted-foreground/30'
-                      }`}
+                      )}
                       title={item.enabled ? 'Click to skip this voucher' : 'Click to enable this voucher in queue'}
                     >
                       <span
                         aria-hidden="true"
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                        className={cn(
+                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-2xs ring-0 transition duration-200 ease-in-out',
                           item.enabled ? 'translate-x-5' : 'translate-x-0'
-                        }`}
+                        )}
                       />
                     </button>
+                  </div>
+                </div>
+
+                {/* Row 2: Actions & Redemption Controls (Clean, Compact, No Clutter) */}
+                <div className="pt-2.5 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
+                  {/* Pick-One Category Option Selector */}
+                  {hasOptions ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground font-medium shrink-0">Offer:</span>
+                      <div className="min-w-[210px] max-w-sm">
+                        <Select
+                          value={item.chosenOptionId ?? ''}
+                          onValueChange={(val) => handleSelectOption(item.instanceId, val)}
+                          disabled={!item.enabled || isPending}
+                        >
+                          <SelectTrigger
+                            className="h-8 text-xs rounded-xl border-border/80 bg-background font-medium"
+                            aria-label={`Pick ${item.benefitType || 'benefit'} option`}
+                          >
+                            <SelectValue placeholder={`Pick ${item.benefitType || 'benefit'} option...`} />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl">
+                            {item.availableOptions.map((opt) => (
+                              <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                                {opt.provider} - {opt.offerName}
+                                {opt.cashValue ? ` (₹${Math.round(opt.cashValue)})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {optionNeeded ? (
+                        <span className="flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                          <AlertTriangle className="h-3 w-3 shrink-0" />
+                          Choice required
+                        </span>
+                      ) : (
+                        item.chosenOptionName && (
+                          <span className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Selected
+                          </span>
+                        )
+                      )}
+                    </div>
+                  ) : <div />}
+
+                  {/* RuPay Account Redemption Selector */}
+                  <div className="flex items-center gap-2 flex-wrap ml-auto sm:ml-0">
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5 shrink-0">
+                      <KeyRound className="h-3.5 w-3.5 text-primary" />
+                      Redeem with:
+                    </span>
+
+                    <select
+                      value={item.chosenPortalAccountId || ''}
+                      onChange={(e) => handleSelectAccount(item.instanceId, e.target.value || null)}
+                      className="h-8 text-xs rounded-xl border border-input bg-background px-2.5 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary font-medium"
+                    >
+                      <option value="">
+                        Auto-select ({activeAccount?.accountLabel || 'First eligible'})
+                      </option>
+                      {mappedAccounts.map((acc) => {
+                        const statusLabel =
+                          acc.status === 'ready'
+                            ? 'Ready'
+                            : acc.status === 'cooldown'
+                            ? '24h Cooldown'
+                            : acc.status === 'conflict'
+                            ? 'Used this period'
+                            : acc.status === 'missing_details'
+                            ? 'Missing CVV'
+                            : acc.status;
+                        return (
+                          <option key={acc.accountId} value={acc.accountId}>
+                            {acc.accountLabel} ({statusLabel})
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    {item.chosenPortalAccountId && (
+                      <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 shrink-0 font-medium">
+                        Explicit
+                      </Badge>
+                    )}
+
+                    {activeStatusBadge}
+
+                    {mappedAccounts.length > 1 && (
+                      <span className="text-[11px] text-muted-foreground/70 hidden md:inline">
+                        ({mappedAccounts.length} mapped)
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

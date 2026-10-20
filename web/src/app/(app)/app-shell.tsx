@@ -141,18 +141,17 @@ export function AppShell({
             {/* Desktop toggle button when sidebar is hidden */}
             <Button
               type="button"
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon"
               className={cn(
-                'hidden h-8 items-center gap-1.5 px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground',
+                'hidden h-8 w-8 text-muted-foreground hover:text-foreground',
                 !pinned && 'lg:inline-flex',
               )}
               onClick={togglePinned}
-              title="Show navigation bar"
-              aria-label="Show navigation bar"
+              title="Open sidebar"
+              aria-label="Open sidebar"
             >
               <PanelLeftOpen className="h-4 w-4" />
-              <span>Show nav bar</span>
             </Button>
 
             {/* When sidebar is hidden or on mobile, show brandmark in topbar */}
@@ -174,14 +173,13 @@ export function AppShell({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
-                className="hidden lg:inline-flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+                size="icon"
+                className="hidden lg:inline-flex h-8 w-8 text-muted-foreground hover:text-foreground"
                 onClick={togglePinned}
-                title="Hide navigation bar"
-                aria-label="Hide navigation bar"
+                title="Hide sidebar"
+                aria-label="Hide sidebar"
               >
-                <PanelLeftClose className="h-3.5 w-3.5" />
-                <span>Hide nav bar</span>
+                <PanelLeftClose className="h-4 w-4" />
               </Button>
             )}
 
