@@ -85,7 +85,7 @@ export function AccountsView({
                   </p>
                 </div>
               ) : (
-                <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
+                <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                   {activeAccounts.map((account) => (
                     <li key={account.id}>
                       <AccountDetailSheet
@@ -118,7 +118,7 @@ export function AccountsView({
                 </p>
               </div>
 
-              <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
+              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
                 {inactiveAccounts.map((account) => (
                   <li key={account.id}>
                     <AccountDetailSheet
@@ -133,7 +133,7 @@ export function AccountsView({
             </section>
           </>
         ) : (
-          <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {accounts.map((account) => (
               <li key={account.id}>
                 <AccountDetailSheet
@@ -171,7 +171,7 @@ export function AccountsView({
             </p>
           </div>
         ) : (
-          <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {activeAccounts.map((account) => (
               <li key={account.id}>
                 <AccountDetailSheet
@@ -212,7 +212,7 @@ export function AccountsView({
             </p>
           </div>
         ) : (
-          <ul className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,390px),1fr))]">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
             {inactiveAccounts.map((account) => (
               <li key={account.id}>
                 <AccountDetailSheet

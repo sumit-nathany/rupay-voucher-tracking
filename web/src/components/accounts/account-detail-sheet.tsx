@@ -223,85 +223,53 @@ export function AccountDetailSheet({
               className={cn(
                 'h-full overflow-hidden rounded-2xl transition-all cursor-pointer',
                 isPaused
-                  ? 'opacity-75 bg-muted/20 border border-dashed border-border/80 hover:opacity-100 hover:border-border hover:shadow-xs'
-                  : 'border border-border/70 hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/20',
+                  ? 'opacity-80 bg-muted/20 border border-dashed border-border/80 hover:opacity-100 hover:border-border hover:shadow-xs'
+                  : 'border border-border/70 hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/15',
               )}
             >
-              <CardContent className="flex flex-row items-center justify-between gap-3.5 p-4 sm:p-5">
-                <div className="flex min-w-0 flex-1 items-center gap-3.5">
-                  <div
-                    aria-hidden
-                    className={cn(
-                      'grid h-11 w-11 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
-                      isPaused
-                        ? 'bg-muted/60 border border-border/60 text-muted-foreground'
-                        : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
-                    )}
-                  >
-                    <KeyRound className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 space-y-1 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
+              <CardContent className="flex flex-col justify-between gap-3 p-4 sm:p-5 h-full">
+                {/* Top Row: Icon + Account Label + Quick Active/Paused Switch */}
+                <div className="flex items-start justify-between gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div
+                      aria-hidden
+                      className={cn(
+                        'grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
+                        isPaused
+                          ? 'bg-muted/60 border border-border/60 text-muted-foreground'
+                          : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
+                      )}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p
                         className={cn(
-                          'font-semibold text-base leading-snug transition-colors [overflow-wrap:anywhere]',
+                          'font-semibold text-sm sm:text-base leading-tight truncate transition-colors',
                           isPaused
                             ? 'text-muted-foreground group-hover:text-foreground'
                             : 'text-foreground group-hover:text-primary',
                         )}
+                        title={account.label}
                       >
                         {account.label}
-                      </span>
-                      {isCooldown ? (
-                        <Badge
-                          variant="outline"
-                          className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-semibold gap-1 shrink-0"
-                        >
-                          <Clock className="h-3 w-3" />
-                          Cooldown
-                        </Badge>
-                      ) : isPaused ? (
-                        <Badge
-                          variant="outline"
-                          className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-xs font-medium gap-1 shrink-0"
-                        >
-                          <Pause className="h-2.5 w-2.5" />
-                          Paused
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className={`text-xs font-medium tracking-wider capitalize shrink-0 ${getStatusTone(account.status)}`}
-                        >
-                          {account.status.replace(/_/g, ' ')}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>
-                        {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'} mapped
-                      </span>
-                      {account.phoneNumber && <span>• Mobile: {account.phoneNumber}</span>}
-                      {isCooldown && formattedCooldownTime && (
-                        <span className="text-amber-600 dark:text-amber-400 font-medium">
-                          • Unlocks {formattedCooldownTime}
-                        </span>
-                      )}
-                    </div>
-                    {account.status === 'needs_attention' && (
-                      <p className="text-xs text-destructive font-medium break-words pt-0.5">
-                        {getPortalStatusExplanation(account.status, account.statusDetailCode)}
                       </p>
-                    )}
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {account.phoneNumber ? `Mobile: ${account.phoneNumber}` : 'No phone linked'}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-3 pl-1">
+
+                  {/* Quick Active/Paused Switch */}
                   <div
-                    className="flex items-center"
+                    className="flex items-center gap-1.5 shrink-0 pt-0.5"
                     onClick={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
                   >
+                    <span className="text-[11px] font-medium text-muted-foreground hidden sm:inline">
+                      {isPaused ? 'Paused' : 'Active'}
+                    </span>
                     <button
                       type="button"
                       role="switch"
@@ -323,7 +291,7 @@ export function AccountDetailSheet({
                         }
                       }}
                       className={cn(
-                        'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
                         isPaused
                           ? 'bg-muted-foreground/30 hover:bg-muted-foreground/45'
                           : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600',
@@ -331,23 +299,72 @@ export function AccountDetailSheet({
                     >
                       <span
                         className={cn(
-                          'pointer-events-none flex h-5 w-5 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
-                          isPaused ? 'translate-x-0' : 'translate-x-5',
+                          'pointer-events-none flex h-4 w-4 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
+                          isPaused ? 'translate-x-0' : 'translate-x-4',
                         )}
                       >
                         {isTogglePending ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
                         ) : isPaused ? (
-                          <Pause className="h-2.5 w-2.5 text-muted-foreground" />
+                          <Pause className="h-2 w-2 text-muted-foreground" />
                         ) : (
-                          <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
                         )}
                       </span>
                     </button>
                   </div>
-                  <div className="text-muted-foreground group-hover:text-foreground">
-                    <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                </div>
+
+                {/* Status Explanation (if needs attention) */}
+                {account.status === 'needs_attention' && (
+                  <p className="text-xs text-destructive font-medium break-words bg-destructive/10 border border-destructive/20 rounded-lg p-2">
+                    {getPortalStatusExplanation(account.status, account.statusDetailCode)}
+                  </p>
+                )}
+
+                {/* Bottom Row: Status Badge & Metadata + Details Link */}
+                <div className="pt-2.5 border-t border-border/40 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    {isCooldown ? (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-semibold gap-1 shrink-0 py-0"
+                      >
+                        <Clock className="h-2.5 w-2.5" />
+                        Cooldown
+                      </Badge>
+                    ) : isPaused ? (
+                      <Badge
+                        variant="outline"
+                        className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-[11px] font-medium gap-1 shrink-0 py-0"
+                      >
+                        <Pause className="h-2 w-2" />
+                        Paused
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={`text-[11px] font-medium tracking-wide capitalize shrink-0 py-0 ${getStatusTone(account.status)}`}
+                      >
+                        {account.status.replace(/_/g, ' ')}
+                      </Badge>
+                    )}
+
+                    <span className="truncate">
+                      {account.mappingsCount} {account.mappingsCount === 1 ? 'card' : 'cards'} mapped
+                    </span>
+
+                    {isCooldown && formattedCooldownTime && (
+                      <span className="text-amber-600 dark:text-amber-400 font-medium truncate">
+                        • Unlocks {formattedCooldownTime}
+                      </span>
+                    )}
                   </div>
+
+                  <span className="flex items-center gap-0.5 text-xs font-medium text-muted-foreground group-hover:text-foreground shrink-0 transition-colors">
+                    <span>Details</span>
+                    <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </span>
                 </div>
               </CardContent>
             </Card>
