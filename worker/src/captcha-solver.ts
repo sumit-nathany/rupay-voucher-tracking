@@ -282,9 +282,22 @@ export async function solveRecaptchaViaAudio(
 
     for (let round = 1; round <= maxRounds; round++) {
       if (page.isClosed()) return false;
-      const currentUrl = page.url();
-      if (!currentUrl.includes('login') && (currentUrl.includes('#/') || currentUrl.includes('offers'))) {
-        console.log('[captcha] Page has already navigated past login. Stopping audio solver.');
+
+      // Stop if already authenticated or login modal/recaptcha has been dismissed
+      const cookies = await page.context().cookies().catch(() => []);
+      if (cookies.some((c) => c.name === 'jwt')) {
+        console.log('[captcha] Active JWT session cookie detected. Stopping audio solver.');
+        return true;
+      }
+
+      const hasLoginOrCaptcha = await page.evaluate(() => {
+        const emailInput = document.querySelector('input[type="email"], input[type="password"]');
+        const bframe = document.querySelector('iframe[src*="recaptcha"]');
+        return Boolean(emailInput || bframe);
+      }).catch(() => false);
+
+      if (!hasLoginOrCaptcha) {
+        console.log('[captcha] Login form / reCAPTCHA iframe no longer present on page. Stopping audio solver.');
         return true;
       }
 

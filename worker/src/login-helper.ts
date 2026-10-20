@@ -1,7 +1,11 @@
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, or } from 'drizzle-orm';
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import type { BrowserContext, Page } from 'playwright';
+
+chromium.use(StealthPlugin());
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
@@ -51,12 +55,33 @@ async function runLoginHelper() {
 
   const creds = decryptPortalCredentials(selectedAccount.credentialsEncrypted, selectedAccount.id);
 
-  console.log('Launching browser with isolated account profile...');
-  const context: BrowserContext = await chromium.launchPersistentContext(profileDir, {
-    headless: false,
-    slowMo: 50,
-    viewport: { width: 1280, height: 800 },
-  });
+  const launchArgs = [
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--no-sandbox',
+    '--disable-infobars',
+  ];
+
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext(profileDir, {
+      channel: 'chrome',
+      headless: false,
+      slowMo: 50,
+      viewport: { width: 1280, height: 800 },
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: launchArgs,
+    });
+  } catch (err) {
+    console.warn('[login-helper] Launching with system Google Chrome failed, falling back to bundled Chromium:', err);
+    context = await chromium.launchPersistentContext(profileDir, {
+      headless: false,
+      slowMo: 50,
+      viewport: { width: 1280, height: 800 },
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: launchArgs,
+    });
+  }
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
 

@@ -3,7 +3,11 @@ import path from 'path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, and, inArray, lte, or } from 'drizzle-orm';
-import { chromium, type BrowserContext, type Page, type Locator } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import type { BrowserContext, Page, Locator } from 'playwright';
+
+chromium.use(StealthPlugin());
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
@@ -247,11 +251,33 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
   const userDataDir = getAccountProfilePath(account.id);
   console.log(`Profile Directory: ${userDataDir} (Account: ${account.label})`);
 
-  const context: BrowserContext = await chromium.launchPersistentContext(userDataDir, {
-    headless: options?.headless ?? (process.argv.includes('--headless') ? true : false),
-    slowMo: 15,
-    viewport: { width: 1366, height: 860 },
-  });
+  const launchArgs = [
+    '--disable-blink-features=AutomationControlled',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--no-sandbox',
+    '--disable-infobars',
+  ];
+
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext(userDataDir, {
+      channel: 'chrome',
+      headless: options?.headless ?? (process.argv.includes('--headless') ? true : false),
+      slowMo: 15,
+      viewport: { width: 1366, height: 860 },
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: launchArgs,
+    });
+  } catch (err) {
+    console.warn('[runner] Launching with system Google Chrome failed, falling back to bundled Chromium:', err);
+    context = await chromium.launchPersistentContext(userDataDir, {
+      headless: options?.headless ?? (process.argv.includes('--headless') ? true : false),
+      slowMo: 15,
+      viewport: { width: 1366, height: 860 },
+      ignoreDefaultArgs: ['--enable-automation'],
+      args: launchArgs,
+    });
+  }
   activeBrowserContext = context;
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
