@@ -105,23 +105,6 @@ export function AccountDetailSheet({
     Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
 
   const isPaused = account.status === 'paused';
-  const [isTogglePending, startToggleTransition] = React.useTransition();
-
-  function handleQuickToggle(e: React.MouseEvent | React.KeyboardEvent) {
-    e.stopPropagation();
-    e.preventDefault();
-    startToggleTransition(async () => {
-      try {
-        if (account.status === 'paused') {
-          await resumePortalAccountAction({ id: account.id });
-        } else {
-          await pausePortalAccountAction({ id: account.id });
-        }
-      } catch (err) {
-        console.error('[AccountDetailSheet] quick toggle status failed:', err);
-      }
-    });
-  }
 
   const formattedCooldownTime = formatCooldown(account.cooldownUntil);
   const accountMappings = localMappings.filter((m) => m.portalAccountId === account.id);
@@ -159,10 +142,10 @@ export function AccountDetailSheet({
         isCurrentlyPaused
           ? resumePortalAccountAction({ id: account.id })
           : pausePortalAccountAction({ id: account.id }),
-      `Failed to ${isCurrentlyPaused ? 'resume' : 'pause'} account`,
+      `Failed to ${isCurrentlyPaused ? 'activate' : 'mark inactive'} account`,
     );
     if (ok) {
-      setFeedback(`Account ${isCurrentlyPaused ? 'resumed' : 'paused'} successfully.`);
+      setFeedback(`Account ${isCurrentlyPaused ? 'activated' : 'marked as inactive'} successfully.`);
     }
   }
 
@@ -228,90 +211,34 @@ export function AccountDetailSheet({
               )}
             >
               <CardContent className="flex flex-col justify-between gap-3 p-4 sm:p-5 h-full">
-                {/* Top Row: Icon + Account Label + Quick Active/Paused Switch */}
-                <div className="flex items-start justify-between gap-3 min-w-0">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div
-                      aria-hidden
-                      className={cn(
-                        'grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
-                        isPaused
-                          ? 'bg-muted/60 border border-border/60 text-muted-foreground'
-                          : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
-                      )}
-                    >
-                      <KeyRound className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={cn(
-                          'font-semibold text-sm sm:text-base leading-tight truncate transition-colors',
-                          isPaused
-                            ? 'text-muted-foreground group-hover:text-foreground'
-                            : 'text-foreground group-hover:text-primary',
-                        )}
-                        title={account.label}
-                      >
-                        {account.label}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {account.phoneNumber ? `Mobile: ${account.phoneNumber}` : 'No phone linked'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Quick Active/Paused Switch */}
+                {/* Top Row: Icon + Account Label & Phone */}
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className="flex items-center gap-1.5 shrink-0 pt-0.5"
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
+                    aria-hidden
+                    className={cn(
+                      'grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
+                      isPaused
+                        ? 'bg-muted/60 border border-border/60 text-muted-foreground'
+                        : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
+                    )}
                   >
-                    <span className="text-[11px] font-medium text-muted-foreground hidden sm:inline">
-                      {isPaused ? 'Paused' : 'Active'}
-                    </span>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={!isPaused}
-                      aria-label={isPaused ? `Resume account ${account.label}` : `Pause account ${account.label}`}
-                      title={
-                        isTogglePending
-                          ? 'Updating account status...'
-                          : isPaused
-                          ? 'Click to resume automated ordering for this account'
-                          : 'Click to pause automated ordering for this account'
-                      }
-                      disabled={isTogglePending}
-                      onClick={handleQuickToggle}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.stopPropagation();
-                          handleQuickToggle(e);
-                        }
-                      }}
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
                       className={cn(
-                        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                        'font-semibold text-sm sm:text-base leading-tight truncate transition-colors',
                         isPaused
-                          ? 'bg-muted-foreground/30 hover:bg-muted-foreground/45'
-                          : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600',
+                          ? 'text-muted-foreground group-hover:text-foreground'
+                          : 'text-foreground group-hover:text-primary',
                       )}
+                      title={account.label}
                     >
-                      <span
-                        className={cn(
-                          'pointer-events-none flex h-4 w-4 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
-                          isPaused ? 'translate-x-0' : 'translate-x-4',
-                        )}
-                      >
-                        {isTogglePending ? (
-                          <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
-                        ) : isPaused ? (
-                          <Pause className="h-2 w-2 text-muted-foreground" />
-                        ) : (
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
-                        )}
-                      </span>
-                    </button>
+                      {account.label}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {account.phoneNumber ? `Mobile: ${account.phoneNumber}` : 'No phone linked'}
+                    </p>
                   </div>
                 </div>
 
@@ -339,7 +266,7 @@ export function AccountDetailSheet({
                         className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-[11px] font-medium gap-1 shrink-0 py-0"
                       >
                         <Pause className="h-2 w-2" />
-                        Paused
+                        Inactive
                       </Badge>
                     ) : (
                       <Badge
@@ -402,7 +329,7 @@ export function AccountDetailSheet({
                             className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-xs font-medium gap-1 shrink-0"
                           >
                             <Pause className="h-2.5 w-2.5" />
-                            Paused
+                            Inactive (Paused)
                           </Badge>
                         ) : (
                           <Badge
@@ -509,7 +436,7 @@ export function AccountDetailSheet({
                     <div className="flex items-center justify-between gap-2 py-1.5 border-b border-border/40">
                       <span className="text-muted-foreground">Status</span>
                       <span className={`font-medium text-foreground capitalize ${getStatusTone(account.status)}`}>
-                        {account.status.replace(/_/g, ' ')}
+                        {account.status === 'paused' ? 'Inactive (Paused)' : account.status.replace(/_/g, ' ')}
                       </span>
                     </div>
                     {account.status === 'needs_attention' && account.statusDetailCode && (
@@ -647,9 +574,9 @@ export function AccountDetailSheet({
                   )}
                 </div>
 
-                {/* Quick Pause / Resume / Reconnect Action Card */}
+                {/* Status & Automation Control (Active / Inactive Toggle) */}
                 {account.status === 'needs_attention' ? (
-                  <div className="flex items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 p-3.5 gap-3">
+                  <div className="flex items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 p-4 gap-3">
                     <div className="space-y-0.5 min-w-0 flex-1">
                       <p className="text-xs font-bold text-destructive">
                         Account Needs Attention
@@ -676,51 +603,101 @@ export function AccountDetailSheet({
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between rounded-xl border border-border/70 bg-muted/20 p-3.5">
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-bold text-foreground">
-                        {account.status === 'paused' ? 'Account Paused' : 'Automation Active'}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
+                  <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/60 p-4 gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-foreground">
+                          {account.status === 'paused' ? 'Account Inactive (Paused)' : 'Account Active'}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px] py-0 px-1.5 font-semibold',
+                            account.status === 'paused'
+                              ? 'border-muted-foreground/30 bg-muted text-muted-foreground'
+                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+                          )}
+                        >
+                          {account.status === 'paused' ? 'Inactive' : 'Active'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
                         {account.status === 'paused'
-                          ? 'Resume to include this account in automated ordering.'
-                          : 'Pause to skip this account during scheduled daily runs.'}
+                          ? 'Automated ordering skips this account. Stored credentials and card mappings are preserved.'
+                          : 'Included in automated ordering runs. Toggle to inactive anytime to pause without deleting.'}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant={account.status === 'paused' ? 'default' : 'outline'}
-                      size="sm"
-                      disabled={pending}
-                      onClick={handleTogglePause}
-                      className="h-8 text-xs font-semibold gap-1.5 shrink-0"
-                    >
-                      {pending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : account.status === 'paused' ? (
-                        <>
-                          <Play className="h-3.5 w-3.5" /> Resume
-                        </>
-                      ) : (
-                        <>
-                          <Pause className="h-3.5 w-3.5" /> Pause
-                        </>
-                      )}
-                    </Button>
+
+                    {/* Active / Inactive Toggle Switch */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={account.status !== 'paused'}
+                        aria-label={
+                          account.status === 'paused'
+                            ? `Activate account ${account.label}`
+                            : `Mark account ${account.label} as inactive`
+                        }
+                        title={
+                          account.status === 'paused'
+                            ? 'Click to activate this account for automated ordering'
+                            : 'Click to mark as inactive (pause automated ordering)'
+                        }
+                        disabled={pending}
+                        onClick={handleTogglePause}
+                        className={cn(
+                          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                          account.status === 'paused'
+                            ? 'bg-muted-foreground/30 hover:bg-muted-foreground/45'
+                            : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600',
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'pointer-events-none flex h-5 w-5 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
+                            account.status === 'paused' ? 'translate-x-0' : 'translate-x-5',
+                          )}
+                        >
+                          {pending ? (
+                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                          ) : account.status === 'paused' ? (
+                            <Pause className="h-2.5 w-2.5 text-muted-foreground" />
+                          ) : (
+                            <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                          )}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
               <SheetFooter className="mt-8 pt-4 border-t border-border/50 flex flex-row items-center justify-between gap-2 sm:justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive border-border/70 gap-1.5"
-                  onClick={() => setMode('delete')}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Disconnect
-                </Button>
+                <div className="relative group/disconnect-tip">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive border-border/70 gap-1.5 cursor-pointer text-xs sm:text-sm"
+                    onClick={() => setMode('delete')}
+                    title="Permanently removes this RuPay account, deletes stored credentials, and unlinks all mapped cards. To temporarily stop ordering without deleting, toggle the account to Inactive above instead."
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Disconnect Account
+                  </Button>
+                  <div className="pointer-events-none absolute bottom-full mb-2 left-0 hidden group-hover/disconnect-tip:flex flex-col z-50 w-72 rounded-xl bg-popover p-3 text-xs text-popover-foreground shadow-lg border border-border animate-in fade-in-0 zoom-in-95">
+                    <p className="font-semibold text-destructive flex items-center gap-1 mb-1">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Permanently Removes Account
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed text-[11px]">
+                      Deletes stored portal credentials and unlinks all {account.mappingsCount} mapped card(s).
+                    </p>
+                    <p className="text-foreground/90 font-medium leading-relaxed text-[11px] mt-1.5 pt-1.5 border-t border-border/60">
+                      💡 To temporarily pause ordering without deleting credentials or cards, toggle to <strong>Inactive</strong> above instead.
+                    </p>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                     Close
@@ -861,20 +838,28 @@ export function AccountDetailSheet({
             <div className="flex flex-1 flex-col justify-between">
               <div className="space-y-4">
                 <SheetHeader>
-                  <SheetTitle className="text-destructive">Disconnect RuPay Account?</SheetTitle>
+                  <SheetTitle className="text-destructive">Disconnect & Remove RuPay Account?</SheetTitle>
                   <SheetDescription>
-                    Are you sure you want to disconnect &quot;{account.label}&quot;?
+                    Are you sure you want to permanently remove &quot;{account.label}&quot;?
                   </SheetDescription>
                 </SheetHeader>
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive space-y-2">
+                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-xs text-destructive space-y-2.5">
                   <p className="font-semibold flex items-center gap-1.5">
                     <AlertTriangle className="h-4 w-4" />
-                    This action cannot be undone
+                    Permanent Action — Cannot Be Undone
                   </p>
                   <p className="leading-relaxed">
-                    Disconnecting this account will remove stored credentials and unlink all{' '}
+                    Disconnecting will permanently remove stored portal credentials and unlink all{' '}
                     <strong>{account.mappingsCount} mapped card(s)</strong>.
                   </p>
+                  <div className="pt-2 border-t border-destructive/20 text-foreground/90 text-xs rounded-lg bg-background/50 p-2.5">
+                    <p className="font-semibold text-foreground mb-0.5 flex items-center gap-1">
+                      <span>💡</span> Looking to temporarily pause orders?
+                    </p>
+                    <p className="text-muted-foreground text-[11px] leading-relaxed">
+                      You don&apos;t need to disconnect! Cancel this and toggle the account to <strong>Inactive</strong>. All credentials and mapped cards will stay saved.
+                    </p>
+                  </div>
                 </div>
                 {error && (
                   <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive flex items-center gap-2">
@@ -900,7 +885,7 @@ export function AccountDetailSheet({
                   className="gap-1.5"
                 >
                   {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Confirm Disconnect
+                  Confirm Disconnect & Delete
                 </Button>
               </SheetFooter>
             </div>
