@@ -10,7 +10,7 @@ Read before any non-trivial change:
 
 - **REQUIREMENTS.md** — what the product must do. If it and PLAN.md disagree, REQUIREMENTS.md wins on product scope.
 - **PLAN.md** — how it's built (schema, security model, build phases). Very large; read the section you need, not the whole file.
-- **docs/** — per-feature requirements and implementation plans (e.g. automated RuPay ordering, portal API, zero-knowledge encryption).
+- **docs/** — per-feature requirements and implementation plans (e.g. automated RuPay ordering, portal API, zero-knowledge encryption), plus `docs/backlog.md` — the prioritized, agent-pickable improvement queue — and `docs/review-history.md` — the `RH#N` rationale index behind the subtler rules in the specs.
 
 ## Repo layout
 
@@ -143,8 +143,9 @@ Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/
 - **Commits:** conventional commits with a scope, lowercase, imperative — `feat(benefits): …`, `fix(catalog): …`, `refactor(domain): …`, `docs: …`. Common scopes: benefits, cards, holders, catalog, instances, domain, ui, filters, migration.
 - **Branches:** `feat/…` / `fix/…` off `main`; PRs target `main`.
 - **Deployments:** Never deploy to production manually (`npx vercel --prod` is not needed). Pushing or merging to `main` automatically triggers Vercel production deployment via git integration. Because Vercel does NOT run migrations, whenever schema or migration files change, you MUST run `npm run db:migrate:prod` before pushing code to `main`! Deploying UI code ahead of DB migrations crashes live pages.
-- **Spec updates:** product decisions land in REQUIREMENTS.md/PLAN.md. External review rounds produce `Review Feedback vX.md` at the root; once findings are reconciled into the specs, those files are deleted.
+- **Spec updates:** product decisions land in REQUIREMENTS.md/PLAN.md. External review rounds are **summarised, not archived**: every finding is reconciled into the spec, and the surviving "why" for each rule is kept as a row in `docs/review-history.md`, which PLAN.md and REQUIREMENTS.md cite as `RH#N`. The original round-by-round files are deleted once reconciled — git history has them. The reusable review harness is `docs/REVIEW_PROMPT.md`.
 - **Feature docs:** new features get a requirements + implementation-plan pair under `docs/` before building (see `docs/automated-rupay-ordering-*.md`).
+- **Backlog:** `docs/backlog.md` holds the prioritized, self-contained improvement items (reminders, work-queue triage, onboarding, resilience, a11y). Each item is written to be pickable by a single agent — read the item's "Acceptance criteria" and "Files to touch" before starting, and strike the item off when it lands.
 - **In flight:** the `feat/automated-rupay-ordering` branch is building the automated ordering feature (worker, portal client, stored portal credentials) per `docs/automated-rupay-ordering-*.md`.
 
 ## RuPay Portal Order Lifecycle & 20-Min Cooldown Invariant
