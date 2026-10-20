@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useMemo, useEffect } from 'react';
 import {
-  Sparkles,
   Calendar,
   CreditCard,
   AlertTriangle,
@@ -11,7 +10,6 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpToLine,
-  Filter,
   KeyRound,
   CheckCircle2,
   ChevronDown,
@@ -19,6 +17,7 @@ import {
   Clock,
   AlertCircle,
   X,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -317,42 +316,67 @@ export function OrderQueueSection({
 
   return (
     <div className="space-y-5">
-      {/* Header & Controls */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      {/* 1. Header: Section title, description & stats */}
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
               Order Queue
             </h2>
+            <Badge variant="secondary" className="text-xs font-semibold px-2 py-0.5">
+              {displayedItems.length} {displayedItems.length === 1 ? 'voucher' : 'vouchers'}
+            </Badge>
             {totalValue > 0 && (
-              <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+              <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-semibold px-2 py-0.5">
                 ₹{Math.round(totalValue)} queued
               </Badge>
             )}
           </div>
-          <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
+          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
             The worker orders these vouchers top-to-bottom, one per account every 24h. Reorder, skip, or pick a benefit option.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap self-start lg:self-auto shrink-0">
-          {/* Card Filter Dropdown */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isPending}
+          className="h-8 px-2.5 text-xs font-medium gap-1.5 rounded-lg border-border/80 self-start shrink-0 cursor-pointer hover:bg-accent"
+          title="Refresh Queue"
+        >
+          <RefreshCw className={cn('h-3.5 w-3.5 text-muted-foreground', isPending && 'animate-spin')} />
+          <span>Refresh</span>
+        </Button>
+      </div>
+
+      {/* 2. Dedicated Filter & Sort Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-muted/30">
+        {/* Left: Filters */}
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {/* Card Filter */}
           <Select
             value={selectedCardId}
             onValueChange={setSelectedCardId}
             disabled={isPending}
           >
-            <SelectTrigger className="h-9 min-w-[200px] sm:min-w-[240px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
+            <SelectTrigger
+              className={cn(
+                'h-8 text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer',
+                selectedCardId !== 'all'
+                  ? 'border-primary/50 bg-primary/5 text-primary font-semibold'
+                  : 'text-foreground'
+              )}
+            >
               <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground text-xs font-normal">Card:</span>
               <SelectValue placeholder="All Cards" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
-              <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+              <SelectItem value="all" className="text-xs">
                 All Cards ({items.length})
               </SelectItem>
               {cardSummaries.map((c) => (
-                <SelectItem key={c.id} value={c.id} className="text-xs sm:text-sm">
+                <SelectItem key={c.id} value={c.id} className="text-xs">
                   {c.name} ••{c.last4} · {c.holderName} ({c.count})
                 </SelectItem>
               ))}
@@ -365,13 +389,19 @@ export function OrderQueueSection({
             onValueChange={setSelectedAccountId}
             disabled={isPending}
           >
-            <SelectTrigger className="h-9 min-w-[170px] sm:min-w-[200px] text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-muted-foreground text-xs font-normal">Account:</span>
+            <SelectTrigger
+              className={cn(
+                'h-8 text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer',
+                selectedAccountId !== 'all'
+                  ? 'border-primary/50 bg-primary/5 text-primary font-semibold'
+                  : 'text-foreground'
+              )}
+            >
+              <KeyRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <SelectValue placeholder="All Accounts" />
             </SelectTrigger>
             <SelectContent className="rounded-xl">
-              <SelectItem value="all" className="text-xs sm:text-sm font-medium">
+              <SelectItem value="all" className="text-xs">
                 All Accounts
               </SelectItem>
               {accounts.map((acc) => {
@@ -381,7 +411,7 @@ export function OrderQueueSection({
                     i.portalAccounts.some((a) => a.id === acc.id),
                 ).length;
                 return (
-                  <SelectItem key={acc.id} value={acc.id} className="text-xs sm:text-sm">
+                  <SelectItem key={acc.id} value={acc.id} className="text-xs">
                     {acc.label} ({count})
                   </SelectItem>
                 );
@@ -389,90 +419,46 @@ export function OrderQueueSection({
             </SelectContent>
           </Select>
 
-          {/* Quick Auto-Sort */}
-          <div className="w-44 sm:w-48">
-            <Select
-              defaultValue="nearest_expiring"
-              onValueChange={(v) => handleAutoSort(v as 'nearest_expiring' | 'highest_value')}
-              disabled={isPending}
+          {/* Reset Filters (when any filter is active) */}
+          {(selectedCardId !== 'all' || selectedAccountId !== 'all') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedCardId('all');
+                setSelectedAccountId('all');
+              }}
+              className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground gap-1 rounded-lg cursor-pointer"
+              title="Clear all active filters"
             >
-              <SelectTrigger className="h-9 text-xs sm:text-sm font-medium rounded-xl gap-2 border-border/80 bg-background shadow-2xs">
-                <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
-                <SelectValue placeholder="Sort..." />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="nearest_expiring" className="text-xs sm:text-sm">
-                  Nearest Expiry First
-                </SelectItem>
-                <SelectItem value="highest_value" className="text-xs sm:text-sm">
-                  Highest Value First
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              <X className="h-3 w-3" />
+              <span>Clear filters</span>
+            </Button>
+          )}
+        </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRefresh}
+        {/* Right: Sort */}
+        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+          <Select
+            defaultValue="nearest_expiring"
+            onValueChange={(v) => handleAutoSort(v as 'nearest_expiring' | 'highest_value')}
             disabled={isPending}
-            className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground"
-            title="Refresh Queue"
           >
-            <RefreshCw className={`h-4 w-4 ${isPending ? 'animate-spin' : ''}`} />
-          </Button>
+            <SelectTrigger className="h-8 min-w-[175px] text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer">
+              <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <SelectValue placeholder="Sort..." />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="nearest_expiring" className="text-xs">
+                Nearest Expiry First
+              </SelectItem>
+              <SelectItem value="highest_value" className="text-xs">
+                Highest Value First
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
-
-      {/* Active Filter Strip (sleek & non-intrusive) */}
-      {(selectedCardId !== 'all' || selectedAccountId !== 'all') && (
-        <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground bg-muted/30 border border-border/60 rounded-xl px-3.5 py-2">
-          <span className="font-medium text-foreground/80">Active filter:</span>
-          {activeCardSummary && (
-            <Badge variant="secondary" className="gap-1.5 text-xs font-medium py-0.5">
-              <CreditCard className="h-3 w-3" />
-              <span>
-                {activeCardSummary.name} ••{activeCardSummary.last4} ({activeCardSummary.count} vouchers)
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedCardId('all')}
-                className="ml-1 hover:text-destructive cursor-pointer"
-                title="Clear card filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          )}
-          {selectedAccountId !== 'all' && (
-            <Badge variant="secondary" className="gap-1.5 text-xs font-medium py-0.5">
-              <KeyRound className="h-3 w-3" />
-              <span>
-                Account: {accounts.find((a) => a.id === selectedAccountId)?.label ?? selectedAccountId}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedAccountId('all')}
-                className="ml-1 hover:text-destructive cursor-pointer"
-                title="Clear account filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setSelectedCardId('all');
-              setSelectedAccountId('all');
-            }}
-            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground ml-auto cursor-pointer"
-          >
-            Clear all
-          </Button>
-        </div>
-      )}
 
       {/* Queue Items List */}
       {displayedItems.length === 0 ? (
