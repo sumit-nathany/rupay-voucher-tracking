@@ -88,18 +88,92 @@ CapSolver's minimum top-up is $6, which is why CapMonster is the better fit
 here: it is the cheapest per solve *and* it does not make you buy $6 of
 credit you will not use for months.
 
-## The free options, honestly
+## The free options, actually verified
 
-- **NopeCHA's keyless free tier** works without an account, but it is tied
-  to the calling IP and is rate-limited. From our own address it answered
-  `{"error":11,"message":"Rate limit reached"}` straight away, and from a
-  cloud IP it would be worse. Fine for occasional use, not for something the
-  worker depends on.
-- **2Captcha's demo page** lets you try a type in the browser, but it still
-  wants your own API key, so it is not a free API.
-- **CapMonster** is the cheapest paid option at $0.60 per 1,000, with the
-  proxy included. Their FAQ offers a **$0.10 test balance on request** —
-  email support and ask. It is now wired into the worker.
+Everything below was checked against the vendor's own pages on 2026-10-21.
+The three that are worth doing stack up to roughly 270 free solves.
+
+### 1. YesCaptcha — 1,500 points, about 100 free tokens
+
+Their homepage says: *"Register now for 1500 points (usable 100 times).
+Contact customer service to claim."*
+
+- 1,000 points = ¥1, and a v2 token (`NoCaptchaTaskProxyless`) costs **15
+  points** — so 1,500 points is 100 tokens.
+- **How to claim:** register at `https://yescaptcha.com/auth/register`
+  (email verification code), then ask their support — Telegram
+  `@yescaptcha_official`, WeChat `@yescaptcha_official`, or the contact form
+  in their docs. Say "claim signup bonus points".
+- **Gotcha:** the balance has to be **more than 10 points** before you can
+  create a task, so the bonus has to actually land before you call the API.
+- They also sell `ReCaptchaV2Classification` — the "which squares do I
+  click" answer rather than a token — for **6 points**, which is the same
+  thing our own service does, sold per challenge.
+- Referring a friend earns you 20% of their spend, and them a VIP level one
+  step below yours, which is at least a 2% bonus on every later top-up.
+- Now wired into the worker as `YESCAPTCHA_API_KEY`.
+
+### 2. CapMonster — $0.10 on request, about 166 free tokens
+
+Their docs say: *"After registering with CapMonster Cloud, you can receive
+$0.1 to your balance to test the service."*
+
+- Register, then ask their support chat or `support@capmonster.cloud` for
+  it. **Not granted to throwaway-email accounts.**
+- $0.10 at $0.60 per 1,000 is **166 solves**.
+- They also give **ZennoPoster users 5,000 free captchas** — worth asking
+  for in the same message.
+- Unused balance is refundable within **3 days** of purchase, so a small
+  top-up is risk-free.
+- Now wired into the worker as `CAPMONSTER_API_KEY`.
+
+### 3. AZCaptcha — $0.10 free credit, no card
+
+- **$0.10 free credit after email verification**, no credit card needed.
+- Minimum top-up **$5**, credits never expire, and unused credit is
+  refundable within 30 days if less than 10% has been used.
+- Their reCAPTCHA v2 **grid** recognition is **$0.10 per 1,000** — by far
+  the cheapest grid rate anywhere.
+- Not wired in yet; it is a small addition if we want a third.
+
+### Also worth knowing
+
+- **NopeCHA** gives **100 free credits every day**, and the recognition API
+  needs no account and no key. The token API needs a free account for a key.
+  One catch: *"Free credits are not available from high-risk IP addresses,
+  such as VPNs or proxies"* — which is worth remembering, because the worker
+  runs on a cloud address. I tried the keyless tier from here and got
+  `{"error":11,"message":"Rate limit reached"}` straight away.
+- **2Captcha** has no coupon, but signing up through an **affiliate link**
+  is advertised as worth a 5–10% first-deposit bonus, and unused balance is
+  refundable within 30 days, so a small top-up is risk-free.
+- **CapSolver** — the $6 minimum is confirmed by their own blog, and they
+  advertise a signup code **`CAP26`** for "bonus credits" (the amount is not
+  published anywhere, so treat it as "some bonus"). The code `capsolver26`
+  is 50% off BrightData proxies, which is only useful if you buy proxies.
+- **NoCaptchaAI** is **$0.25 per 1,000** for v2 with **no minimum** and no
+  card, if we ever want the cheapest paid option with no commitment.
+- **BestCaptchaSolver** will do a free test if you email
+  `help@bestcaptchasolver.com`.
+- **Anti-Captcha** has a "Demo Credits" page in the customer area, amount
+  unpublished.
+
+### Two corrections
+
+- **Cloud credits do not pay for captcha APIs.** The $300 Google Cloud
+  welcome credit, the $100–200 from AWS, and the $100 from Azure's student
+  pack can only be spent on that cloud's own products. A captcha-API invoice
+  cannot be covered by any of them. What cloud free tiers *do* cover is
+  running **our own** solver: Cloud Run's free tier (2M requests a month,
+  360,000 GB-seconds of memory, 180,000 vCPU-seconds) hosts it at no
+  marginal cost, and a Cloud Run Job bills on the same meters. That is the
+  real near-zero path, and it is the one we have already built.
+- **Coupon-aggregator codes are dead.** Sites like couponswift and
+  couponmister advertise "25% off 2Captcha" and similar, but 2Captcha
+  publishes no coupon field and there is no evidence any of those codes is
+  accepted. Do not waste time entering them. The same goes for the
+  "YesCaptcha coupon" — there is no coupon box on their form any more; the
+  mechanism is a referral link.
 
 ## Why a third-party API is the right interim answer
 
