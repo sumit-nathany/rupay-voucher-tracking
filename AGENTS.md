@@ -17,7 +17,7 @@ Read before any non-trivial change:
 | Path | Contents |
 |---|---|
 | `web/` | The Next.js 15 app. All npm work happens here. |
-| `worker/` | Standalone Node worker for automated RuPay ordering (in flight). Imports web's `src/db/schema.ts` and `src/domain/` via relative paths — shared code, not a separate package. |
+| `worker/` | Standalone Node worker for automated RuPay ordering. Imports web's `src/db/schema.ts` and `src/domain/` via relative paths — shared code, not a separate package. `worker/src/batch.ts` is the Cloud Run Job entry point; `worker/infra/` holds the gcloud deploy scripts; `worker/build.mjs` bundles it with esbuild. |
 | `web/src/domain/` | Core business logic. Pure functions over a `Ctx`, no session/env reads. |
 | `web/src/actions/` | Server Actions — the only write path for the UI. |
 | `web/src/app/(app)/` | Authenticated pages (dashboard, benefits, cards, holders, overrides, admin, automation). |
@@ -39,7 +39,7 @@ npm run db:migrate:prod   # apply pending migrations to live production DB (uses
 npm run db:migrate:preprod# apply pending migrations to preprod DB
 ```
 
-From `worker/`: `npm run dev` (tsx) / `npm run build` (tsc) + `npm start`.
+From `worker/`: `npm run dev` (tsx) / `npm run build` (esbuild bundle) + `npm start` / `npm test` / `npm run typecheck`. The deployed worker runs on Google Cloud Run Jobs — see `docs/worker-hosting-runbook.md`.
 
 ## Architecture essentials
 
@@ -127,7 +127,7 @@ There are two separate Supabase Postgres databases:
 
 ## Environment variables
 
-Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/`). Web needs: `DATABASE_URL`, `PROD_DATABASE_URL`, `PREPROD_DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `VOUCHER_ENCRYPTION_KEY` (32-byte base64), `PORTAL_CREDENTIAL_ENCRYPTION_KEY` (automation). Worker needs: `WORKER_DATABASE_URL` (or `DATABASE_URL`), `PORTAL_CREDENTIAL_ENCRYPTION_KEY`, one captcha solver key (`CAPSOLVER_API_KEY` / `NOPECHA_API_KEY` / `TWOCAPTCHA_API_KEY`), `GEMINI_API_KEY`, plus `HEADLESS` and `USE_BROWSER_RUNNER`. Portal sessions are **not** file-based: credentials live encrypted in the database and are decrypted per account at run time. The deployed worker runs on Google Cloud Run Jobs (see `docs/environments-and-deployment.md` §8).
+Never committed (`.env*` is gitignored; `.env.local` exists at root and in `web/`). Web needs: `DATABASE_URL`, `PROD_DATABASE_URL`, `PREPROD_DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `VOUCHER_ENCRYPTION_KEY` (32-byte base64), `PORTAL_CREDENTIAL_ENCRYPTION_KEY` (automation). Worker needs: `WORKER_DATABASE_URL` (or `DATABASE_URL`), `PORTAL_CREDENTIAL_ENCRYPTION_KEY`, one captcha solver key (`CAPSOLVER_API_KEY` / `NOPECHA_API_KEY` / `TWOCAPTCHA_API_KEY`), `GEMINI_API_KEY`, plus `HEADLESS` and `USE_BROWSER_RUNNER`. Portal sessions are **not** file-based: credentials live encrypted in the database and are decrypted per account at run time. The deployed worker runs on Google Cloud Run Jobs (see `docs/environments-and-deployment.md` §8 and `docs/worker-hosting-runbook.md`).
 
 ## Security non-negotiables
 
