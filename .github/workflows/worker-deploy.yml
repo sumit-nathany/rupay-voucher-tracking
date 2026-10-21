@@ -88,6 +88,18 @@ jobs:
         run: |
           echo "IMAGE=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:${{ steps.meta.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve secret bindings
+        id: bindings
+        run: |
+          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,CAPSOLVER_API_KEY=CAPSOLVER_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+          # The keyring is optional — it holds rotated encryption keys and is
+          # only needed when a stored credential uses a key that is no longer
+          # the primary one.
+          if gcloud secrets describe ENCRYPTION_KEYRING --project="${GCP_PROJECT_ID}" >/dev/null 2>&1; then
+            ARGS="${ARGS},ENCRYPTION_KEYRING=ENCRYPTION_KEYRING:latest"
+          fi
+          echo "args=${ARGS}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy the Cloud Run Job
         if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY_WORKER == 'true' }}
         run: |
@@ -106,5 +118,5 @@ jobs:
             --task-timeout=1800s \
             --service-account="rupay-order-worker-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
             --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles" \
-            --set-secrets="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,CAPSOLVER_API_KEY=CAPSOLVER_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest" \
+            --set-secrets="${{ steps.bindings.outputs.args }}" \
             --no-invoker-iam-check

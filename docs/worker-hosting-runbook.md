@@ -79,12 +79,22 @@ worker/infra/secret-set.sh CAPSOLVER_API_KEY     # or NOPECHA_ / TWOCAPTCHA_
 worker/infra/secret-set.sh GEMINI_API_KEY
 ```
 
+> The encryption key **must match the environment whose database the job
+> points at** — the key for the production database is not the key for
+> pre-production. If the web app's `.env` for that environment also sets
+> `ENCRYPTION_KEYRING` (rotated keys), give the worker the same value:
+>
+> ```bash
+> worker/infra/secret-set.sh ENCRYPTION_KEYRING   # optional
+> ```
+
 | Secret | Value |
 |---|---|
 | `WORKER_DATABASE_URL` | The Supabase **transaction pooler** URL (`:6543`) for the environment the job targets. |
 | `PORTAL_CREDENTIAL_ENCRYPTION_KEY` | The 32-byte base64 key that encrypts the portal credentials in the database. **Must match** the key the web app uses for that environment. |
 | `CAPSOLVER_API_KEY` | One captcha solver key. The runner also accepts `NOPECHA_API_KEY` or `TWOCAPTCHA_API_KEY`. |
 | `GEMINI_API_KEY` | Used to transcribe the audio challenge when no solver service is configured. |
+| `ENCRYPTION_KEYRING` | **Optional.** A space-separated list of base64 keys, tried in order. Only needed if a stored portal credential was encrypted with a rotated key that is no longer the primary one — a worker holding only the primary key cannot decrypt those. The deploy scripts include it automatically when the secret exists. |
 
 > Secret Manager's free allowance is six versions per secret per month. Each
 > rotation creates a version. Rotate rarely, or delete old versions.

@@ -68,8 +68,25 @@ image_ref_latest() {
   echo "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:latest"
 }
 
+# True when a Secret Manager secret already exists.
+secret_exists() {
+  [[ "$DRY_RUN" == "1" ]] && return 1
+  gcloud secrets describe "$1" --project="$GCP_PROJECT_ID" >/dev/null 2>&1
+}
+
 # The set of --set-secrets flags for the job's secret references.
+#
+# ENCRYPTION_KEYRING is optional. It holds rotated encryption keys, and is
+# only needed when a stored portal credential was encrypted with a key that
+# is no longer the primary one — the keyring is tried in order, so a worker
+# that only has the primary key cannot decrypt those.
 secret_env_args() {
-  printf -- '--set-secrets=WORKER_DATABASE_URL=%s:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=%s:latest,CAPSOLVER_API_KEY=%s:latest,GEMINI_API_KEY=%s:latest' \
-    "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI"
+  local args="WORKER_DATABASE_URL=${SECRET_WORKER_DATABASE_URL}:latest"
+  args+=",PORTAL_CREDENTIAL_ENCRYPTION_KEY=${SECRET_PORTAL_KEY}:latest"
+  args+=",CAPSOLVER_API_KEY=${SECRET_CAPTCHA_SOLVER}:latest"
+  args+=",GEMINI_API_KEY=${SECRET_GEMINI}:latest"
+  if secret_exists "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; then
+    args+=",ENCRYPTION_KEYRING=${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}:latest"
+  fi
+  printf -- '--set-secrets=%s' "$args"
 }
