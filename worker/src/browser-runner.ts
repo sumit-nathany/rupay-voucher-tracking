@@ -13,6 +13,8 @@ import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { autoSolveRecaptcha } from './captcha-solver';
+import { CAPTCHA_SERVICE_URL } from './captcha-service-client';
+import { solveRecaptchaViaService } from './captcha-service-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { today as todayInIST } from '../../web/src/lib/periods';
 import { selectCandidateForAccount } from './candidate-selection';
@@ -472,10 +474,20 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       jwtCookie = updatedCookies.find((c) => c.name === 'jwt');
       if (jwtCookie) break;
 
-      // Start autoSolveRecaptcha after brief pause once credentials are input
+      // Start the auto-solver after a brief pause once credentials are input.
+      //
+      // Two flows, chosen by configuration. The existing local solver is
+      // untouched; the service flow is used when CAPTCHA_SERVICE_URL points
+      // at the shared solving service.
       if (!autoSolveInitiated && sec >= 1) {
         autoSolveInitiated = true;
-        autoSolveRecaptcha(page)
+        const runSolver = CAPTCHA_SERVICE_URL ? solveRecaptchaViaService : autoSolveRecaptcha;
+        console.log(
+          CAPTCHA_SERVICE_URL
+            ? '[captcha] Using the shared solving service.'
+            : '[captcha] Using the local solver.',
+        );
+        runSolver(page)
           .then((success) => {
             if (success) {
               console.log('[captcha] ✓ Auto-solver finished successfully!');

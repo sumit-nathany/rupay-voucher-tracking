@@ -90,6 +90,11 @@ secret_env_args() {
   args+=",PORTAL_CREDENTIAL_ENCRYPTION_KEY=${SECRET_PORTAL_KEY}:latest"
   args+=",CAPSOLVER_API_KEY=${SECRET_CAPTCHA_SOLVER}:latest"
   args+=",GEMINI_API_KEY=${SECRET_GEMINI}:latest"
+  # The shared solving service's key. Only mounted when the service is
+  # configured, so a worker that does not use it needs no access.
+  if [[ -n "${CAPTCHA_SERVICE_URL:-}" ]]; then
+    args+=",CAPTCHA_SERVICE_KEY=${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}:latest"
+  fi
   if secret_exists "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; then
     args+=",ENCRYPTION_KEYRING=${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}:latest"
   fi

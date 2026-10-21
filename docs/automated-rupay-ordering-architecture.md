@@ -135,6 +135,22 @@ If a portal session expires:
    - An alert/notification is triggered for the operator to perform a 1-click re-authentication.
 3. **OTP and device verification are never solved or relayed.** If either is presented, the runner stops and routes the account to the operator exactly as in (2).
 
+#### Two solver flows
+
+The runner can solve the challenge two ways, chosen by configuration. The existing local solver is untouched either way.
+
+| | **Local solver** (default) | **Shared solving service** |
+|---|---|---|
+| Code | `worker/src/captcha-solver.ts` | `worker/src/captcha-service-solver.ts` + `worker/src/captcha-service-client.ts` |
+| Selected when | `CAPTCHA_SERVICE_URL` is unset | `CAPTCHA_SERVICE_URL` is set |
+| How it works | The worker solves the challenge in its own browser, using a paid solver API or the audio challenge | The service opens the portal's login page in its own browser, solves it there, and returns a token, which the runner puts into its own page |
+| Where it runs | Inside the worker's container | A separate Cloud Run service (`recaptcha-solver`) in the same project |
+| Cost | Per-solve fees | A service to keep running |
+
+The service is reached over IAM: the worker sends a Google identity token, plus the shared secret as `X-Solver-Key`. A token is bound to the sitekey and the page's origin rather than to the browser that obtained it, so handing it back to the worker's page is valid for the portal.
+
+> The deployed job **discards its browser profile** at the end of each execution, so every run starts with no session and needs the solver. The service keeps one browser profile warm across requests, which is why it can usually get through in seconds rather than showing a full image challenge.
+
 ---
 
 ## 5. Operational Commands
