@@ -6,6 +6,12 @@ them.
 
 ## The four backends
 
+**CapMonster is the one to use.** It is the cheapest of the three, the
+proxy is included in the price, and unlike CapSolver its minimum top-up is
+small. Their FAQ also says a **$0.10 test balance is available on request**
+— email their support and ask for it, which is 166 solves and costs nothing
+to try.
+
 | Backend | How it works | Cost | State today |
 |---|---|---|---|
 | **CapSolver** | Third-party API. Sends the sitekey and page URL, gets back a token. | **$0.80 per 1,000** solves | The secret exists but **the key is dead** (`ERROR_KEY_DENIED_ACCESS`) |
@@ -14,8 +20,11 @@ them.
 | **In-browser audio + Gemini** | The worker clicks the audio challenge, transcribes it with Gemini, types the answer back. | One Gemini call per solve, no per-solve fee | Implemented, but **Google blocks the audio challenge from cloud IP addresses** — it returns "Your computer or network may be sending automated queries" instead of the clip |
 
 The order they are tried in is in `worker/src/captcha-solver.ts`:
-CapSolver, then NopeCHA, then 2Captcha, then the audio path, then it waits
-for a human.
+**CapMonster**, then CapSolver, then NopeCHA, then 2Captcha, then the audio
+path, then it waits for a human.
+
+A backend that rejects its key is disabled for the rest of the run rather
+than retried, so one dead key does not cost a minute per account.
 
 ## Switching to a third-party API
 
@@ -24,9 +33,11 @@ picks it up on the next run.
 
 ```bash
 # 1. Get a key from the provider's dashboard.
-#    CapSolver:  https://dashboard.capsolver.com/passport/register
-#    2Captcha:   https://2captcha.com/registration
-#    NopeCHA:    https://nopecha.com/dashboard
+#    CapMonster:  https://capmonster.cloud/en/          (and ask support for
+#                 the $0.10 test balance)
+#    CapSolver:   https://dashboard.capsolver.com/passport/register
+#    2Captcha:    https://2captcha.com/registration
+#    NopeCHA:     https://nopecha.com/dashboard
 
 # 2. Store it.
 printf '%s' 'THE_KEY' | gcloud secrets create CAPSOLVER_API_KEY \
@@ -44,23 +55,38 @@ the change takes effect on the next run.
 ## Checking a key before you deploy it
 
 ```bash
+# CapMonster
+curl -s -X POST https://api.capmonster.cloud/getBalance \
+  -H 'content-type: application/json' \
+  -d "{\"clientKey\":\"$KEY\"}"
+# -> {"errorId":0,"balance":0.1}  or
+# -> {"errorId":1,"errorCode":"ERROR_KEY_DOES_NOT_EXIST",...}
+
+# CapSolver
 curl -s -X POST https://api.capsolver.com/getBalance \
   -H 'content-type: application/json' \
   -d "{\"clientKey\":\"$KEY\"}"
+# -> {"errorId":0,"balance":12.34}  or
+# -> {"errorId":1,"errorDescription":"account authorization is invalid: Code(41)"}
 ```
 
-A working key answers with a balance. The current one answers with
-`{"errorId":1,"errorDescription":"account authorization is invalid: Code(41)"}`.
+The worker also does this itself before it opens a browser, so a bad key is a
+one-line error rather than a failed unattended run.
 
 ## What it actually costs
 
-A single solve is $0.0008 on CapSolver and $0.001 – $0.003 on 2Captcha.
+A single solve is $0.0006 on CapMonster, $0.0008 on CapSolver and
+$0.001 – $0.003 on 2Captcha.
 
 The portal allows one order per account per 24 hours, and the CAPTCHA is only
 needed when a session has expired — so the worker needs a handful of solves a
-week, not a stream of them. **A $1 top-up on CapSolver is 1,250 solves**, and
-on CapMonster (the cheapest at $0.60 per 1,000) it is about 1,600. A dollar
-is months of cover, and there is no need to hunt for a free trial.
+week, not a stream of them. **A $1 top-up on CapMonster is 1,600 solves**, and
+on CapSolver it is 1,250. A dollar is months of cover, so there is no need to
+hunt for a free trial.
+
+CapSolver's minimum top-up is $6, which is why CapMonster is the better fit
+here: it is the cheapest per solve *and* it does not make you buy $6 of
+credit you will not use for months.
 
 ## The free options, honestly
 
@@ -71,8 +97,9 @@ is months of cover, and there is no need to hunt for a free trial.
   worker depends on.
 - **2Captcha's demo page** lets you try a type in the browser, but it still
   wants your own API key, so it is not a free API.
-- **CapMonster** is the cheapest paid option at $0.60 per 1,000 and offers a
-  free trial, but it is not wired into the worker.
+- **CapMonster** is the cheapest paid option at $0.60 per 1,000, with the
+  proxy included. Their FAQ offers a **$0.10 test balance on request** —
+  email support and ask. It is now wired into the worker.
 
 ## Why a third-party API is the right interim answer
 

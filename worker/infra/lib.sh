@@ -92,6 +92,11 @@ secret_env_args() {
   args+=",GEMINI_API_KEY=${SECRET_GEMINI}:latest"
   # The shared solving service's key. Only mounted when the service is
   # configured, so a worker that does not use it needs no access.
+  # CapMonster is optional: it is only mounted once the secret exists, so a
+  # deploy does not break for a worker that has not set it up yet.
+  if secret_exists "${SECRET_CAPTCHA_MONSTER:-CAPMONSTER_API_KEY}"; then
+    args+=",CAPMONSTER_API_KEY=${SECRET_CAPTCHA_MONSTER:-CAPMONSTER_API_KEY}:latest"
+  fi
   if [[ -n "${CAPTCHA_SERVICE_URL:-}" ]]; then
     args+=",CAPTCHA_SERVICE_KEY=${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}:latest"
   fi

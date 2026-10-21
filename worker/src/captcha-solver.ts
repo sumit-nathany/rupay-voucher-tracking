@@ -47,10 +47,95 @@ export async function solveWith2Captcha(
 }
 
 let capSolverDisabled = false;
+let capMonsterDisabled = false;
 
 /**
  * Solves reCAPTCHA v2 using CapSolver API.
  */
+/**
+ * Solve the CAPTCHA with CapMonster.
+ *
+ * CapMonster is the cheapest of the three token services at $0.60 per 1,000
+ * solves, with the proxy included in that price, and it has the simplest
+ * request shape of the three.
+ *
+ * The API is the same idea as the others: create a task, poll for the
+ * result. The response is capped at a couple of minutes by the service, and
+ * the token is valid for two minutes once issued, so the polling window and
+ * the token's lifetime are the same order — we take the token as soon as it
+ * is ready.
+ */
+export async function solveWithCapMonster(
+  apiKey: string,
+  siteKey: string,
+  pageUrl: string,
+  userAgent?: string,
+): Promise<string | null> {
+  if (capMonsterDisabled) return null;
+  console.log('[captcha] Requesting CapMonster token for sitekey:', siteKey);
+  try {
+    const inRes = await fetch('https://api.capmonster.cloud/createTask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientKey: apiKey,
+        task: {
+          type: 'RecaptchaV2Task',
+          websiteURL: pageUrl,
+          websiteKey: siteKey,
+          ...(userAgent ? { userAgent } : {}),
+        },
+      }),
+    });
+    const inData = (await inRes.json()) as {
+      errorId: number;
+      errorCode?: string;
+      errorDescription?: string;
+      taskId?: number;
+    };
+    if (inData.errorId !== 0 || !inData.taskId) {
+      console.error('[captcha] CapMonster task creation error:', inData.errorDescription);
+      if (
+        inData.errorDescription?.toLowerCase().includes('invalid') ||
+        inData.errorDescription?.toLowerCase().includes('insufficient') ||
+        inData.errorDescription?.toLowerCase().includes('denied') ||
+        inData.errorDescription?.toLowerCase().includes('balance')
+      ) {
+        capMonsterDisabled = true;
+      }
+      return null;
+    }
+
+    const taskId = inData.taskId;
+    console.log(`[captcha] CapMonster task submitted (ID: ${taskId}). Polling for solution...`);
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const resRes = await fetch('https://api.capmonster.cloud/getTaskResult', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: apiKey, taskId }),
+      });
+      const resData = (await resRes.json()) as {
+        errorId: number;
+        status: string;
+        solution?: { gRecaptchaResponse?: string };
+      };
+      if (resData.status === 'ready' && resData.solution?.gRecaptchaResponse) {
+        console.log('[captcha] CapMonster solved successfully!');
+        return resData.solution.gRecaptchaResponse;
+      }
+      if (resData.errorId !== 0 && resData.errorId !== 1) {
+        console.error('[captcha] CapMonster result error:', resData);
+        return null;
+      }
+    }
+  } catch (err) {
+    console.error('[captcha] CapMonster network error:', err);
+  }
+  return null;
+}
+
 export async function solveWithCapSolver(
   apiKey: string,
   siteKey: string,
@@ -510,7 +595,26 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 
   const pageUrl = page.url();
 
-  // 3. Strategy 1: CapSolver API
+  // 3. Strategy 1: CapMonster API
+  //
+  // The cheapest of the three by a distance — $0.60 per 1,000 with the
+  // proxy included in the price — and it has the simplest shape.
+  const capMonsterKey = process.env.CAPMONSTER_API_KEY;
+  if (capMonsterKey && siteKey) {
+    console.log('[captcha] Using CapMonster service...');
+    const token = await solveWithCapMonster(
+      capMonsterKey,
+      siteKey,
+      pageUrl,
+      await page.evaluate(() => navigator.userAgent).catch(() => undefined),
+    );
+    if (token) {
+      await injectRecaptchaToken(page, token);
+      return true;
+    }
+  }
+
+  // 4. Strategy 2: CapSolver API
   const capSolverKey = process.env.CAPSOLVER_API_KEY;
   if (capSolverKey && siteKey) {
     console.log('[captcha] Using CapSolver service...');
@@ -521,7 +625,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 4. Strategy 2: NopeCHA Token API
+  // 5. Strategy 3: NopeCHA Token API
   const nopechaKey = process.env.NOPECHA_API_KEY;
   if (nopechaKey && siteKey) {
     console.log('[captcha] Using NopeCHA Token service...');
@@ -532,7 +636,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 5. Strategy 3: 2Captcha API
+  // 6. Strategy 4: 2Captcha API
   const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY;
   if (twoCaptchaKey && siteKey) {
     console.log('[captcha] Using 2Captcha service...');
@@ -543,7 +647,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 5. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
+  // 7. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
   const geminiApiKey = getGeminiApiKey();
   if (geminiApiKey) {
     console.log('[captcha] Attempting in-browser audio capture & Gemini transcription...');
@@ -559,7 +663,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 // ── Preflight ───────────────────────────────────────────────────────────────
 
 export interface SolverBackendStatus {
-  service: 'capsolver' | '2captcha' | 'nopecha';
+  service: 'capmonster' | 'capsolver' | '2captcha' | 'nopecha';
   configured: boolean;
   /** null = not configured, so not checked. false = configured but rejected. */
   usable: boolean | null;
@@ -578,6 +682,33 @@ export interface SolverBackendStatus {
  */
 export async function checkSolverBackends(): Promise<SolverBackendStatus[]> {
   const results: SolverBackendStatus[] = [];
+
+  const capMonsterKey = process.env.CAPMONSTER_API_KEY;
+  results.push({ service: 'capmonster', configured: Boolean(capMonsterKey), usable: null });
+  if (capMonsterKey) {
+    try {
+      const res = await fetch('https://api.capmonster.cloud/getBalance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: capMonsterKey }),
+      });
+      const json = (await res.json()) as { errorId?: number; errorCode?: string; errorDescription?: string; balance?: number };
+      const ok = json.errorId === 0;
+      results[results.length - 1] = {
+        service: 'capmonster',
+        configured: true,
+        usable: ok,
+        detail: ok ? `balance $${json.balance}` : `${json.errorCode ?? 'error'}: ${json.errorDescription ?? 'rejected'}`,
+      };
+    } catch (err) {
+      results[results.length - 1] = {
+        service: 'capmonster',
+        configured: true,
+        usable: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
 
   const capKey = process.env.CAPSOLVER_API_KEY;
   results.push({ service: 'capsolver', configured: Boolean(capKey), usable: null });
