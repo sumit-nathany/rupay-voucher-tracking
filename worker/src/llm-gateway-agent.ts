@@ -128,7 +128,6 @@ export async function handleContactDetailsIfPresent(
           if (await continueBtn.isVisible({ timeout: 800 }).catch(() => false)) {
             console.log('[gateway] Clicking Continue on contact details modal (never dismissing)...');
             await humanClick(continueBtn, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-            await continueBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
             await page.waitForTimeout(1500);
             return true;
           }
@@ -920,7 +919,6 @@ Respond ONLY in valid JSON matching this schema:
         try {
           if (await loc.isVisible({ timeout: 1500 })) {
             await humanClick(loc, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-            await loc.evaluate((el: HTMLElement) => el.click()).catch(() => {});
             clicked = true;
           }
         } catch (clickErr) {

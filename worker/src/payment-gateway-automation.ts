@@ -66,22 +66,27 @@ export async function ensureCardTabSelected(target: Page | Frame): Promise<void>
     'a:has-text("Credit / Debit Card")',
     'button:has-text("Cards")',
     'a:has-text("Cards")',
+    'button:has-text("Card"):not(:has-text("Gift Card"))',
+    'div:has-text("Card"):not(:has-text("Gift Card"))',
     'a:has-text("Debit Card")',
     'a:has-text("Credit Card")',
     'label:has-text("Cards")',
     'div[data-testid="card-tab"]',
     '#cards_tab',
     '#card_option',
+    'button[value="card"]',
   ];
 
   for (const sel of cardTabSelectors) {
     try {
-      const tab = target.locator(sel).first();
-      if (await tab.isVisible({ timeout: 1000 })) {
-        console.log(`[gateway] Selecting Cards tab via "${sel}"...`);
-        await tab.click();
-        await resolvePage(target).waitForTimeout(500);
-        return;
+      const targets = getAllTargets(target);
+      for (const t of targets) {
+        const tab = t.locator(sel).first();
+        if (await tab.isVisible({ timeout: 400 }).catch(() => false)) {
+          console.log(`[gateway] Selecting Cards tab via "${sel}"...`);
+          await humanClick(tab, { hesitateBeforeMs: 300, pauseAfterMs: 800 });
+          return;
+        }
       }
     } catch {}
   }
@@ -130,7 +135,6 @@ export async function fillCardDetailsOnGateway(
             if (await loc.isVisible({ timeout: 400 })) {
               console.log(`[gateway] Found saved card matching ••${last4}. Gliding cursor and clicking naturally...`);
               await humanClick(loc, { hesitateBeforeMs: 600, pauseAfterMs: 1200 });
-              await loc.evaluate((el: HTMLElement) => el.click()).catch(() => {});
               savedCardClicked = true;
               filledCount++;
               break;
@@ -376,7 +380,6 @@ export async function clickPayButton(target: Page | Frame): Promise<boolean> {
           if (await btn.isVisible({ timeout: 500 })) {
             console.log(`[gateway] Gliding cursor and clicking pay button via "${sel}"...`);
             await humanClick(btn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
-            await btn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
             return true;
           }
         } catch {}
