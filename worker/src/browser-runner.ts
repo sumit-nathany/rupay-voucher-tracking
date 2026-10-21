@@ -14,6 +14,8 @@ import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
 import { autoSolveRecaptcha } from './captcha-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
+import { today as todayInIST } from '../../web/src/lib/periods';
+import { selectCandidateForAccount } from './candidate-selection';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
@@ -31,9 +33,30 @@ export interface BrowserRunnerOptions {
   jobRunId?: string;
 }
 
+/**
+ * What a single runner invocation did. The batch entry point uses this to
+ * report accurate per-account counts without re-querying the database.
+ */
+export interface BrowserRunResult {
+  /** True when a candidate was selected and the portal flow was entered. */
+  attempted: boolean;
+  /** The portal account the run was for, when one was resolved. */
+  accountLabel?: string;
+  /** A short, safe reason code. Never contains portal data. */
+  reason?:
+    | 'ordered'
+    | 'no_candidate'
+    | 'missing_payment_details'
+    | 'cooldown_detected'
+    | 'gateway_redirect_failed'
+    | 'payment_failed';
+  /** The instance the run acted on, when one was selected. */
+  instanceId?: string;
+}
+
 let activeBrowserContext: BrowserContext | null = null;
 
-export async function runBrowserTest(options?: BrowserRunnerOptions) {
+export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<BrowserRunResult> {
   const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
   if (!dbUrl) {
     throw new Error('DATABASE_URL or WORKER_DATABASE_URL is required');
@@ -55,7 +78,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     throw new Error('No connected portal accounts found in database.');
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayInIST();
   const ignoreCooldown =
     options?.ignoreCooldown ??
     (process.argv.includes('--force') || process.argv.includes('--ignore-cooldown'));
@@ -87,7 +110,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       throw new Error(`Account "${accountArg}" not found among connected accounts: ${accounts.map((a) => a.label).join(', ')}`);
     }
     account = match;
-    candidate = await findCandidatesForAccount(db, account.id, today, { ignoreCooldown });
+    // Prefer the global ordering queue for this account, exactly as the
+    // unscoped path does, so a pinned account still honours rule priority and
+    // the user's manual queue ordering.
+    candidate = await selectCandidateForAccount(db, account, today, { ignoreCooldown });
   } else {
     // 1. Evaluate via Global Order Queue first across connected workspaces
     const workspaceIds = Array.from(new Set(accounts.map((a) => a.workspaceId)));
@@ -125,7 +151,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
       }
     }
     await client.end();
-    return;
+    return { attempted: false, accountLabel: account?.label, reason: 'no_candidate' };
   }
 
   const [cardRow] = await db
@@ -246,7 +272,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     console.error(`\n[runner] ❌ Aborting run: Card "${cardRow?.cardName}" (••${cardRow?.last4}) does not have valid payment details configured.`);
     console.error(`Automation cannot checkout without payment details (card number, expiry date, CVV). Please configure payment details on this card in the Cards section.`);
     await client.end();
-    return;
+    return {
+      attempted: true,
+      accountLabel: account.label,
+      instanceId: candidate.instanceId,
+      reason: 'missing_payment_details',
+    };
   }
 
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');
@@ -974,7 +1005,12 @@ async function addCardToPortalAccount(
     console.log(`======================================================\n`);
     await context.close();
     await client.end();
-    return;
+    return {
+      attempted: true,
+      accountLabel: account.label,
+      instanceId: candidate.instanceId,
+      reason: 'cooldown_detected',
+    };
   }
 
   const activePaymentPage: Page = popupTracker.page ?? page;
@@ -983,7 +1019,12 @@ async function addCardToPortalAccount(
     await activePaymentPage.screenshot({ path: 'gateway-redirect-failed.png' });
     await context.close();
     await client.end();
-    return;
+    return {
+      attempted: true,
+      accountLabel: account.label,
+      instanceId: candidate.instanceId,
+      reason: 'gateway_redirect_failed',
+    };
   }
 
   // Active payment page (either new tab or current page redirect)
@@ -1303,7 +1344,13 @@ async function addCardToPortalAccount(
       await context.close().catch(() => {});
       await client.end().catch(() => {});
       console.log('✓ Automation finished cleanly.');
-      process.exit(0);
+      // Return, do not exit: a batch run must continue with the next account.
+      return {
+        attempted: true,
+        accountLabel: account.label,
+        instanceId: candidate.instanceId,
+        reason: 'ordered',
+      };
     }
 
     // If loop finished without finding a booking reference, check if order is still pending or failed
@@ -1325,7 +1372,14 @@ async function addCardToPortalAccount(
       await activePaymentPage.waitForTimeout(2000).catch(() => {});
       await context.close().catch(() => {});
       await client.end().catch(() => {});
-      process.exit(1);
+      // Do not exit the process: a batch run must continue with the next
+      // account and report this one as failed.
+      return {
+        attempted: true,
+        accountLabel: account.label,
+        instanceId: candidate.instanceId,
+        reason: 'payment_failed',
+      };
     }
   } else {
     console.log(`\n⚠️ OTP was not completed or timed out.`);
@@ -1339,7 +1393,12 @@ async function addCardToPortalAccount(
   await context.close().catch(() => {});
   await client.end().catch(() => {});
   console.log('Done.');
-  process.exit(0);
+  return {
+    attempted: true,
+    accountLabel: account.label,
+    instanceId: candidate.instanceId,
+    reason: 'ordered',
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

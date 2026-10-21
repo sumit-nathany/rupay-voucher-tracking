@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { createTestDb } from '@/test/db';
@@ -152,6 +152,32 @@ describe('automation worker', () => {
     expect(attempts.length).toBe(1);
     expect(attempts[0].state).toBe('confirmed');
     expect(attempts[0].bookingReference).toBe('BK-CONFIRMED-999');
+  });
+
+  it('defaults "today" to the Asia/Kolkata calendar date, not UTC', async () => {
+    // 2026-10-14T19:00:00Z is 2026-10-15 00:30 in Asia/Kolkata, but still
+    // 2026-10-14 in UTC. An unattended worker that used UTC would resolve the
+    // wrong entitlement period for five and a half hours every night.
+    const { inst } = await setupFixture();
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-14T19:00:00Z'));
+
+      const result = await runAutomationJob({
+        db,
+        client: new FakePortalOrderClient({ bookingReference: 'BK-IST-CHECK' }),
+      });
+      expect(result.ordersConfirmed).toBe(1);
+
+      const [updatedInst] = await db
+        .select()
+        .from(benefitInstances)
+        .where(eq(benefitInstances.id, inst.id));
+      expect(updatedInst.orderDate).toBe('2026-10-15');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('handles post-submit timeout as uncertain and requires manual resolution', async () => {

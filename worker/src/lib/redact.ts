@@ -18,8 +18,6 @@
  * which logs portal response bodies). Both layers must hold.
  */
 
-type ConsoleMethod = 'log' | 'info' | 'warn' | 'error' | 'debug';
-
 interface RedactionRule {
   readonly pattern: RegExp;
   readonly replacement: string;
@@ -96,6 +94,28 @@ function redactArgs(args: unknown[]): unknown[] {
 
 let installed = false;
 
+const METHODS = ['log', 'info', 'warn', 'error', 'debug'] as const;
+
+/** The subset of the console this module wraps. */
+export type ConsoleLike = Pick<Console, (typeof METHODS)[number]>;
+
+/**
+ * Build a console whose every method redacts its arguments first.
+ *
+ * Exposed separately from {@link installLogRedaction} so the wrapping can be
+ * tested without depending on how a test runner intercepts console output.
+ */
+export function createRedactedConsole(target: ConsoleLike): ConsoleLike {
+  const out = {} as ConsoleLike;
+  for (const method of METHODS) {
+    const original = target[method].bind(target);
+    out[method] = ((...args: unknown[]) => {
+      original(...redactArgs(args));
+    }) as ConsoleLike[typeof method];
+  }
+  return out;
+}
+
 /**
  * Wrap the console so that everything the worker prints is redacted.
  * Idempotent — calling it twice does not double-wrap.
@@ -104,10 +124,8 @@ export function installLogRedaction(): void {
   if (installed) return;
   installed = true;
 
-  for (const method of ['log', 'info', 'warn', 'error', 'debug'] as ConsoleMethod[]) {
-    const original = console[method].bind(console);
-    console[method] = ((...args: unknown[]) => {
-      original(...redactArgs(args));
-    }) as typeof console.log;
+  const patched = createRedactedConsole(console);
+  for (const method of METHODS) {
+    console[method] = patched[method];
   }
 }

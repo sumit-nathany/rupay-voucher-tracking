@@ -34,9 +34,10 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
-import { findCandidatesForAccount } from '../../web/src/domain/automation';
+import { today as todayInIST } from '../../web/src/lib/periods';
 import { installLogRedaction } from './lib/redact';
 import { runBrowserTest } from './browser-runner';
+import { selectCandidateForAccount } from './candidate-selection';
 
 const HEADLESS = process.env.HEADLESS !== 'false';
 const PLAN_ONLY = process.env.USE_BROWSER_RUNNER === 'false';
@@ -104,7 +105,7 @@ async function main() {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayInIST();
 
     for (const account of accounts) {
       if (pausedWorkspaces.has(account.workspaceId)) {
@@ -116,15 +117,15 @@ async function main() {
 
       try {
         // The candidate lookup honours the account's 24-hour cooldown and the
-        // workspace's automation switch, so it is the eligibility check.
-        const candidate = await findCandidatesForAccount(db, account.id, today);
+        // workspace's automation switch, so it is the eligibility check. It
+        // uses the same selection the runner uses, so the plan-only preview
+        // below is exactly what a live run would do.
+        const candidate = await selectCandidateForAccount(db, account, today);
 
         if (!candidate) {
           console.log(`[worker] Account "${account.label}": nothing eligible right now.`);
           continue;
         }
-
-        accountsProcessed++;
 
         if (PLAN_ONLY) {
           const [detail] = await db
@@ -138,11 +139,20 @@ async function main() {
         }
 
         // 4. The runner places at most one order for this account.
-        await runBrowserTest({
+        const result = await runBrowserTest({
           portalAccountId: account.id,
           headless: HEADLESS,
           jobRunId: jobRun.id,
         });
+
+        if (result.attempted) {
+          accountsProcessed++;
+          if (result.reason && result.reason !== 'ordered') {
+            console.log(
+              `[worker] Account "${result.accountLabel ?? account.label}" did not complete an order (${result.reason}).`,
+            );
+          }
+        }
       } catch (err) {
         // An account-level failure must not abort the whole sweep.
         ordersFailed++;

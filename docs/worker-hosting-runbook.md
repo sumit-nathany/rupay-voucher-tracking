@@ -25,6 +25,11 @@ it are in `docs/automated-rupay-ordering-requirements.md` §8 and
 One execution = one batch sweep: evaluate every connected portal account,
 order at most one benefit per eligible account, record the outcome, exit.
 
+Each execution writes one `ordering_job_runs` row with the aggregate counts,
+and each attempt it creates is linked to that row. The 24-hour cooldown lives
+in the database (`app.portal_accounts.cooldown_until`), so an account that is
+still cooling down is simply skipped — running more often cannot over-order.
+
 ---
 
 ## 2. One-time setup
@@ -145,7 +150,17 @@ worker/infra/run-now.sh
 
 The plan-only mode sets `USE_BROWSER_RUNNER=false`, which makes the worker
 evaluate eligibility and report what it would order **without** reserving a
-candidate, launching a browser, or writing an attempt.
+candidate, launching a browser, or writing an attempt. It uses the same
+candidate selection a live run uses — the global ordering queue first, the
+legacy per-account rules as a fallback — so the preview is accurate.
+
+### 4.3 Calendar dates
+
+Eligibility is evaluated against the **Asia/Kolkata** calendar date, matching
+the rest of the app (`web/src/lib/periods.ts` `today()`), not UTC. Between
+00:00 and 05:30 IST the UTC date is the previous day, and an eligibility
+check against the wrong date would order against the wrong entitlement
+period. A regression test pins this.
 
 ### 4.1 Create the schedule (paused)
 

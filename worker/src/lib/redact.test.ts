@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { redactText } from './redact';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createRedactedConsole, installLogRedaction, redactText } from './redact';
 
 /**
  * The worker's logs go to Cloud Logging, where they are retained and
@@ -78,5 +78,79 @@ describe('redactText', () => {
   it('does not redact a plain workspace or account id', () => {
     const id = 'c55818d7-7fcd-49a6-a270-cb908a9a0840';
     expect(redactText(`workspace ${id}`)).toBe(`workspace ${id}`);
+  });
+});
+
+describe('createRedactedConsole', () => {
+  function fakeConsole() {
+    return {
+      log: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+  }
+
+  it('scrubs strings written through every method', () => {
+    const target = fakeConsole();
+    const patched = createRedactedConsole(target);
+
+    for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+      patched[method]('portal returned jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijkl');
+    }
+
+    for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+      const written = String(target[method].mock.calls[0][0]);
+      expect(written, method).not.toContain('eyJhbGciOiJIUzI1NiJ9');
+      expect(written, method).toContain('[REDACTED_JWT]');
+    }
+  });
+
+  it('scrubs secrets inside object arguments', () => {
+    const target = fakeConsole();
+    const patched = createRedactedConsole(target);
+
+    patched.log({ card: '4111111111111111', label: 'user@example.com' });
+
+    const written = String(target.log.mock.calls[0][0]);
+    expect(written).not.toContain('4111111111111111');
+    expect(written).not.toContain('user@example.com');
+  });
+
+  it('scrubs error arguments', () => {
+    const target = fakeConsole();
+    const patched = createRedactedConsole(target);
+
+    patched.error(new Error('login failed for user@example.com'));
+
+    const written = String(target.error.mock.calls[0][0]);
+    expect(written).not.toContain('user@example.com');
+  });
+
+  it('leaves ordinary operational text untouched', () => {
+    const target = fakeConsole();
+    const patched = createRedactedConsole(target);
+
+    patched.log('[worker] Batch run starting at 2026-10-21T00:49:06.229Z');
+
+    expect(String(target.log.mock.calls[0][0])).toBe(
+      '[worker] Batch run starting at 2026-10-21T00:49:06.229Z',
+    );
+  });
+});
+
+describe('installLogRedaction', () => {
+  it('replaces the console methods with redacting wrappers', () => {
+    const before = console.log;
+    installLogRedaction();
+    expect(console.log).not.toBe(before);
+  });
+
+  it('is idempotent — installing twice does not double-wrap', () => {
+    installLogRedaction();
+    const afterFirst = console.log;
+    installLogRedaction();
+    expect(console.log).toBe(afterFirst);
   });
 });
