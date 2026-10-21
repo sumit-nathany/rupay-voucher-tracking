@@ -70,65 +70,67 @@ Inside `findCandidatesForAccount(db, accountId, today)`:
 
 ---
 
-## 3. Automation Daemon & Multi-Account Chained Scheduling
+## 3. Scheduling: the deployed batch job, and the local daemon
 
-Instead of a fixed calendar cron (which cannot adapt to rolling 24h intervals across multiple accounts), the system uses a **continuous event loop daemon** (`worker/src/daemon.ts`).
+The 24-hour limit is enforced in the database (`app.portal_accounts.cooldown_until`), so eligibility can be *computed* at any moment rather than *awaited*. That single fact determines the deployed shape.
 
-### 3.1 Dynamic Schedule Evaluation (`getNextEligibleRunTime`)
+### 3.1 The deployed shape: a Cloud Run Job, swept hourly
+
+Each execution of the Cloud Run Job:
+1. Lists connected portal accounts and evaluates eligibility for each.
+2. For every eligible account, reserves at most one candidate and orders it.
+3. Records the outcome, releases the account's advisory lock, and moves on.
+4. Exits.
+
+The job holds no state between executions. Cloud Scheduler runs it every hour in `Asia/Kolkata`. Because the cooldown lives in the database, running more often cannot over-order — a sweep that finds an account still cooling down simply does nothing for it. Hourly also keeps the "next eligible time" shown in the UI accurate to within the hour.
+
+### 3.2 Why not a persistent daemon
+
+A long-lived event-loop daemon was the original design, and `worker/src/daemon.ts` still implements it. It was dropped as the *deployed* shape because:
+
+- **The precision it buys is not needed.** Waking exactly at an unlock instant only matters if an order must land within minutes of the window opening. A benefit's ordering window is days long and the portal's own limit is one order per account per 24 hours, so a 15-minute-granularity schedule is more than sufficient.
+- **The session advantage it buys is illusory.** The portal's `jwt` cookie expires one hour after login, so a daemon that sleeps for hours between runs has a cold session anyway and must solve the CAPTCHA on each run — exactly like the batch job. A persisted profile cannot outlive the gap between runs.
+- **It is the more expensive and less observable shape.** A daemon is an always-on bill with no natural run boundary, no per-execution record, and no per-execution timeout. A job is billed per execution, self-limits, and produces one Cloud Logging entry per run.
+- **It is harder to reason about concurrency.** A process that can wake and act at any moment needs the same locking discipline as a job, but is harder to reason about and to reproduce.
+
+The daemon is **retained as a local development and operations tool** — useful when you want to watch a run happen immediately instead of at the next tick. It exercises the same domain code as the job.
+
+### 3.3 Shared Eligibility Logic (`getNextEligibleRunTime`)
+
 Located in `web/src/domain/automation.ts`, `getNextEligibleRunTime(db, workspaceId)` queries all connected portal accounts:
 1. If any account has `cooldownUntil <= now` (or null), it returns `{ eligibleNow: true, nextRunAt: now, accountLabel }`.
 2. If all connected accounts are in cooldown, it sorts them by `cooldownUntil` ascending and returns the earliest unlock timestamp: `{ eligibleNow: false, nextRunAt: earliest.cooldownUntil, accountLabel: earliest.label }`.
 
-### 3.2 The Chained Wake-Up Event Loop (`worker/src/daemon.ts`)
-```ts
-while (true) {
-  const nextRun = await getNextEligibleRunTime(db);
-
-  if (!nextRun.eligibleNow && nextRun.nextRunAt) {
-    const delayMs = nextRun.nextRunAt.getTime() - Date.now();
-    // Sleep until the exact unlock time of the earliest account
-    await sleep(delayMs);
-    continue;
-  }
-
-  // Account is eligible now!
-  await runAutomationJob({ db, client });
-
-  // Account 1 just finished and recorded its 24h cooldown.
-  // Loop restarts immediately -> getNextEligibleRunTime finds Account 2!
-  // Daemon sleeps until Account 2's unlock time.
-}
-```
-
-### 3.3 Multi-Account Execution Sequence
-1. **Initial State:** Account 1 unlocks at 06:40 PM IST; Account 2 unlocks at 09:15 PM IST.
-2. **06:40 PM IST:** Daemon wakes up $\rightarrow$ executes Account 1 $\rightarrow$ Account 1 sets cooldown to tomorrow 06:40 PM.
-3. **Chaining:** Daemon re-evaluates the queue. Account 2 is now the earliest pending account.
-4. **Sleep:** Daemon sleeps until 09:15 PM IST.
-5. **09:15 PM IST:** Daemon wakes up $\rightarrow$ executes Account 2 $\rightarrow$ repeats for subsequent accounts.
+The batch job uses this function to decide what to order; the UI uses it to display the next run time. One implementation, two consumers.
 
 ### 3.4 Dynamic UI Header Sync
+
 The web application header (`web/src/components/automation/automation-header.tsx`) queries `getNextEligibleRunTime` on page load:
-- Displays: `Next run: Today at 06:40 PM IST (when coolfriendamit0506@gmail.com unlocks)`
-- The moment Account 1 finishes, any page visit or action updates the header to show Account 2's time.
+- Displays: `Next run: Today at 06:40 PM IST (when the second account unlocks)`
+- Because eligibility is computed from live database state, any page visit or action reflects the most recent run.
 
 ---
 
 ## 4. Browser Automation & CAPTCHA Session Strategy
 
-### 4.1 Per-Account Profile Isolation (Strategy B)
-To allow unattended scheduled runs without re-solving Google reCAPTCHA each time:
+### 4.1 Per-Account Profile Isolation (local development only)
+
+The deployed job logs in fresh on every execution and keeps no browser profile, cookie jar, or session state between runs (see [implementation-plan.md §7.2](./automated-rupay-ordering-implementation-plan.md)). The per-account profile directory is therefore a **local development convenience only**, never written by the deployed job.
+
+For local runs, to avoid re-solving Google reCAPTCHA every time:
 1. Each portal account uses an independent persistent user profile directory on disk:
    `worker/.browser-data/account_<portalAccountId>/`
-2. **One-Time Onboarding:** When a new RuPay account is connected, the operator opens a live browser window once using `worker/src/browser-runner.ts`, logs in with credentials, and solves the reCAPTCHA manually. This is the preferred path: it establishes a session that unattended runs reuse, so the CAPTCHA is normally never encountered again.
-3. **Persistent Session:** Playwright preserves the resulting `jwt` cookie and storage state inside that account's profile directory.
-4. **Scheduled Execution:** The daemon boots Playwright with that account's profile, navigates directly to `https://rupayselect.truztee.com/#/offers`, verifies `jwt` cookie presence, and executes card/offer selection without hitting the login screen.
+2. **One-time onboarding:** When a new RuPay account is connected, the operator opens a live browser window once using `worker/src/browser-runner.ts`, logs in with credentials, and solves the reCAPTCHA manually. This establishes a session that subsequent local runs reuse, so the CAPTCHA is normally not encountered again.
+3. **Persistent session:** Playwright preserves the resulting `jwt` cookie and storage state inside that account's profile directory. It expires one hour after login, so even locally the session only survives a short window.
+4. **Execution:** the runner boots Playwright with that account's profile, navigates to `https://rupayselect.truztee.com/#/offers`, checks for a `jwt` cookie, and executes card/offer selection.
+
+> `worker/.browser-data/` must be excluded from the container image build (`.dockerignore`). It holds live portal sessions.
 
 ### 4.2 Handling Expired Sessions & Challenges
 If a portal session expires:
 1. The runner checks for `jwt` cookie presence after page load.
 2. If absent and reCAPTCHA is presented:
-   - **Automatic solve (preferred for unattended runs):** the runner asks the captcha solver in `worker/src/captcha-solver.ts` to solve the challenge, and continues the login only when the solver reports a **verified** token. The refreshed session is persisted back into the account profile directory by the existing `launchPersistentContext` behaviour.
+   - **Automatic solve (preferred for unattended runs):** the runner asks the captcha solver in `worker/src/captcha-solver.ts` to solve the challenge, and continues the login only when the solver reports a **verified** token. Locally, `launchPersistentContext` persists the refreshed session back into the account profile directory; the deployed job discards the profile when the execution ends.
    - If the solve fails — audio challenge unavailable, transcription unsuccessful, or the token rejected — the runner sets the account status to `challenge_required` or `needs_attention` and exits cleanly without throwing errors or locking the account.
    - An alert/notification is triggered for the operator to perform a 1-click re-authentication.
 3. **OTP and device verification are never solved or relayed.** If either is presented, the runner stops and routes the account to the operator exactly as in (2).
@@ -140,10 +142,11 @@ If a portal session expires:
 From `worker/`:
 
 ```bash
-# Run one-off browser runner against the active pre-prod database
-npm run browser:preprod
+# One batch run: order whatever is eligible right now, then exit.
+# This is exactly what the Cloud Run Job executes.
+npm run batch:preprod
 
-# Start the continuous multi-account daemon
+# Start the continuous multi-account daemon (local development / operations only)
 npm run daemon:preprod
 ```
 

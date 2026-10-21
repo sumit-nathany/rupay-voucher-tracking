@@ -105,7 +105,7 @@
 2. The function applies the guards in the table above. Tests must cover: sold instance excluded from `expiry`; `Skipped` excluded from `order_lapse`; `Withdrawn` excluded from `order_lapse`; `expiryDate` in the past excluded (already expired — a different message, or no message); instance with NULL `expiryDate` excluded.
 3. A dispatch step writes one `reminder_log` row per `(instanceId, reminderType, daysBefore)` before sending, and never sends a duplicate for an existing log row. Use an `INSERT ... ON CONFLICT DO NOTHING` on the existing unique key and only send when the insert actually inserted a row — this is the dedupe guarantee, and it must be enforced in SQL, not in application logic alone.
 4. The dispatch step is idempotent and safe to re-run. Re-running the same day sends nothing new.
-5. Scheduling: the engine runs from `worker/` (which already has a daemon, `worker/src/daemon.ts`) on a daily cadence, and can also be triggered manually. It must respect `ctx.today` semantics: `today` is `YYYY-MM-DD` in **Asia/Kolkata** (`web/src/lib/periods.ts`).
+5. Scheduling: the engine runs as a step inside the deployed worker's Cloud Run Job (see `docs/environments-and-deployment.md` §8), on the same hourly sweep as ordering, and can also be triggered manually. It must respect `ctx.today` semantics: `today` is `YYYY-MM-DD` in **Asia/Kolkata** (`web/src/lib/periods.ts`).
 6. Sending is pluggable: the engine produces `ReminderEnvelope[]` (workspace, channel, recipient, subject/body, instance refs) and a separate `send*` implementation delivers them. The engine itself must not know about Telegram/SMTP.
 7. Every envelope is rendered with **no voucher code and no booking ID** in the body (AGENTS.md: "Voucher codes and booking IDs never appear in logs, errors, test output, or script output"). Codes are referenced by benefit name + masked card last-4 only.
 8. Failures to send are recorded and surfaced to the user in the attention centre (A-06); a failed send must not block the dedupe log from being written for *other* reminders, and must not cause a retry storm — one send attempt per reminder per day.
@@ -128,7 +128,7 @@
 - `web/src/domain/reminders.ts` (new)
 - `web/src/domain/reminders.test.ts` (new)
 - `web/src/actions/reminders.ts` (new) — thin `getCtx()` wrappers
-- `worker/src/daemon.ts` (invoke the daily job)
+- `worker/src/batch.ts` (the Cloud Run Job entry point — invoke the reminder step from it)
 
 **Tests**
 - Domain unit tests for `computeDueReminders` covering every guard in the table above.

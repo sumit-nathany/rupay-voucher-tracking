@@ -17,7 +17,7 @@ The implementation intentionally separates these concerns:
 | Configuration, rules, audit UI | Next.js server actions | Uses the existing authenticated workspace session and UI conventions. |
 | Source of truth and concurrency guard | Supabase PostgreSQL | A transaction protects state changes across web and worker processes. |
 | Portal login and browser/API interaction | Cloud Run Job + Playwright | It needs a real browser runtime and must never run in an interactive user request. |
-| Daily trigger | Cloud Scheduler | Starts the job once per day in Asia/Kolkata time. |
+| Scheduled trigger | Cloud Scheduler | Starts the job every hour in Asia/Kolkata time. |
 | Worker secrets | Google Secret Manager | Keeps deployment and database credentials out of source control. |
 
 No browser-side code accesses the database directly, controls the worker, receives portal credentials, or sees session/JWT values from the RuPay portal.
@@ -246,7 +246,7 @@ uncertain -> confirmed       (user verifies booking)
 uncertain -> resolved_no_order (user verifies no booking)
 ```
 
-`confirmed`, `uncertain`, and `resolved_no_order` block that account for 24 hours from `submission_started_at`. `failed_pre_submit` and `cancelled` do not consume the daily allowance and may be considered on a future daily run. The worker must use the conservative `uncertain` branch whenever it cannot prove no portal submission occurred. An active `reserved` or `submitting` attempt blocks new reservations regardless of its age; stale active attempts require explicit recovery and must never be silently discarded.
+`confirmed`, `uncertain`, and `resolved_no_order` block that account for 24 hours from `submission_started_at`. `failed_pre_submit` and `cancelled` do not consume the allowance and may be considered on a future run. The worker must use the conservative `uncertain` branch whenever it cannot prove no portal submission occurred. An active `reserved` or `submitting` attempt blocks new reservations regardless of its age; stale active attempts require explicit recovery and must never be silently discarded.
 
 Before selecting candidates, recover expired active attempts transactionally. An expired `reserved` attempt with no `submission_started_at` is safe to mark `cancelled` with `reservation_lease_expired`, because the state machine has not begun a portal submission. An expired `submitting` attempt must become `uncertain`, set the account to `needs_attention`, and remain blocked until the user checks the portal and resolves it; never retry it automatically. A workspace-scoped resolution action must let the user record either a confirmed booking (transition to `confirmed`, store the safe reference, and update the instance) or no booking (transition to `resolved_no_order`, leave the instance `Not Ordered`). Both resolutions clear `needs_attention` only after recording the user's decision; `resolved_no_order` remains subject to the 24-hour account cooldown. Lease renewal and recovery must use the account lock and update predicates so a live worker cannot be recovered concurrently.
 
@@ -305,38 +305,57 @@ Create a container image with Node.js, the worker package, and Playwright Chromi
 - A dedicated service account with access only to the required Secret Manager secrets and logging.
 - Environment configuration that names secret versions and database endpoint, never embeds secret values in source or command arguments.
 
+The job is a **batch**. Each execution re-evaluates eligibility, orders at most one benefit per eligible portal account, records the outcome, and exits. It is not a long-lived process and it holds no state between executions.
+
 The Secrets are:
 
 - `PORTAL_CREDENTIAL_ENCRYPTION_KEY`.
-- Worker database connection string.
-- Any portal adapter configuration established by discovery, only if it is truly secret.
+- `WORKER_DATABASE_URL` (the worker connection string).
+- The captcha solver key actually in use — one of `CAPSOLVER_API_KEY`, `NOPECHA_API_KEY`, or `TWOCAPTCHA_API_KEY`.
+- `GEMINI_API_KEY`, for transcribing the in-browser audio challenge when no third-party solver is configured.
 
 Set Cloud Logging exclusions or application-level redaction to ensure credentials, cookies, tokens, code values, and portal payloads cannot be emitted even in errors.
 
 ### 8.2 Scheduler and invocation authorization
 
-Create one Cloud Scheduler job in `asia-south1` with timezone `Asia/Kolkata`. It invokes the Cloud Run Jobs `:run` API once daily using an OIDC service account dedicated to scheduling. Grant that service account only permission to run this one job; it does not get Secret Manager or database access.
+Create one Cloud Scheduler job in `asia-south1` with timezone `Asia/Kolkata`. It invokes the Cloud Run Jobs `:run` API **every hour** using an OIDC service account dedicated to scheduling. Grant that service account only permission to run this one job; it does not get Secret Manager or database access.
 
 Scheduler delivery can repeat after a transient failure. The job-run records, per-account advisory locks, reservations, and partial unique indexes—not delivery exactly-once assumptions—prevent duplicate orders.
 
 ### 8.3 Delivery pipeline and configuration
 
-- Add a versioned worker Dockerfile and `.dockerignore` that excludes `.env*`, browser artifacts, fixtures with real data, and all local credential files.
+- Add a versioned worker Dockerfile and `.dockerignore` that excludes `.env*`, browser artifacts, fixtures with real data, and all local credential files. The `.browser-data/` profile directory must be excluded explicitly — it holds live portal sessions.
 - Build and deploy from a protected CI workflow after tests pass. Tag images with the commit SHA.
 - Keep GCP project ID, service-account identities, secret names, and schedule in documented deployment configuration, not application code.
 - Configure a Google Cloud billing budget and an alert before enabling Cloud Scheduler. Set maximum job instances to 1 as a hard cost/concurrency guard.
 - Use separate development/staging/production GCP projects and Supabase databases. Never test live ordering against production credentials from a development deployment.
 
+### 8.4 Cost
+
+Cloud Run Jobs carry a monthly free allowance of 240,000 vCPU-seconds and 450,000 GiB-seconds. An hourly run of roughly five minutes at 1 vCPU and 2 GiB consumes about 7,200 vCPU-seconds and 14,400 GiB-seconds per month — roughly 3% of the CPU allowance and 3% of the memory allowance. Expected steady-state cost:
+
+| Item | Monthly |
+|---|---|
+| Cloud Run Jobs (CPU + memory) | $0.00 — inside the free allowance |
+| Cloud Scheduler (1 job) | $0.00 — inside the free allowance |
+| Secret Manager (~5 secrets) | $0.00 — inside the 6-version free allowance |
+| Cloud Build | $0.00 — inside the 120 build-minutes/day allowance |
+| Cloud Logging | $0.00 — inside the free allotment |
+| Artifact Registry (~1.5 GB image) | ~$0.10–0.20 — 0.5 GB is free |
+| **Total** | **~$0.20** |
+
+Set a billing budget alert at $5/month. If the free allowance is ever withdrawn, the same workload still costs well under one dollar per month, which is the practical benefit of the batch shape over an always-on worker.
+
 ## 9. User interface implementation
 
 Add an authenticated `/automation` route and navigation item. The page has four sections:
 
-1. **Global control:** enabled/paused state, explanation of the daily schedule, and a pause-all button.
+1. **Global control:** enabled/paused state, explanation of the schedule, and a pause-all button.
 2. **Portal accounts:** create/edit account, secure credential replacement, account status, mappings, last confirmed order, next eligible time, and pause/disconnect controls.
 3. **Rules:** create/edit/disable ordering rules, card/benefit filters, priority, and required default pick-one choice.
 4. **History and action required:** latest job runs and attempts, safe outcome labels, booking reference where confirmed, and clear manual recovery steps. For an uncertain attempt, let the user record “booking found” with its safe reference or “no booking found”; explain that the account remains rate-limited until 24 hours after submission started.
 
-Use the existing sheet/drawer, form, Zod-validation, and server-action error-display conventions. Credential inputs are always blank on read; replacing credentials is an explicit write-only action. Do not add a “run now” button in this phase—the sole trigger is the daily schedule, avoiding an unreviewed concurrent execution path.
+Use the existing sheet/drawer, form, Zod-validation, and server-action error-display conventions. Credential inputs are always blank on read; replacing credentials is an explicit write-only action. Do not add a “run now” button in this phase—the sole trigger is the scheduled job, avoiding an unreviewed concurrent execution path.
 
 ## 10. Tests
 
@@ -384,7 +403,7 @@ Use only sanitized fixtures and the fake client to test:
 2. Complete the manual portal-flow discovery, verify portal terms and account-owner authorization, and review the sanitized fixture/adapter contract.
 3. Deploy the Cloud Run Job and Scheduler with the schedule disabled; validate secret access and database connectivity without portal submission.
 4. Enable one staging/test portal account and run only adapter fixtures.
-5. Enable one real production account and one narrow, low-risk rule; supervise the first daily job.
+5. Enable one real production account and one narrow, low-risk rule; supervise the first scheduled job.
 6. Enable additional accounts/rules after successful review of bookings, logs, and 24-hour enforcement.
 
 The immediate kill switch is `automation_settings.enabled = false`; it is checked before candidate selection and immediately before portal submission. A portal-account pause is the narrower kill switch. Disabling the Cloud Scheduler job is the infrastructure-level fallback. None of these delete attempts or alter existing tracker status/history.
@@ -393,8 +412,8 @@ The immediate kill switch is `automation_settings.enabled = false`; it is checke
 
 The discovery gate and live browser validation resolved the operational questions (see [automated-rupay-ordering-architecture.md](./automated-rupay-ordering-architecture.md) for full details):
 
-1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. Solved via persistent browser profile directories (`.browser-data/account_<id>`) that maintain the session JWT token across runs. Unattended runs bypass login and CAPTCHA entirely. When the session has expired and the login form is reached, the runner falls back to an automatic solve through the external `recaptcha-solver` service (audio-challenge path) and proceeds only on a verified token.
-2. **24-hour cadence vs calendar day:** The portal enforces a strict rolling 24-hour limit from the last booking. Resolved via `cooldown_until` on `app.portal_accounts`, automated IST parsing, and the dynamic multi-account daemon event loop (`worker/src/daemon.ts`).
+1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. The deployed job logs in fresh on every execution and solves the challenge through the captcha solver in `worker/src/captcha-solver.ts` — a third-party solving service (CapSolver / 2Captcha / NopeCHA) or, as a fallback, the in-browser audio challenge transcribed with Gemini — and proceeds only on a verified token. The portal session JWT expires one hour after login, so no persisted profile would survive between hourly runs in any case; a fresh login per execution is both simpler and safer than persisting session state. The per-account profile directories under `worker/.browser-data/` remain a **local development** convenience only and are never written by the deployed job.
+2. **24-hour cadence vs calendar day:** The portal enforces a strict rolling 24-hour limit from the last booking. Resolved via `cooldown_until` on `app.portal_accounts` and automated IST parsing. The deployed job is a **batch**, not a persistent daemon: because the cooldown is enforced in the database, a scheduled sweep that runs every hour is equivalent to waking exactly at each unlock instant — it simply re-evaluates eligibility each time and finds nothing to do when an account is still cooling down. The event-loop daemon in `worker/src/daemon.ts` is retained as a local development and operations tool, and its scheduling logic (`getNextEligibleRunTime`) is shared with the UI header and the batch job.
 3. **Card mapping & BIN lookup:** Entitlements are bound to `(account, cardtypeid, quarter)` on the portal, not individual physical card numbers. The registered card dropdown in the UI provides the composite `${cardtypeid}_${cardbinid}` identifier.
 4. **Order submission contract:** Confirmed as `POST /api/Select/addUserTransaction`, which returns an HTML payment gateway redirect on success and a timestamped rate limit message on cooldown.
 5. **PostgREST lockdown:** Verified; all application tables reside in the private `app` schema and return 401/404 via public anon PostgREST.

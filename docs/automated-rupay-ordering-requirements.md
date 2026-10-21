@@ -38,7 +38,7 @@ The feature must give the user a clear record of what was attempted, ordered, de
 - A workspace owner configures one or more RuPay portal accounts and maps its tracked cards to them.
 - The worker solves the Google reCAPTCHA v2 challenge presented on the portal login form, unattended, and continues the login only when the solver reports a verified token.
 - The owner creates, enables, pauses, and prioritizes ordering rules.
-- A daily job selects at most one safe candidate per portal account and orders it through the portal.
+- A scheduled job selects at most one safe candidate per portal account and orders it through the portal.
 - Rules may restrict ordering to particular cards or benefits.
 - For a catalogue benefit with mutually exclusive offers, a rule may specify the portal offer to choose automatically.
 - The job records confirmed bookings, attempts, and sanitized failures in the tracker.
@@ -84,7 +84,7 @@ Only an enabled rule can nominate an instance for automated ordering. The user c
 
 ## 5. Eligibility and selection
 
-On its daily run, the system must consider only instances that:
+On each run, the system must consider only instances that:
 
 - Belong to an active, mapped card in the workspace.
 - Have status `Not Ordered`.
@@ -135,7 +135,7 @@ The implementation must retain enough non-sensitive data to explain automation b
 - A portal-account record, owned by a workspace, with encrypted credential material and operational status.
 - Card-to-portal-account mappings and the confirmed portal identifiers needed to act on the user's own cards.
 - Ordering rules and their selected pick-one offer IDs.
-- A run record for each daily execution, including start/end time, status, and aggregate counts.
+- A run record for each execution, including start/end time, status, and aggregate counts.
 - One attempt record per candidate submission, including instance, portal account, rule, safe booking/reference ID when confirmed, attempt state, timestamps, and a sanitized error category.
 
 Portal credentials, JWTs, cookies, session IDs, OTPs, raw portal payloads, and voucher codes are secrets. They must not be returned from server actions, displayed in the UI, written to logs, sent to telemetry, or committed to source control.
@@ -144,12 +144,13 @@ All automation records must follow the existing workspace-isolation model: every
 
 ## 8. Hosting and scheduling
 
-- The automation worker runs as a Google Cloud Run Job in `asia-south1` (Mumbai).
-- Cloud Scheduler triggers one daily run using the Asia/Kolkata timezone.
+- The automation worker runs as a Google Cloud Run Job in `asia-south1` (Mumbai). The job is a **batch**: each execution re-evaluates which portal accounts are eligible, orders at most one benefit per eligible account, records the outcome, and exits. The worker is not deployed as a long-lived process.
+- Cloud Scheduler triggers one run **every hour** using the Asia/Kolkata timezone. Hourly is the finest cadence that cannot over-order: the portal permits one benefit order per portal account per 24 hours, and eligibility is enforced in the database, so a sweep that runs more often simply finds nothing to do. An hourly sweep also keeps the "next eligible time" shown in the UI accurate to within the hour.
 - The job has maximum parallelism and maximum instances set to one. Account-level locking remains mandatory because scheduler delivery and manual recovery can overlap.
+- Each execution logs in fresh. The deployed job keeps no browser profile, cookie jar, or session state between runs; portal credentials are decrypted from the application's database immediately before use and never written to disk. The continuous daemon in `worker/src/daemon.ts` is retained as a **local development and operations tool**, not as the deployed shape.
 - Google Secret Manager stores the worker's operational secrets and the encryption-key material; encrypted per-user portal credentials remain in the application's database.
 - Vercel continues to host the tracker UI/API and Supabase continues to provide database/authentication services.
-- A Google Cloud budget alert must be configured before enabling the scheduler. Document the estimated monthly cost for the configured workload; the feature must not depend on free-tier availability for correctness.
+- A Google Cloud budget alert must be configured before enabling the scheduler. Document the estimated monthly cost for the configured workload; the feature must not depend on free-tier availability for correctness. The expected steady-state cost is approximately **$0.20 per month**, the dominant term being container image storage above the free-tier allowance.
 
 ## 9. User experience requirements
 

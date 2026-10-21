@@ -23,6 +23,7 @@
 |------|-------|--------|
 | Next.js app + API | **Vercel** (Hobby, free) | Functions region `bom1` (Mumbai) |
 | PostgreSQL + Auth | **Supabase** (free tier) | `ap-south-1` (Mumbai) |
+| Ordering worker | **Google Cloud Run Job** + Cloud Scheduler (hourly) | `asia-south1` (Mumbai) |
 | Source repo | **GitHub** (private) | n/a |
 
 Default URL is `<project>.vercel.app`; a custom domain is optional for v1. Pick Mumbai regions at project creation — they cannot be changed later on Supabase. (Cron and Resend are added in the later Reminders phase — see REQUIREMENTS.md §9 — at which point a custom domain also becomes relevant, since Resend requires one to email anyone other than the account owner.)
@@ -724,6 +725,15 @@ Vercel bom1 (Next.js + API)
     └──► Supabase Auth (public self-signup OFF; admin invite-by-email;
            workspace_members gate, keyed on user_id)
 
+Cloud Scheduler (hourly, Asia/Kolkata)
+    │
+    ▼
+Cloud Run Job asia-south1 (ordering worker — batch run, one order per
+eligible portal account, then exit; no state between runs)
+    │
+    └──► Supabase ap-south-1 (read + write through the app schema, via the
+           worker's own service account / connection string)
+
 (Cron + Resend added in the later Reminders phase — see REQUIREMENTS.md §9)
 ```
 
@@ -760,9 +770,10 @@ VOUCHER_ENCRYPTION_KEY=base64:...        # server-only, 32 bytes
 |---------|-------------------------|------------------------------|
 | Vercel | $0 (Hobby, until traffic requires Pro) | ~$20 (Pro) |
 | Supabase | $0 (Free) | ~$25 (Pro — backups, no pausing) |
+| Google Cloud (ordering worker) | ~$0.20 (Cloud Run Job hourly — inside the CPU/memory free allowance; only image storage bills) | ~$0.20 (scales with run frequency, not with users) |
 | Resend | n/a until Reminders phase | $0–20 depending on volume |
 | Domain | $0 (optional) | ~₹80/mo if used |
-| **Total** | **~$0** | **~$45–65** |
+| **Total** | **~$0.20** | **~$45–65** |
 
 Supabase free tier pauses projects after ~7 days of inactivity. Without the (later-phase) daily reminder cron keeping it awake, a dormant v1 deployment may pause — acceptable for early usage; revisit if it becomes a problem before Reminders ships.
 
