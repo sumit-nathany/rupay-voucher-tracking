@@ -49,7 +49,7 @@ Do not merge or enable the submission adapter until all of the following are kno
 5. Which result field is safe to store as `rupay_booking_id`.
 6. Whether the portal's terms and the account owner's authorization permit the intended automation.
 
-Do not implement or enable a write path until the portal flow is confirmed and the terms/authorization check is resolved. If login requires a challenge that cannot be completed unattended, the initial release supports account status `challenge_required` only. It does not implement a CAPTCHA solver, OTP relay, browser streaming, or an unsafe challenge workaround.
+Do not implement or enable a write path until the portal flow is confirmed and the terms/authorization check is resolved. If login requires a challenge that cannot be completed unattended, the initial release supports account status `challenge_required` only. It does not implement an OTP relay, browser streaming, or an unsafe challenge workaround. A reCAPTCHA solver *is* implemented, in `worker/src/captcha-solver.ts`: it calls out to a third-party solving service (CapSolver / 2Captcha / NopeCHA) and falls back to transcribing the in-browser audio challenge with Gemini; the worker proceeds only on a verified token.
 
 ## 3. Database design and migrations
 
@@ -366,7 +366,7 @@ Use only sanitized fixtures and the fake client to test:
 
 - Confirmed order with a booking ID.
 - Offer unavailable before submission.
-- Credentials expired, OTP/CAPTCHA/device verification, and changed selector/API contract.
+- Credentials expired, OTP/device verification, an unsolvable CAPTCHA, and changed selector/API contract.
 - Network failure before submission (`failed_pre_submit`).
 - Timeout/connection loss after final submission (`uncertain`).
 - A portal response that looks successful but lacks a reliable confirmation (`uncertain`).
@@ -393,7 +393,7 @@ The immediate kill switch is `automation_settings.enabled = false`; it is checke
 
 The discovery gate and live browser validation resolved the operational questions (see [automated-rupay-ordering-architecture.md](./automated-rupay-ordering-architecture.md) for full details):
 
-1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. Solved via persistent browser profile directories (`.browser-data/account_<id>`) that maintain the session JWT token across runs. Unattended runs bypass login and CAPTCHA entirely.
+1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. Solved via persistent browser profile directories (`.browser-data/account_<id>`) that maintain the session JWT token across runs. Unattended runs bypass login and CAPTCHA entirely. When the session has expired and the login form is reached, the runner falls back to an automatic solve through the external `recaptcha-solver` service (audio-challenge path) and proceeds only on a verified token.
 2. **24-hour cadence vs calendar day:** The portal enforces a strict rolling 24-hour limit from the last booking. Resolved via `cooldown_until` on `app.portal_accounts`, automated IST parsing, and the dynamic multi-account daemon event loop (`worker/src/daemon.ts`).
 3. **Card mapping & BIN lookup:** Entitlements are bound to `(account, cardtypeid, quarter)` on the portal, not individual physical card numbers. The registered card dropdown in the UI provides the composite `${cardtypeid}_${cardbinid}` identifier.
 4. **Order submission contract:** Confirmed as `POST /api/Select/addUserTransaction`, which returns an HTML payment gateway redirect on success and a timestamped rate limit message on cooldown.

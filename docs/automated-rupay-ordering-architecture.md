@@ -16,6 +16,7 @@ During live browser instrumentation and portal analysis of the RuPay Select plat
 
 ### 1.2 Authentication & CAPTCHA Mechanics
 - **Google reCAPTCHA v2:** The portal login form requires solving a standard Google reCAPTCHA (`textarea#g-recaptcha-response`).
+- **Automatic solve (fallback):** when a session has expired and the login form is reached, the runner solves the reCAPTCHA unattended via the captcha solver in `worker/src/captcha-solver.ts` (`autoSolveRecaptcha`), which tries a third-party solving service (CapSolver / 2Captcha / NopeCHA, per configured API key) and falls back to the in-browser **audio challenge** path transcribed with Gemini. The runner continues the login only when the solver reports a **verified** token.
 - **Session Persistence:** Once logged in, the portal stores a JWT authentication token in cookies (`jwt`) and browser storage.
 - Using a persistent browser profile directory (`chromium.launchPersistentContext`) preserves these cookies across runs. Unattended runs bypass the login form and CAPTCHA completely as long as the session remains active.
 - To avoid session collisions across multiple RuPay accounts, each account uses an isolated profile directory: `.browser-data/account_<portalAccountId>/`.
@@ -119,7 +120,7 @@ The web application header (`web/src/components/automation/automation-header.tsx
 To allow unattended scheduled runs without re-solving Google reCAPTCHA each time:
 1. Each portal account uses an independent persistent user profile directory on disk:
    `worker/.browser-data/account_<portalAccountId>/`
-2. **One-Time Onboarding:** When a new RuPay account is connected, the operator opens a live browser window once using `worker/src/browser-runner.ts`, logs in with credentials, and solves the reCAPTCHA manually.
+2. **One-Time Onboarding:** When a new RuPay account is connected, the operator opens a live browser window once using `worker/src/browser-runner.ts`, logs in with credentials, and solves the reCAPTCHA manually. This is the preferred path: it establishes a session that unattended runs reuse, so the CAPTCHA is normally never encountered again.
 3. **Persistent Session:** Playwright preserves the resulting `jwt` cookie and storage state inside that account's profile directory.
 4. **Scheduled Execution:** The daemon boots Playwright with that account's profile, navigates directly to `https://rupayselect.truztee.com/#/offers`, verifies `jwt` cookie presence, and executes card/offer selection without hitting the login screen.
 
@@ -127,8 +128,10 @@ To allow unattended scheduled runs without re-solving Google reCAPTCHA each time
 If a portal session expires:
 1. The runner checks for `jwt` cookie presence after page load.
 2. If absent and reCAPTCHA is presented:
-   - In unattended mode: Sets account status to `challenge_required` or `needs_attention` and exits cleanly without throwing errors or locking the account.
+   - **Automatic solve (preferred for unattended runs):** the runner asks the captcha solver in `worker/src/captcha-solver.ts` to solve the challenge, and continues the login only when the solver reports a **verified** token. The refreshed session is persisted back into the account profile directory by the existing `launchPersistentContext` behaviour.
+   - If the solve fails — audio challenge unavailable, transcription unsuccessful, or the token rejected — the runner sets the account status to `challenge_required` or `needs_attention` and exits cleanly without throwing errors or locking the account.
    - An alert/notification is triggered for the operator to perform a 1-click re-authentication.
+3. **OTP and device verification are never solved or relayed.** If either is presented, the runner stops and routes the account to the operator exactly as in (2).
 
 ---
 
