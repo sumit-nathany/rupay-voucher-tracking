@@ -516,7 +516,17 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
             if (await submitButton.isEnabled().catch(() => true)) {
               clickedSignIn = true;
               console.log('[captcha] ✓ CAPTCHA solved! Automatically clicking Sign In...');
-              await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+              // reCAPTCHA leaves a transparent overlay over the challenge for
+              // a moment after it is solved. A click at raw coordinates lands
+              // on that overlay and does nothing, silently. Playwright's own
+              // click waits for the element to actually receive the event, so
+              // use that first and fall back to the humanised click.
+              try {
+                await submitButton.click({ timeout: 15000 });
+              } catch (err) {
+                console.warn('[captcha] Direct click failed, trying a humanised click:', err);
+                await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+              }
               await page.waitForTimeout(2000);
             } else {
               console.warn(
