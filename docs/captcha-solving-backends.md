@@ -20,8 +20,11 @@ to try.
 | **In-browser audio + Gemini** | The worker clicks the audio challenge, transcribes it with Gemini, types the answer back. | One Gemini call per solve, no per-solve fee | Implemented, but **Google blocks the audio challenge from cloud IP addresses** — it returns "Your computer or network may be sending automated queries" instead of the clip |
 
 The order they are tried in is in `worker/src/captcha-solver.ts`:
-**CapMonster**, then CapSolver, then NopeCHA, then 2Captcha, then the audio
-path, then it waits for a human.
+**CapMonster**, then **YesCaptcha**, then **AZCaptcha**, then CapSolver, then
+NopeCHA, then 2Captcha, then the audio path, then it waits for a human.
+
+The first three are the ones worth having keys for, because each of them has
+a free balance that costs nothing to claim.
 
 A backend that rejects its key is disabled for the rest of the run rather
 than retried, so one dead key does not cost a minute per account.
@@ -130,11 +133,14 @@ $0.1 to your balance to test the service."*
 ### 3. AZCaptcha — $0.10 free credit, no card
 
 - **$0.10 free credit after email verification**, no credit card needed.
+  Their pricing page: *"After verifying your email, new accounts receive
+  $0.10 free credit to test the API before adding funds."*
 - Minimum top-up **$5**, credits never expire, and unused credit is
   refundable within 30 days if less than 10% has been used.
 - Their reCAPTCHA v2 **grid** recognition is **$0.10 per 1,000** — by far
-  the cheapest grid rate anywhere.
-- Not wired in yet; it is a small addition if we want a third.
+  the cheapest grid rate anywhere. Their v2 token is $1.00 per 1,000, so
+  $0.10 is about 100 tokens.
+- Now wired into the worker as `AZCAPTCHA_API_KEY`.
 
 ### Also worth knowing
 

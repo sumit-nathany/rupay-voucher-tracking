@@ -49,10 +49,85 @@ export async function solveWith2Captcha(
 let capSolverDisabled = false;
 let capMonsterDisabled = false;
 let yesCaptchaDisabled = false;
+let azCaptchaDisabled = false;
 
 /**
  * Solves reCAPTCHA v2 using CapSolver API.
  */
+/**
+ * Solve the CAPTCHA with AZCaptcha.
+ *
+ * They give $0.10 of free credit once you verify your email — no card — and
+ * 1,000 credits is $1, so $0.10 is about 100 reCAPTCHA v2 tokens at their
+ * $1.00 per 1,000 rate. Their API is the same shape as 2Captcha's.
+ */
+export async function solveWithAzCaptcha(
+  apiKey: string,
+  siteKey: string,
+  pageUrl: string,
+  userAgent?: string,
+): Promise<string | null> {
+  if (azCaptchaDisabled) return null;
+  console.log('[captcha] Requesting AZCaptcha token for sitekey:', siteKey);
+  try {
+    const inRes = await fetch('https://azcaptcha.com/createTask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientKey: apiKey,
+        task: {
+          type: 'NoCaptchaTaskProxyless',
+          websiteURL: pageUrl,
+          websiteKey: siteKey,
+          ...(userAgent ? { userAgent } : {}),
+        },
+      }),
+    });
+    const inData = (await inRes.json()) as {
+      errorId: number;
+      errorCode?: string;
+      errorDescription?: string;
+      taskId?: number;
+    };
+    if (inData.errorId !== 0 || !inData.taskId) {
+      console.error('[captcha] AZCaptcha task creation error:', inData.errorDescription ?? inData.errorCode);
+      const desc = `${inData.errorDescription ?? ''} ${inData.errorCode ?? ''}`.toLowerCase();
+      if (desc.includes('key') || desc.includes('denied') || desc.includes('balance') || desc.includes('invalid')) {
+        azCaptchaDisabled = true;
+      }
+      return null;
+    }
+
+    const taskId = inData.taskId;
+    console.log(`[captcha] AZCaptcha task submitted (ID: ${taskId}). Polling for solution...`);
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const resRes = await fetch('https://azcaptcha.com/getTaskResult', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: apiKey, taskId }),
+      });
+      const resData = (await resRes.json()) as {
+        errorId: number;
+        status: string;
+        solution?: { gRecaptchaResponse?: string };
+      };
+      if (resData.status === 'ready' && resData.solution?.gRecaptchaResponse) {
+        console.log('[captcha] AZCaptcha solved successfully!');
+        return resData.solution.gRecaptchaResponse;
+      }
+      if (resData.errorId !== 0 && resData.errorId !== 1) {
+        console.error('[captcha] AZCaptcha result error:', resData);
+        return null;
+      }
+    }
+  } catch (err) {
+    console.error('[captcha] AZCaptcha network error:', err);
+  }
+  return null;
+}
+
 /**
  * Solve the CAPTCHA with YesCaptcha.
  *
@@ -706,7 +781,24 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 5. Strategy 3: CapSolver API
+  // 5. Strategy 3: AZCaptcha — $0.10 of free credit once you verify your
+  //    email, no card needed.
+  const azCaptchaKey = process.env.AZCAPTCHA_API_KEY;
+  if (azCaptchaKey && siteKey) {
+    console.log('[captcha] Using AZCaptcha service...');
+    const token = await solveWithAzCaptcha(
+      azCaptchaKey,
+      siteKey,
+      pageUrl,
+      await page.evaluate(() => navigator.userAgent).catch(() => undefined),
+    );
+    if (token) {
+      await injectRecaptchaToken(page, token);
+      return true;
+    }
+  }
+
+  // 6. Strategy 4: CapSolver API
   const capSolverKey = process.env.CAPSOLVER_API_KEY;
   if (capSolverKey && siteKey) {
     console.log('[captcha] Using CapSolver service...');
@@ -717,7 +809,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 6. Strategy 4: NopeCHA Token API
+  // 7. Strategy 5: NopeCHA Token API
   const nopechaKey = process.env.NOPECHA_API_KEY;
   if (nopechaKey && siteKey) {
     console.log('[captcha] Using NopeCHA Token service...');
@@ -728,7 +820,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 7. Strategy 5: 2Captcha API
+  // 8. Strategy 6: 2Captcha API
   const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY;
   if (twoCaptchaKey && siteKey) {
     console.log('[captcha] Using 2Captcha service...');
@@ -739,7 +831,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
     }
   }
 
-  // 8. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
+  // 9. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
   const geminiApiKey = getGeminiApiKey();
   if (geminiApiKey) {
     console.log('[captcha] Attempting in-browser audio capture & Gemini transcription...');
@@ -755,7 +847,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 // ── Preflight ───────────────────────────────────────────────────────────────
 
 export interface SolverBackendStatus {
-  service: 'capmonster' | 'yescaptcha' | 'capsolver' | '2captcha' | 'nopecha';
+  service: 'capmonster' | 'yescaptcha' | 'azcaptcha' | 'capsolver' | '2captcha' | 'nopecha';
   configured: boolean;
   /** null = not configured, so not checked. false = configured but rejected. */
   usable: boolean | null;
@@ -822,6 +914,33 @@ export async function checkSolverBackends(): Promise<SolverBackendStatus[]> {
     } catch (err) {
       results[results.length - 1] = {
         service: 'yescaptcha',
+        configured: true,
+        usable: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const azKey = process.env.AZCAPTCHA_API_KEY;
+  results.push({ service: 'azcaptcha', configured: Boolean(azKey), usable: null });
+  if (azKey) {
+    try {
+      const res = await fetch('https://azcaptcha.com/getBalance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: azKey }),
+      });
+      const json = (await res.json()) as { errorId?: number; errorCode?: string; errorDescription?: string; balance?: number };
+      const ok = json.errorId === 0;
+      results[results.length - 1] = {
+        service: 'azcaptcha',
+        configured: true,
+        usable: ok,
+        detail: ok ? `balance $${json.balance}` : `${json.errorCode ?? 'error'}: ${json.errorDescription ?? 'rejected'}`,
+      };
+    } catch (err) {
+      results[results.length - 1] = {
+        service: 'azcaptcha',
         configured: true,
         usable: false,
         detail: err instanceof Error ? err.message : String(err),
