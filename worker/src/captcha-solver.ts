@@ -104,7 +104,10 @@ export async function solveWithAzCaptcha(
     // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
     // too tight. 30 x 3s = 90s, which still leaves room inside the token's
     // two-minute lifetime.
-    for (let i = 0; i < 30; i++) {
+    // A solve has been measured at 60s, 120s and still-pending at 210s, so
+    // the window is generous. The token is only valid for two minutes from
+    // the moment it is *issued*, so waiting longer costs nothing.
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://azcaptcha.com/getTaskResult', {
         method: 'POST',
@@ -181,7 +184,10 @@ export async function solveWithYesCaptcha(
     // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
     // too tight. 30 x 3s = 90s, which still leaves room inside the token's
     // two-minute lifetime.
-    for (let i = 0; i < 30; i++) {
+    // A solve has been measured at 60s, 120s and still-pending at 210s, so
+    // the window is generous. The token is only valid for two minutes from
+    // the moment it is *issued*, so waiting longer costs nothing.
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://api.yescaptcha.com/getTaskResult', {
         method: 'POST',
@@ -268,7 +274,10 @@ export async function solveWithCapMonster(
     // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
     // too tight. 30 x 3s = 90s, which still leaves room inside the token's
     // two-minute lifetime.
-    for (let i = 0; i < 30; i++) {
+    // A solve has been measured at 60s, 120s and still-pending at 210s, so
+    // the window is generous. The token is only valid for two minutes from
+    // the moment it is *issued*, so waiting longer costs nothing.
+    for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://api.capmonster.cloud/getTaskResult', {
         method: 'POST',
@@ -464,6 +473,55 @@ export async function transcribeAudioWithGemini(
 /**
  * Injects a solved g-recaptcha-response token into the page and fires the verification callback.
  */
+/**
+ * Stash the site's reCAPTCHA callback before a challenge can replace it.
+ *
+ * When the widget renders, reCAPTCHA keeps the site's handler at
+ * `___grecaptcha_cfg.clients[id].A.callback`. As soon as the checkbox is
+ * clicked and a challenge opens, that slot is taken over by reCAPTCHA's own
+ * challenge handler — so by the time we have a token, the site's callback is
+ * gone and calling whatever is left in that tree does nothing useful.
+ *
+ * So take a reference to it while it is still the site's, and keep it.
+ */
+export async function captureRecaptchaCallback(page: Page): Promise<boolean> {
+  return await page.evaluate(() => {
+    const w = window as any;
+    if (Array.isArray(w.__captchaCallbacks) && w.__captchaCallbacks.length > 0) {
+      return true;
+    }
+    w.__captchaCallbacks = [];
+    const cfg = w.___grecaptcha_cfg;
+    if (cfg?.clients) {
+      for (const cid of Object.keys(cfg.clients)) {
+        // The render options — sitekey, callback, expired-callback — live a
+        // couple of levels down: `clients[id].A.A.callback`. The depth has
+        // moved between reCAPTCHA releases, so look for a function called
+        // `callback` rather than hardcoding a path.
+        const seen = new Set<any>();
+        const walk = (node: any, depth: number) => {
+          if (!node || typeof node !== 'object' || depth > 4) return;
+          if (seen.has(node)) return;
+          seen.add(node);
+          for (const key of Object.keys(node)) {
+            const val = node[key];
+            if (typeof val === 'function') {
+              if (key === 'callback' || key.endsWith('-callback')) {
+                w.__captchaCallbacks.push(val);
+                return;
+              }
+            } else if (val && typeof val === 'object') {
+              walk(val, depth + 1);
+            }
+          }
+        };
+        walk(cfg.clients[cid], 0);
+      }
+    }
+    return w.__captchaCallbacks.length > 0;
+  });
+}
+
 export async function injectRecaptchaToken(page: Page, token: string): Promise<boolean> {
   return await page.evaluate((sol) => {
     const textarea = document.querySelector('textarea#g-recaptcha-response') as HTMLTextAreaElement | null;
@@ -473,51 +531,40 @@ export async function injectRecaptchaToken(page: Page, token: string): Promise<b
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    // The site's own script listens for reCAPTCHA's callback, and the depth
-    // at which reCAPTCHA keeps it varies: the checkbox widget holds it one
-    // level under the client id, the invisible widget two levels down
-    // (`clients[id][key][key].callback`). Searching only one level means the
-    // site never hears that the challenge was solved, its submit button
-    // stays disabled, and clicking it silently does nothing.
-    //
-    // So walk the whole tree instead of guessing a depth.
-    const cfg = (window as any).___grecaptcha_cfg;
+    // The site's own script listens for reCAPTCHA's callback. That slot is
+    // taken over by reCAPTCHA's challenge handler as soon as a challenge
+    // opens, so the reference we took before clicking the checkbox is the one
+    // that matters.
+    const w = window as any;
     let fired = false;
+    const stashed: any[] = Array.isArray(w.__captchaCallbacks) ? w.__captchaCallbacks : [];
+    for (const cb of stashed) {
+      try {
+        cb(sol);
+        fired = true;
+      } catch {
+        // A callback that throws is not the one we wanted; keep going.
+      }
+    }
 
-    // Keys that are configuration rather than a callback.
-    const CONFIG_KEYS = new Set([
-      'k', 'co', 'hl', 'size', 'rs', 'cd', 'v', 'b', 'isq', 'f', 'id', 's',
-      'tl', 'fast', 'action', 'c', 'r', 'co' , 'ds', 'sws', 'csl', 'rc', 'a',
-    ]);
-
-    const seen = new Set<any>();
-    const walk = (node: any, depth: number) => {
-      if (fired || !node || typeof node !== 'object' || depth > 6) return;
-      if (seen.has(node)) return;
-      seen.add(node);
-      for (const key of Object.keys(node)) {
-        const val = node[key];
-        if (typeof val === 'function') {
-          const looksLikeCallback =
-            key === 'callback' ||
-            key === 'promise-callback' ||
-            key.endsWith('-callback') ||
-            (depth === 1 && !CONFIG_KEYS.has(key));
-          if (looksLikeCallback) {
+    // Fall back to the live configuration, in case the widget was rendered
+    // after we stashed the callback.
+    if (!fired) {
+      const cfg = w.___grecaptcha_cfg;
+      if (cfg?.clients) {
+        for (const cid of Object.keys(cfg.clients)) {
+          const cb = cfg.clients[cid]?.A?.callback;
+          if (typeof cb === 'function') {
             try {
-              val(sol);
+              cb(sol);
               fired = true;
-              return;
             } catch {
-              // A callback that throws is not the one we wanted; keep looking.
+              // keep going
             }
           }
-        } else if (val && typeof val === 'object') {
-          walk(val, depth + 1);
         }
       }
-    };
-    if (cfg?.clients) walk(cfg.clients, 0);
+    }
 
     return fired || Boolean(textarea && textarea.value === sol);
   }, token);
@@ -752,6 +799,12 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
   }
 
   if (anchorFrame) {
+    // Take a reference to the site's reCAPTCHA callback *before* clicking the
+    // checkbox: opening a challenge takes that slot over, and afterwards the
+    // site's handler is no longer reachable there.
+    const captured = await captureRecaptchaCallback(page);
+    console.log(`[captcha] Captured the site's reCAPTCHA callback: ${captured ? 'yes' : 'no'}`);
+
     const checkbox = anchorFrame.locator('.recaptcha-checkbox, #recaptcha-anchor').first();
     if (await checkbox.isVisible({ timeout: 2000 })) {
       console.log('[captcha] Clicking reCAPTCHA checkbox naturally...');

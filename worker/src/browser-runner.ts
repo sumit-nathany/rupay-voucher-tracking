@@ -522,10 +522,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
               // click waits for the element to actually receive the event, so
               // use that first and fall back to the humanised click.
               try {
-                await submitButton.click({ timeout: 15000 });
+                // A short timeout: the widget's iframe covers the button, so
+                // the real click always fails, and there is no point waiting
+                // a long time to find that out.
+                await submitButton.click({ timeout: 5000 });
               } catch (err) {
-                console.warn('[captcha] Direct click failed, trying a humanised click:', err);
-                await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+                console.warn('[captcha] The submit button is covered, clicking it directly:', String(err).split('\n')[0]);
+                await submitButton.evaluate((el) => (el as HTMLElement).click());
               }
               await page.waitForTimeout(2000);
             } else {
