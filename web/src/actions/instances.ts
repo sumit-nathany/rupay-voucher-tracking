@@ -25,9 +25,6 @@ export async function recordSaleAction(input: Parameters<typeof d.recordSale>[1]
 export async function updateDetailsAction(input: Parameters<typeof d.updateDetails>[1]) {
   return d.updateDetails(await getCtx(), input);
 }
-export async function dismissPortalRefusalAction(instanceId: string) {
-  return d.dismissPortalRefusal(await getCtx(), instanceId);
-}
 export async function setCodeAction(input: Parameters<typeof d.setCode>[1]) {
   return d.setCode(await getCtx(), input);
 }

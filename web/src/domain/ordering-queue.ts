@@ -294,9 +294,6 @@ async function fetchRawQueueCandidates(
         eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
         inArray(schema.benefitInstances.cardId, targetCardIds),
         eq(schema.benefitInstances.orderStatus, 'Not Ordered'),
-        // A portal refusal removes the instance from the queue — see
-        // REQUIREMENTS.md §6 and RH#16.
-        isNull(schema.benefitInstances.portalRefusal),
         gte(schema.benefitInstances.orderDeadline, ctx.today),
         isNull(schema.benefitInstances.soldFor),
       ),

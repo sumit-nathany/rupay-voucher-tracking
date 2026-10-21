@@ -408,18 +408,6 @@ export const benefitInstances = app.table(
     portalAccountId: uuid("portal_account_id"),
     codeEncrypted: text("code_encrypted"),
     comments: text("comments"),
-    // ── Portal refusal ──────────────────────────────────────────────────
-    // The RuPay portal or the bank refused the order outright: the benefit is
-    // no longer available for this card, the card's limit for this benefit is
-    // used up, or the portal says it is already ordered. This is a fact about
-    // the portal's view of the entitlement, not a stage of the order, so it is
-    // tracked in its own columns rather than as an order_status value — see
-    // REQUIREMENTS.md §6 and RH#16. A refused instance is excluded from
-    // automatic ordering for its period; the user can dismiss it to retry.
-    portalRefusal: text("portal_refusal"),
-    portalRefusalSource: text("portal_refusal_source"),
-    portalRefusalDetail: text("portal_refusal_detail"),
-    portalRefusalAt: timestamp("portal_refusal_at", { withTimezone: true }),
     // Which offer was taken, for a "redeem any one" benefit. Must belong to generated_from_version (checked in app).
     chosenOptionId: uuid("chosen_option_id").references(() => benefitOptions.id, { onDelete: "set null" }),
     createdAt: createdAt(),
@@ -430,14 +418,6 @@ export const benefitInstances = app.table(
     check(
       "benefit_instances_order_status_check",
       sql`${t.orderStatus} IN ('Not Ordered','Ordered but Coupon not received','Coupon Received','Coupon Redeemed','Skipped','Withdrawn')`,
-    ),
-    check(
-      "benefit_instances_portal_refusal_check",
-      sql`${t.portalRefusal} IS NULL OR ${t.portalRefusal} IN ('benefit_unavailable','card_limit_reached','already_ordered')`,
-    ),
-    check(
-      "benefit_instances_portal_refusal_source_check",
-      sql`${t.portalRefusalSource} IS NULL OR ${t.portalRefusalSource} IN ('rupay_portal','bank')`,
     ),
     check(
       "benefit_instances_one_source_check",

@@ -131,7 +131,7 @@ All rule child tables must use composite FKs where the parent carries a workspac
 | `state` | `reserved`, `submitting`, `confirmed`, `failed_pre_submit`, `uncertain`, `resolved_no_order`, `cancelled`. |
 | `reserved_at`, `submission_started_at`, `finished_at`, `lease_expires_at` | Exact timing for the rolling limit, active reservation recovery, and audit trail. |
 | `booking_reference` | Safe portal booking/reference identifier only after confirmation. |
-| `failure_code` | Finite safe code such as `credentials_expired`, `challenge_required`, `offer_unavailable`, `card_limit_exhausted`, `portal_changed`, `network_pre_submit`, `network_post_submit`, `concurrent_change`, `reservation_lease_expired`, `worker_lost_after_submit_started`, or `tracker_reference_conflict`. A portal refusal also writes the refusal to the benefit instance itself (`portal_refusal`, `portal_refusal_source`, `portal_refusal_detail`, `portal_refusal_at`) — see REQUIREMENTS.md §6 and RH#16 — so the refusal is visible against the card and benefit, not only in the attempt ledger. |
+| `failure_code` | Finite safe code such as `credentials_expired`, `challenge_required`, `offer_unavailable`, `portal_changed`, `network_pre_submit`, `network_post_submit`, `concurrent_change`, `reservation_lease_expired`, `worker_lost_after_submit_started`, or `tracker_reference_conflict`. |
 
 Constraints and indexes:
 

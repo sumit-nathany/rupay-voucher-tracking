@@ -4,7 +4,6 @@ export type PortalFailureCode =
   | 'credentials_expired'
   | 'challenge_required'
   | 'offer_unavailable'
-  | 'card_limit_exhausted'
   | 'portal_changed'
   | 'network_pre_submit'
   | 'network_post_submit'
