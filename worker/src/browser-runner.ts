@@ -27,6 +27,8 @@ export interface BrowserRunnerOptions {
   portalAccountId?: string;
   headless?: boolean;
   ignoreCooldown?: boolean;
+  /** Links the attempts this run creates to the ordering job run record. */
+  jobRunId?: string;
 }
 
 let activeBrowserContext: BrowserContext | null = null;
@@ -315,7 +317,10 @@ export async function runBrowserTest(options?: BrowserRunnerOptions) {
     if (url.includes('addUserTransaction') || url.includes('createOrder') || url.includes('payment') || url.includes('juspay')) {
       try {
         const text = await res.text();
-        console.log(`[response ${res.status()}] ${url.slice(0, 100)}: ${text.slice(0, 300)}`);
+        // Never log the response body — it can carry codes, tokens, or raw
+        // portal payloads, and the product rules forbid that in logs. Log the
+        // shape only, then parse for the fields we actually act on.
+        console.log(`[response ${res.status()}] ${url.slice(0, 100)} (${text.length} bytes)`);
         const json = JSON.parse(text);
         const inner = typeof json.payload === 'string' ? JSON.parse(json.payload) : json.payload;
         const msg = inner?.message || json?.message;
@@ -1063,6 +1068,7 @@ async function addCardToPortalAccount(
       state: 'submitting',
       submissionStartedAt: new Date(),
       leaseExpiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      jobRunId: options?.jobRunId ?? null,
     })
     .returning();
 

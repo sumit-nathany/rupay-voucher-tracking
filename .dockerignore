@@ -1,0 +1,34 @@
+# Build context rules for the ordering worker image.
+#
+# The worker image is built from the REPOSITORY ROOT, because the worker
+# imports shared domain code from web/src:
+#
+#   docker build -f worker/Dockerfile -t IMAGE .
+#
+# Building with `worker/` as the context is not supported.
+
+node_modules
+**/node_modules
+.git
+.github
+.env*
+*.log
+dist
+**/dist
+coverage
+.next
+
+# Browser profiles hold live portal sessions — never bake them into an image.
+.browser-data
+**/.browser-data
+
+# Screenshots and captures produced by the runner.
+*.png
+*.jpg
+*.jpeg
+*.webm
+
+# Source data and one-off scripts the worker does not need.
+*.xlsx
+web/scripts
+docs
