@@ -58,6 +58,7 @@
 | **C-07** | First-run onboarding wizard: coverage & empty states | Onboarding | P2 | M | C-04 |
 | **C-08** | Move the browser runner to the shared attempt-reservation flow | Reliability | P1 | M | — |
 | **C-09** | Unify "today" on the Asia/Kolkata calendar date | Correctness | P0 | S | — *(fixed on `feat/cloud-run-worker`)* |
+| **C-10** | A pre-push guard for schema changes | Safety | P0 | S | — |
 | **D-01** | Real table semantics for the benefits list (a11y) | Accessibility | P1 | M | — |
 | **D-02** | Accessible names for benefit rows (a11y) | Accessibility | P2 | S | D-01 |
 | **D-03** | Visible labels + live result counts for filters (a11y) | Accessibility | P2 | S | — |
@@ -774,6 +775,27 @@ if (!isAll) {
 1. `web/src/domain/automation.ts` (`getNextEligibleRunTime`), `web/src/domain/automation-worker.ts` (`runAutomationJob`) and `worker/src/browser-runner.ts` all use `today()` from `web/src/lib/periods.ts`.
 2. A regression test pins the behaviour: with the clock at `2026-10-14T19:00:00Z` (2026-10-15 in IST, 2026-10-14 in UTC), the order date recorded is `2026-10-15`.
 3. No remaining `toISOString().slice(0, 10)` is used as "today" — the remaining occurrences are date arithmetic on `YYYY-MM-DD` strings, which correctly use UTC to avoid DST drift.
+
+---
+
+### C-10 — A pre-push guard for schema changes
+
+**Priority:** P0 · **Effort:** S · **Depends on:** —
+
+**Status: needed now.** This already caused a production incident.
+
+**Problem.** Nothing stops a commit that changes `web/src/db/schema.ts` from being pushed to `main` before the matching migration has been applied to production. AGENTS.md states the rule ("run `npm run db:migrate:prod` before pushing code to `main`") but nothing enforces it, and a `git add -A` by one session swept an unrelated schema change into someone else's commit. The push deployed code that selected columns production did not have, and every read path that lists benefit instances — the dashboard, the benefits list, the card pages — failed until it was reverted.
+
+**Acceptance criteria**
+1. A pre-push hook (or a CI check on `main`) refuses a push that changes `web/src/db/schema.ts` or adds a file under `web/drizzle/` unless the corresponding migration is recorded as applied in the production ledger.
+2. The check names the migration and the environment, and says exactly what to run.
+3. It works when the ledger cannot be read (no credentials): it must fail closed, with a clear message, not skip.
+4. The same check runs in CI, so a push that bypasses a local hook is still caught.
+5. Documented in `docs/environments-and-deployment.md` alongside the production migration procedure.
+
+**Why a guard and not a convention.** The convention was already written down and was still missed, because the change rode along in a commit made by a different session with a different intent. The check has to be mechanical.
+
+**Note.** `npm run db:migrate:prod` cannot run against production at all — the application role owns no table in the `app` schema. The guard must therefore check the *ledger* (`scripts/db/bootstrap-migration-ledger.ts` / `apply-migration.ts`), not the migrator's exit code.
 
 ---
 
