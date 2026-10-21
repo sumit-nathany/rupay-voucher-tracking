@@ -949,6 +949,217 @@ Respond ONLY in valid JSON matching this schema:
   return { handled: false, reachedOtp: false, reachedSuccess: false, description: 'LLM did not identify action' };
 }
 
+export function getGeminiApiKey(): string | null {
+  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+  if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
+  try {
+    for (const p of [
+      path.resolve(__dirname, '../../web/.env.local'),
+      path.resolve(__dirname, '../../web/.env.prod'),
+      path.resolve(__dirname, '../.env.local'),
+      path.resolve(__dirname, '../.env'),
+    ]) {
+      if (fs.existsSync(p)) {
+        const text = fs.readFileSync(p, 'utf-8');
+        const match = text.match(/GEMINI_API_KEY="?([^"\n\r]+)"?/);
+        if (match && match[1]) {
+          process.env.GEMINI_API_KEY = match[1];
+          return match[1];
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+export interface PageStateResolution {
+  classification:
+    | 'BLOCKED_ERROR'
+    | 'COOLDOWN_LIMIT'
+    | 'ACTION_NEEDED'
+    | 'BANK_OTP_SCREEN'
+    | 'ORDER_CONFIRMED'
+    | 'LOGIN_OR_CAPTCHA'
+    | 'UNKNOWN';
+  explanation: string;
+  isCardExhausted?: boolean;
+  cooldownMinutes?: number;
+  bookingRef?: string;
+  recommendedAction?: {
+    targetIndex?: number;
+    clickText?: string;
+    selector?: string;
+    actionDescription?: string;
+  };
+}
+
+/**
+ * Universal Autonomous Page State Analyzer.
+ * Takes the complete text of the web page across all frames, all visible error/alert notices,
+ * interactive candidates, and high-res screenshot, and asks Gemini to determine what is on screen
+ * and how the automation should proceed.
+ */
+export async function analyzeCurrentPageWithLLM(
+  page: Page,
+  context: {
+    stepName: string;
+    goal: string;
+    cardName?: string;
+    targetOffer?: string;
+    provider?: string;
+    accountLabel?: string;
+  },
+): Promise<PageStateResolution> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    console.warn('[autonomous-agent] No GEMINI_API_KEY configured for page analysis.');
+    return { classification: 'UNKNOWN', explanation: 'No GEMINI_API_KEY available' };
+  }
+
+  // 1. Capture complete visible page text across main page and all frames
+  const pageText = await page.evaluate(() => {
+    let text = document.body ? document.body.innerText : '';
+    const iframes = Array.from(document.querySelectorAll('iframe'));
+    for (const f of iframes) {
+      try {
+        if (f.contentDocument?.body) {
+          text += '\n--- IFRAME ---\n' + f.contentDocument.body.innerText;
+        }
+      } catch {}
+    }
+    return text.trim();
+  }).catch(() => '');
+
+  // 2. Capture visible alerts, errors, notices
+  const alerts = await page.evaluate(() => {
+    const elements = Array.from(
+      document.querySelectorAll(
+        '.alert, .error, .text-danger, .error-message, [class*="error"], [class*="alert"], [role="alert"], .modal-body, .toast, .notice, .swal2-html-container',
+      ),
+    );
+    return elements.map((el) => el.textContent?.trim()).filter(Boolean).slice(0, 10);
+  }).catch(() => []);
+
+  // 3. Scan interactive clickable elements
+  const candidates = await scanCandidates(page, 'advance_payment').catch(() => []);
+  const simplifiedCandidates = candidates.slice(0, 80).map((c, i) => ({
+    index: i,
+    tag: c.tag,
+    id: c.id || undefined,
+    text: c.text?.slice(0, 80) || undefined,
+    ariaLabel: c.ariaLabel || undefined,
+    placeholder: c.placeholder || undefined,
+  }));
+
+  // 4. Capture screenshot
+  const screenshotBuf = await page.screenshot({ timeout: 5000 }).catch(() => null);
+
+  const prompt = `You are an expert autonomous web automation agent overseeing a RuPay card benefits redemption.
+
+Current Context:
+- Step: ${context.stepName}
+- Goal: ${context.goal}
+- Card: ${context.cardName || 'RuPay Card'}
+- Target Offer: ${context.targetOffer || 'Voucher'}
+- Provider: ${context.provider || ''}
+- URL: ${page.url()}
+- Title: ${await page.title().catch(() => '')}
+
+Visible Page Text:
+"""
+${pageText.slice(0, 6000)}
+"""
+
+Visible Alerts / Errors:
+${JSON.stringify(alerts, null, 2)}
+
+Candidate Interactive Elements:
+${JSON.stringify(simplifiedCandidates, null, 2)}
+
+Look at the screenshot and page text carefully. The automation is currently uncertain or stuck. Determine:
+1. "classification":
+   - "BLOCKED_ERROR": The page shows an error, eligibility rejection, redemption limit, or card exhaustion (e.g. "Maximum uses exhausted on this card number", "Card not eligible", "Declined", "Offer not available", "Transaction Failed").
+   - "COOLDOWN_LIMIT": A rate limit or transaction cooldown is active (e.g. "wait 20 minutes before initiating another one").
+   - "ACTION_NEEDED": The page has an actionable button/modal/field to click or fill to move forward (e.g. "Continue to Payment", "Redeem", "Proceed", "Opt out", "I Agree").
+   - "BANK_OTP_SCREEN": Genuine 3D-Secure bank OTP entry screen.
+   - "ORDER_CONFIRMED": The booking/order has succeeded (extract booking/order reference).
+   - "LOGIN_OR_CAPTCHA": The page is asking for login credentials or captcha.
+   - "UNKNOWN": Page state cannot be determined.
+
+2. "explanation": Clear 1-2 sentence human explanation of exactly what is on the screen and why.
+3. "isCardExhausted": true if the card has already used/exhausted this offer or reached its limit.
+4. "cooldownMinutes": number of minutes if a temporary cooldown is active (e.g. 20).
+5. "bookingRef": string if order is confirmed.
+6. "recommendedAction": If ACTION_NEEDED:
+   - "targetIndex": candidate element index to click (or -1 if none).
+   - "clickText": text of element to click.
+   - "actionDescription": why this action moves the flow forward.
+
+Respond strictly in valid JSON matching this schema:
+{
+  "classification": "BLOCKED_ERROR" | "COOLDOWN_LIMIT" | "ACTION_NEEDED" | "BANK_OTP_SCREEN" | "ORDER_CONFIRMED" | "LOGIN_OR_CAPTCHA" | "UNKNOWN",
+  "explanation": string,
+  "isCardExhausted": boolean,
+  "cooldownMinutes": number | null,
+  "bookingRef": string | null,
+  "recommendedAction": {
+    "targetIndex": number,
+    "clickText": string,
+    "actionDescription": string
+  } | null
+}`;
+
+  for (const model of ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-pro-latest']) {
+    try {
+      console.log(`[autonomous-agent] 🧠 Consulting Gemini Vision (${model}) for page state analysis at ${context.stepName}...`);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const parts: any[] = [{ text: prompt }];
+      if (screenshotBuf) {
+        parts.push({
+          inline_data: {
+            mime_type: 'image/png',
+            data: screenshotBuf.toString('base64'),
+          },
+        });
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: { response_mime_type: 'application/json' },
+        }),
+      });
+
+      if (!res.ok) continue;
+
+      const json = (await res.json()) as any;
+      const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) continue;
+
+      const parsed = JSON.parse(text) as PageStateResolution;
+      console.log(`[autonomous-agent] 🧠 Gemini Verdict: [${parsed.classification}] - ${parsed.explanation}`);
+
+      if (
+        parsed.recommendedAction?.targetIndex !== undefined &&
+        parsed.recommendedAction.targetIndex >= 0 &&
+        parsed.recommendedAction.targetIndex < candidates.length
+      ) {
+        const c = candidates[parsed.recommendedAction.targetIndex];
+        parsed.recommendedAction.selector = c?.selector;
+      }
+
+      return parsed;
+    } catch (err) {
+      console.warn(`[autonomous-agent] Gemini model ${model} error:`, err);
+    }
+  }
+
+  return { classification: 'UNKNOWN', explanation: 'All Gemini models failed or timed out' };
+}
+
 /**
  * Monitors the gateway transition after clicking "Proceed to Pay".
  * Handles RBI Tokenization modals, offers popups, and unknown pre-payment screens via Autonomous LLM Vision Agent,
@@ -1011,24 +1222,60 @@ export async function handlePostPaymentTransition(
       return { reachedOtp: false, reachedSuccess: false, cardExhausted: true, reason: exhaustedError };
     }
 
-    // 2. Primary Autonomous LLM Visual Assessment & Click Action
-    // The LLM inspects the screenshot and the list of clickable candidates in the DOM
-    // to choose what to click to move the flow forward (Continue, Secure & Pay, etc.)
-    if (apiKey) {
-      const decision = await askLlmToAdvancePayment(page, apiKey, {
-        phoneNumber: options?.phoneNumber,
-        email: options?.email,
-      });
-      if (decision.reachedOtp) {
-        console.log('[gateway-llm] ✓ LLM Vision confirmed Bank 3D-Secure OTP screen!');
-        return { reachedOtp: true, reachedSuccess: false };
-      }
-      if (decision.reachedSuccess) {
-        console.log('[gateway-llm] ✓ LLM Vision confirmed Order Confirmation!');
-        return { reachedOtp: false, reachedSuccess: true };
-      }
-      if (decision.handled) {
-        continue; // Successfully executed LLM recommended action!
+    // 2. Comprehensive Autonomous LLM Page State Analysis
+    // Takes the complete page text, alerts, screenshot, and candidate elements to LLM!
+    const resolution = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Post-Payment Gateway Transition',
+      goal: 'Advance to Bank 3D-Secure OTP screen or confirm order',
+      accountLabel: options?.email ?? undefined,
+    });
+
+    if (resolution.classification === 'BLOCKED_ERROR') {
+      console.warn(`[gateway] 🛑 Autonomous LLM identified blocking error: "${resolution.explanation}"`);
+      return {
+        reachedOtp: false,
+        reachedSuccess: false,
+        cardExhausted: resolution.isCardExhausted,
+        reason: resolution.explanation,
+      };
+    }
+
+    if (resolution.classification === 'COOLDOWN_LIMIT') {
+      console.warn(`[gateway] ⏱️ Autonomous LLM identified cooldown: "${resolution.explanation}"`);
+      return {
+        reachedOtp: false,
+        reachedSuccess: false,
+        cardExhausted: false,
+        reason: resolution.explanation,
+      };
+    }
+
+    if (resolution.classification === 'BANK_OTP_SCREEN') {
+      console.log(`[gateway] ✓ Autonomous LLM verified Bank 3D-Secure OTP screen: "${resolution.explanation}"`);
+      return { reachedOtp: true, reachedSuccess: false };
+    }
+
+    if (resolution.classification === 'ORDER_CONFIRMED') {
+      console.log(`[gateway] ✓ Autonomous LLM confirmed order success: "${resolution.explanation}"`);
+      return { reachedOtp: false, reachedSuccess: true };
+    }
+
+    if (resolution.classification === 'ACTION_NEEDED' && resolution.recommendedAction) {
+      if (
+        typeof resolution.recommendedAction.targetIndex === 'number' &&
+        resolution.recommendedAction.targetIndex >= 0
+      ) {
+        const candidates = await scanCandidates(page, 'advance_payment').catch(() => []);
+        const target = candidates[resolution.recommendedAction.targetIndex];
+        if (target) {
+          const targetFrame = [page, ...page.frames()][target.frameIndex] || page;
+          const loc = targetFrame.locator(target.selector).first();
+          console.log(
+            `[gateway] 🎯 LLM advancing via candidate: "${resolution.recommendedAction.actionDescription || target.text || target.selector}"`,
+          );
+          await humanClick(loc, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
+          continue;
+        }
       }
     }
 

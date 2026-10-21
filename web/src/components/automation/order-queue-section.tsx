@@ -516,7 +516,7 @@ export function OrderQueueSection({
                   variant="outline"
                   className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400 gap-1 text-xs font-medium"
                 >
-                  <Clock className="h-3 w-3" /> 24h Cooldown
+                  <Clock className="h-3 w-3" /> Cooldown
                 </Badge>
               );
             } else if (activeAccount.status === 'conflict') {
@@ -752,7 +752,7 @@ export function OrderQueueSection({
                           acc.status === 'ready'
                             ? 'Ready'
                             : acc.status === 'cooldown'
-                            ? '24h Cooldown'
+                            ? 'Cooldown'
                             : acc.status === 'conflict'
                             ? 'Used this period'
                             : acc.status === 'missing_details'

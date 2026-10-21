@@ -157,7 +157,7 @@ export function AutomationHeader({
                 Next eligible run: {formattedUnlockLabel}
               </p>
               <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-                Waiting for {nextRun?.accountLabel} 24h portal cooldown
+                Waiting for {nextRun?.accountLabel} portal cooldown
               </p>
             </div>
           </div>

@@ -21,7 +21,7 @@ import { selectCandidateForAccount } from './candidate-selection';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
-import { handlePostPaymentTransition } from './llm-gateway-agent';
+import { handlePostPaymentTransition, analyzeCurrentPageWithLLM } from './llm-gateway-agent';
 import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
 import { humanClick, humanType, humanDelay, humanHesitate, installVisualMouseCursor } from './human-interaction';
@@ -936,7 +936,29 @@ async function addCardToPortalAccount(
   }
 
   if (!redeemBtn || !(await redeemBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
-    throw new Error(`Target offer "${targetOffer}" (${targetProvider}) could NOT be found or its Redeem button was not visible. Aborting to avoid redeeming the wrong offer.`);
+    console.log('[step 5] Standard redeem matching uncertain. Consulting Autonomous LLM with full page text...');
+    const pageAnalysis = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Step 5: Offer Selection',
+      goal: `Find and redeem target offer "${targetOffer}" (${targetProvider})`,
+      cardName: cardRow?.cardName,
+      targetOffer,
+      provider: targetProvider,
+      accountLabel: account.label,
+    });
+    if (pageAnalysis.classification === 'BLOCKED_ERROR') {
+      throw new Error(`[LLM Analysis] Offer blocked on portal: ${pageAnalysis.explanation}`);
+    }
+    if (pageAnalysis.classification === 'COOLDOWN_LIMIT') {
+      const cooldownMs = (pageAnalysis.cooldownMinutes ?? 20) * 60 * 1000;
+      await recordPortalAccountCooldown(db, account.id, new Date(Date.now() + cooldownMs), 'portal_cooldown_detected');
+      throw new Error(`[LLM Analysis] Portal cooldown active: ${pageAnalysis.explanation}`);
+    }
+    if (pageAnalysis.recommendedAction?.selector) {
+      redeemBtn = page.locator(pageAnalysis.recommendedAction.selector).first();
+    }
+    if (!redeemBtn || !(await redeemBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+      throw new Error(`Target offer "${targetOffer}" (${targetProvider}) could NOT be found. LLM Analysis: ${pageAnalysis.explanation}`);
+    }
   }
 
   console.log('[step 5] Scrolling Redeem button into view and clicking naturally...');
@@ -958,38 +980,74 @@ async function addCardToPortalAccount(
       await humanClick(redeemNowBtn, { hesitateBeforeMs: 700, pauseAfterMs: 1500 });
       await redeemNowBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
     } else {
-      console.log('[step 6] "Redeem Now" not present or already on payment step, checking for confirmation modal...');
-      await page.screenshot({ path: 'step6-debug.png' }).catch(() => {});
+      console.log('[step 6] "Redeem Now" not present. Consulting Autonomous LLM with full page text...');
+      const modalAnalysis = await analyzeCurrentPageWithLLM(page, {
+        stepName: 'Step 6: Payment Confirmation Modal',
+        goal: 'Advance past terms/confirmation modal to payment gateway',
+        cardName: cardRow?.cardName,
+        targetOffer,
+        accountLabel: account.label,
+      });
+      if (modalAnalysis.classification === 'COOLDOWN_LIMIT') {
+        const cdTime = new Date(Date.now() + (modalAnalysis.cooldownMinutes ?? 20) * 60 * 1000);
+        console.log(`[step 6] ⏱️ Autonomous LLM detected portal cooldown: ${modalAnalysis.explanation}`);
+        await recordPortalAccountCooldown(db, account.id, cdTime, 'transaction_initiated_cooldown');
+        cooldownDetectedUntil = cdTime;
+      } else if (modalAnalysis.classification === 'BLOCKED_ERROR') {
+        throw new Error(`[LLM Analysis] Order blocked: ${modalAnalysis.explanation}`);
+      } else if (modalAnalysis.recommendedAction?.selector) {
+        const actionLoc = page.locator(modalAnalysis.recommendedAction.selector).first();
+        if (await actionLoc.isVisible().catch(() => false)) {
+          await humanClick(actionLoc, { hesitateBeforeMs: 500, pauseAfterMs: 1500 });
+        }
+      }
     }
   }
 
   console.log('\n--- Step 7: Payment Confirmation Modal ---');
   await humanHesitate(2000, 3200); // Allow modal animation to complete and simulate human reading
 
-  // Inspect modal elements
-  const modalInfo = await page.evaluate(() => {
-    const dialogs = Array.from(document.querySelectorAll('.modal, [role="dialog"], .fade.show, .modal-dialog'));
-    const buttons = dialogs.flatMap((d) =>
-      Array.from(d.querySelectorAll('button, a, [role="button"]')).map((el) => ({
-        tag: el.tagName,
-        text: el.textContent?.trim(),
-        className: el.className,
-        disabled: (el as HTMLButtonElement).disabled,
-        visible: (el as HTMLElement).offsetParent !== null,
-      }))
-    );
-    return { count: dialogs.length, buttons };
-  });
-  console.log('[modal]', JSON.stringify(modalInfo));
-
   const continueToPaymentBtn = page
     .locator(':is(button, a, [role="button"]):has-text("Continue to Payment"):visible, button.btn-custom_modal:has-text("Continue"):visible, .modal button:has-text("Continue"):visible, button:has-text("Continue"):visible, button.btn-custom_modal:visible, button:has-text("Proceed"):visible')
     .first();
-  await continueToPaymentBtn.waitFor({ state: 'visible', timeout: 15000 });
-  console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
-  await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
-  // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler
-  await continueToPaymentBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+
+  let continueBtnVisible = await continueToPaymentBtn.isVisible({ timeout: 4000 }).catch(() => false);
+  if (!continueBtnVisible) {
+    console.log('[step 7] "Continue to Payment" not immediately visible. Consulting Autonomous LLM with full page text...');
+    const step7Analysis = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Step 7: Payment Confirmation Modal',
+      goal: 'Find Continue to Payment button or diagnose blocking modal',
+      cardName: cardRow?.cardName,
+      targetOffer,
+      accountLabel: account.label,
+    });
+    if (step7Analysis.classification === 'COOLDOWN_LIMIT') {
+      const cdTime = new Date(Date.now() + (step7Analysis.cooldownMinutes ?? 20) * 60 * 1000);
+      console.log(`[step 7] ⏱️ Autonomous LLM detected portal cooldown: ${step7Analysis.explanation}`);
+      await recordPortalAccountCooldown(db, account.id, cdTime, 'transaction_initiated_cooldown');
+      cooldownDetectedUntil = cdTime;
+      await context.close().catch(() => {});
+      await client.end().catch(() => {});
+      return { attempted: true, accountLabel: account.label, instanceId: candidate.instanceId, reason: 'cooldown_active' };
+    }
+    if (step7Analysis.classification === 'BLOCKED_ERROR') {
+      throw new Error(`[LLM Analysis] Cannot proceed to payment: ${step7Analysis.explanation}`);
+    }
+    if (step7Analysis.recommendedAction?.selector) {
+      const actionLoc = page.locator(step7Analysis.recommendedAction.selector).first();
+      if (await actionLoc.isVisible().catch(() => false)) {
+        await humanClick(actionLoc, { hesitateBeforeMs: 500, pauseAfterMs: 1500 });
+        continueBtnVisible = true;
+      }
+    }
+  }
+
+  if (await continueToPaymentBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
+    await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
+    // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler
+    await continueToPaymentBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
+  }
 
   console.log('Waiting for response / gateway redirect...');
   let isEmbeddedGateway = false;

@@ -536,10 +536,22 @@ export async function promptForOtpAndSubmit(
   contextOptions?: OtpPromptContext,
   timeoutMs: number = 180000,
 ): Promise<boolean> {
-  console.log('[gateway] Verifying active Bank OTP verification screen with Gemini Vision before notifying...');
-  const isOtpConfirmed = await verifyBankOtpScreenWithLLM(page, { maxWaitSec: 30 });
+  console.log('[gateway] Verifying active Bank OTP verification screen before notifying...');
+  let isOtpConfirmed = false;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (apiKey) {
+    isOtpConfirmed = await verifyBankOtpScreenWithLLM(page, { maxWaitSec: 15 });
+  }
   if (!isOtpConfirmed) {
-    console.warn('[gateway] ⚠️ LLM Vision did NOT confirm a Bank OTP screen. Suppressing OTP notifications to prevent false alert.');
+    const hasOtpInput = await findOtpInput(page);
+    if (hasOtpInput) {
+      console.log('[gateway] ✓ Confirmed Bank OTP screen via DOM OTP input field.');
+      isOtpConfirmed = true;
+    }
+  }
+
+  if (!isOtpConfirmed) {
+    console.warn('[gateway] ⚠️ Bank OTP screen could not be confirmed. Suppressing OTP notifications to prevent false alert.');
     return false;
   }
 

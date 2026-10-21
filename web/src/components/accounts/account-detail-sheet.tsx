@@ -400,22 +400,29 @@ export function AccountDetailSheet({
                   </div>
                 )}
 
-                {/* 24h Cooldown Alert Banner */}
-                {isCooldown && account.cooldownUntil && (
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
-                    <div className="flex items-center justify-between font-semibold">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                        24-Hour Portal Limit Active
-                      </span>
-                      <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Cooldown</span>
+                {/* Cooldown Alert Banner */}
+                {isCooldown && account.cooldownUntil && (() => {
+                  const cd = new Date(account.cooldownUntil);
+                  const diffMinutes = Math.max(1, Math.round((cd.getTime() - Date.now()) / (60 * 1000)));
+                  const isShortCooldown = diffMinutes <= 120;
+                  return (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                      <div className="flex items-center justify-between font-semibold">
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          {isShortCooldown ? `${diffMinutes}m Temporary Cooldown` : '24-Hour Portal Limit Active'}
+                        </span>
+                        <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400">Cooldown</span>
+                      </div>
+                      <p className="text-muted-foreground/90 text-xs leading-relaxed">
+                        {isShortCooldown
+                          ? 'A transaction was recently initiated. The RuPay portal locks this account for 20 minutes before permitting another order. This account unlocks '
+                          : 'RuPay limits each portal login to 1 booking per 24 hours. This account unlocks '}
+                        <strong>{formattedCooldownTime ?? 'soon'} (IST)</strong>. Automated runs will safely wait until then.
+                      </p>
                     </div>
-                    <p className="text-muted-foreground/90 text-xs leading-relaxed">
-                      RuPay limits each portal login to 1 booking per 24 hours. This account unlocks{' '}
-                      <strong>{formattedCooldownTime ?? 'soon'} (IST)</strong>. Automated runs will safely wait until then.
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Account Properties List */}
                 <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
