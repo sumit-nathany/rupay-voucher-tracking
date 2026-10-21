@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy:
-        description: 'Deploy the image to Cloud Run'
+        description: 'Deploy the image to Cloud Run (overrides AUTO_DEPLOY_WORKER)'
         type: boolean
         default: true
 
@@ -38,6 +38,11 @@ env:
   GCP_REGION: ${{ vars.GCP_REGION }}
   REPOSITORY: worker
   JOB_NAME: rupay-order-worker
+
+# `AUTO_DEPLOY_WORKER` decides whether a push to main updates the Cloud Run
+# Job's template. Set it to 'true' once the first manual deploy has been
+# validated — otherwise the deployed worker would keep running the old image
+# while new code lands on main.
 
 jobs:
   build:
@@ -84,8 +89,13 @@ jobs:
           echo "IMAGE=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:${{ steps.meta.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
       - name: Deploy the Cloud Run Job
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == true }}
+        if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY_WORKER == 'true' }}
         run: |
+          # Updates the job's *template*. A running execution keeps the
+          # template it started with, so an in-flight order is never affected
+          # by a deploy. This does NOT touch the Cloud Scheduler job: the
+          # schedule stays exactly as the operator configured it, and
+          # `worker/infra/schedule.sh --disable` remains the kill switch.
           gcloud run jobs update "${JOB_NAME}" \
             --project="${GCP_PROJECT_ID}" \
             --region="${GCP_REGION}" \

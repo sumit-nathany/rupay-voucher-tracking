@@ -123,8 +123,21 @@ Actions → Variables):
 | `GCP_REGION` | `asia-south1` |
 | `WIF_PROVIDER` | `projects/<n>/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider` |
 | `WIF_SERVICE_ACCOUNT` | `rupay-order-worker-ci@<project>.iam.gserviceaccount.com` |
+| `AUTO_DEPLOY_WORKER` | `true` once the first manual deploy has been validated |
 
-CI deploys the job's template; it never executes it.
+These must agree with `worker/infra/config.env` — the same values, entered
+twice. The workflow reads the GitHub variables; the local scripts read
+`config.env`.
+
+CI updates the job's **template**; it never executes it, and it never touches
+the Cloud Scheduler job. A running execution keeps the template it started
+with, so a deploy can never interrupt an order in flight.
+
+> Leave `AUTO_DEPLOY_WORKER` unset until the first manual deploy has been
+> validated. With it unset, a push to `main` builds and pushes the image but
+> leaves the deployed job on the old one — which means a bug fixed on `main`
+> is **not** live until the job is updated. Set it to `true` once you trust
+> the pipeline.
 
 ---
 
