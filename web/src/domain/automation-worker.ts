@@ -8,6 +8,7 @@ import {
 } from '@/db/schema';
 import type { Database, Ctx } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
+import { today as todayInIST } from '@/lib/periods';
 import { decryptPortalCredentials } from '@/lib/portal-credentials';
 import {
   type PortalOrderClient,
@@ -469,7 +470,7 @@ export async function runAutomationJob({
   scheduledFor?: Date;
   today?: string;
 }): Promise<AutomationJobStats> {
-  const effectiveToday = today ?? new Date().toISOString().slice(0, 10);
+  const effectiveToday = today ?? todayInIST();
 
   // 1. Create job run record
   const [jobRun] = await db

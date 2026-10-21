@@ -18,6 +18,7 @@ import {
 } from '@/db/schema';
 import type { Ctx, Database } from '@/lib/context';
 import { NotFoundError } from '@/lib/context';
+import { today as todayInIST } from '@/lib/periods';
 import { syncGlobalOrderingQueue } from './ordering-queue';
 import { encryptPortalCredentials, decryptPortalCredentials } from '@/lib/portal-credentials';
 import {
@@ -1949,7 +1950,7 @@ export async function getNextEligibleRunTime(
     }
 
     // Check if Global Order Queue has an immediate candidate ready
-    const today = now.toISOString().slice(0, 10);
+    const today = todayInIST(now);
     const globalNomination = await findCandidateFromGlobalQueue(db, workspaceId, today);
     if (globalNomination) {
       if (isPaused) {

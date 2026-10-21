@@ -4,16 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "dev:preprod": "tsx --env-file ../web/.env.preprod src/index.ts",
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "node dist/worker.js",
+    "dev": "tsx src/batch.ts",
+    "dev:preprod": "tsx --env-file ../web/.env.preprod src/batch.ts",
+    "batch:local": "tsx --env-file ../web/.env.local src/batch.ts",
+    "batch:preprod": "tsx --env-file ../web/.env.preprod src/batch.ts",
+    "batch:prod": "tsx --env-file ../web/.env.prod src/batch.ts",
     "daemon:preprod": "tsx --env-file ../web/.env.preprod src/daemon.ts",
     "daemon:local": "tsx --env-file ../web/.env.local src/daemon.ts",
     "login:preprod": "tsx --env-file ../web/.env.preprod src/login-helper.ts",
     "browser:preprod": "tsx --env-file ../web/.env.preprod src/browser-runner.ts",
     "browser:local": "tsx --env-file ../web/.env.local src/browser-runner.ts",
-    "browser:prod": "tsx --env-file ../web/.env.local src/browser-runner.ts",
     "test:live": "tsx --env-file ../web/.env.local src/browser-runner.ts"
   },
   "dependencies": {
@@ -26,7 +30,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.1",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^5.0.5"
   }
 }

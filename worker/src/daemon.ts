@@ -3,10 +3,9 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { eq, isNotNull } from 'drizzle-orm';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
-import { FakePortalOrderClient } from '../../web/src/lib/portal-client';
-import { runAutomationJob } from '../../web/src/domain/automation-worker';
 import { getNextEligibleRunTime } from '../../web/src/domain/automation';
 import { runBrowserTest } from './browser-runner';
+import { installLogRedaction } from './lib/redact';
 
 async function checkPendingManualTrigger(db: Database): Promise<boolean> {
   const [triggerRow] = await db
@@ -31,13 +30,7 @@ async function checkPendingManualTrigger(db: Database): Promise<boolean> {
 
   try {
     console.log('[daemon] >>> Starting manual browser ordering run <<<');
-    if (process.env.USE_BROWSER_RUNNER !== 'false') {
-      await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
-    } else {
-      const portalClient = new FakePortalOrderClient();
-      const stats = await runAutomationJob({ db, client: portalClient });
-      console.log(`[daemon] Simulated run finished: ${stats.ordersConfirmed} confirmed, ${stats.ordersFailed} failed.`);
-    }
+    await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
   } catch (err) {
     console.error('[daemon] Error running manual order:', err instanceof Error ? err.message : err);
   }
@@ -58,6 +51,7 @@ async function responsiveWait(db: Database, maxDurationMs: number): Promise<void
 }
 
 async function startDaemon() {
+  installLogRedaction();
   const dbUrl = process.env.WORKER_DATABASE_URL || process.env.DATABASE_URL;
   if (!dbUrl) {
     console.error('Fatal: DATABASE_URL or WORKER_DATABASE_URL is required');
@@ -125,13 +119,7 @@ async function startDaemon() {
 
       // 3. At least one account is eligible now! Execute ordering run.
       console.log(`\n[daemon] >>> Account eligible! Triggering automation run at ${new Date().toISOString()} <<<`);
-      if (process.env.USE_BROWSER_RUNNER !== 'false') {
-        await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
-      } else {
-        const portalClient = new FakePortalOrderClient();
-        const stats = await runAutomationJob({ db, client: portalClient });
-        console.log(`[daemon] Run finished: ${stats.ordersConfirmed} confirmed, ${stats.ordersFailed} failed.`);
-      }
+      await runBrowserTest({ headless: process.env.HEADLESS === 'true' });
       console.log('[daemon] Re-evaluating schedule for remaining accounts...\n');
 
       // Small pause before checking the next account in queue

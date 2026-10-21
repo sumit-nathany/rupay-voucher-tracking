@@ -56,6 +56,8 @@
 | **C-05** | "Card type not in catalog" request path | Onboarding | P1 | M | C-04 |
 | **C-06** | Redundant `add`-override detection (catalog catches up) | Onboarding | P2 | M | — |
 | **C-07** | First-run onboarding wizard: coverage & empty states | Onboarding | P2 | M | C-04 |
+| **C-08** | Move the browser runner to the shared attempt-reservation flow | Reliability | P1 | M | — |
+| **C-09** | Unify "today" on the Asia/Kolkata calendar date | Correctness | P0 | S | — *(fixed on `feat/cloud-run-worker`)* |
 | **D-01** | Real table semantics for the benefits list (a11y) | Accessibility | P1 | M | — |
 | **D-02** | Accessible names for benefit rows (a11y) | Accessibility | P2 | S | D-01 |
 | **D-03** | Visible labels + live result counts for filters (a11y) | Accessibility | P2 | S | — |
@@ -738,6 +740,42 @@ if (!isAll) {
 1. In `web/src/app/(app)/admin/catalog/edit/page.tsx`, `uncurated` rows show how many workspaces have cards of that type (so the admin can prioritise curation).
 2. A simple "uncurated and in use" filter/sort makes the actionable set obvious.
 3. The count query is workspace-scoped and does not leak card or holder data to the admin view beyond a count (this is a system-admin surface, so a count is acceptable; the admin view must still not expose another workspace's card details).
+
+### C-08 — Move the browser runner to the shared attempt-reservation flow
+
+**Priority:** P1 · **Effort:** M · **Depends on:** —
+
+**Problem.** The spec (§7.3 of the implementation plan) says the worker reserves a candidate through `reserveCandidate`, which takes the portal account's advisory lock and relies on the partial unique index to block a second in-flight attempt for the same instance. The browser runner does not: it inserts the attempt row itself, directly into state `submitting`, immediately before the payment gateway.
+
+**Evidence.** `worker/src/browser-runner.ts` creates the attempt with its own `db.insert(schema.portalOrderAttempts)`; `web/src/domain/automation-worker.ts` `reserveCandidate` is the shared, locked path and is not called by the runner.
+
+**Why it matters.** The Cloud Run Job runs with `max-instances=1` on an hourly schedule, so two concurrent executions are unlikely — but a manual trigger racing a scheduled run is possible, and the runner's path has no lock and no unique-index guard. Two runs could both submit for the same instance.
+
+**Acceptance criteria**
+1. The runner calls `reserveCandidate` before touching the portal, and `startSubmission` immediately before submission — the same transitions the domain `runAutomationJob` uses.
+2. The attempt states observed by the UI are unchanged from the user's point of view (`reserved` is transient; `submitting` still marks the order in flight).
+3. A concurrency test proves two concurrent reservations for the same instance produce at most one `reserved` attempt — the same assertion the web suite already makes for the domain path.
+4. The runner's existing "recover stale attempts" pass is replaced by the domain `recoverExpiredAttempts`, so there is one implementation.
+5. No change to the portal interaction sequence itself.
+
+**Risk.** This touches live portal code. Validate with the preprod account before touching prod, and keep the change to the attempt lifecycle only — no changes to selectors, payment flow, or the OTP path.
+
+---
+
+### C-09 — Unify "today" on the Asia/Kolkata calendar date across the codebase
+
+**Priority:** P0 · **Effort:** S · **Depends on:** —
+
+**Status: fixed on `feat/cloud-run-worker`.** Kept here so the history is visible.
+
+**Problem.** The app's convention is that `today` is `YYYY-MM-DD` in **Asia/Kolkata** (`AGENTS.md`, `web/src/lib/periods.ts` `today()`), but three ordering paths computed it as `new Date().toISOString().slice(0, 10)` — which is UTC. Between 00:00 and 05:30 IST the UTC date is the previous day, so an unattended worker running in that window would have evaluated eligibility against the wrong entitlement period.
+
+**Acceptance criteria**
+1. `web/src/domain/automation.ts` (`getNextEligibleRunTime`), `web/src/domain/automation-worker.ts` (`runAutomationJob`) and `worker/src/browser-runner.ts` all use `today()` from `web/src/lib/periods.ts`.
+2. A regression test pins the behaviour: with the clock at `2026-10-14T19:00:00Z` (2026-10-15 in IST, 2026-10-14 in UTC), the order date recorded is `2026-10-15`.
+3. No remaining `toISOString().slice(0, 10)` is used as "today" — the remaining occurrences are date arithmetic on `YYYY-MM-DD` strings, which correctly use UTC to avoid DST drift.
+
+---
 
 ---
 

@@ -189,7 +189,7 @@ The job reads these from Secret Manager. **Never** pass secret values as plain e
 | `CAPSOLVER_API_KEY` / `NOPECHA_API_KEY` / `TWOCAPTCHA_API_KEY` | yes | Captcha solving — only the one in use needs to be set |
 | `GEMINI_API_KEY` | yes | Audio-challenge transcription fallback |
 | `HEADLESS` | no | `true` in the deployed job |
-| `USE_BROWSER_RUNNER` | no | `true` — the real browser path. `false` forces the fake client and must never be set in a deployed job. |
+| `USE_BROWSER_RUNNER` | no | `true` for a live run. `false` selects **plan-only** mode: the worker evaluates eligibility and reports what it would order, without reserving, launching a browser, or writing an attempt. Use it to validate a deployment before it is allowed near a live portal. |
 
 ### 8.3 Cost
 

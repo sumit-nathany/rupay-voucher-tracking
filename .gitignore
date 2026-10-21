@@ -22,3 +22,9 @@ worker/.browser-data
 worker/*.png
 worker/node_modules
 node_modules
+
+# Worker deployment config (contains project identifiers, no secret values)
+worker/infra/config.env
+
+# Worker build output
+worker/dist

@@ -280,11 +280,11 @@ Use a `FakePortalOrderClient` for deterministic tests. Use `PlaywrightPortalOrde
 
 ### 7.3 Worker entry point
 
-The job entry point performs:
+The job entry point (`worker/src/batch.ts`) performs:
 
 1. Create `ordering_job_runs` row.
-2. Recover expired active attempts using the account lock, then list candidate portal accounts with eligible instances.
-3. For each account, reserve at most one candidate using the locking flow.
+2. Recover expired active attempts, then list the connected portal accounts.
+3. For each account, select at most one candidate — the global ordering queue first, the legacy per-account rules as a fallback — honouring the account's 24-hour cooldown and the workspace's automation switch.
 4. Decrypt only that account's credentials immediately before login.
 5. Use the adapter to login, resolve card, verify offer, re-check/reserve submission, and submit.
 6. Finalize confirmed, failed-pre-submit, or uncertain state transactionally.
@@ -292,6 +292,11 @@ The job entry point performs:
 8. Finish the job-run row with aggregate safe counts.
 
 The process continues to other accounts after an account-level failure. A fatal database/schema/configuration failure marks the job run failed and exits non-zero so Cloud Run reports the execution failure.
+
+**Two deliberate deviations, tracked as backlog items rather than left implicit:**
+
+- **The attempt reservation is not yet the shared `reserveCandidate` flow.** The browser runner creates the attempt row itself immediately before the payment gateway, instead of reserving through `reserveCandidate` (which takes the account advisory lock and relies on the partial unique index to block a second in-flight attempt for the same instance). The Cloud Run Job's `max-instances=1` and the hourly schedule keep concurrent executions unlikely, but a manual trigger racing a scheduled run is still possible. Migrating the runner to the shared reservation flow is tracked in the backlog; it is not done here because it changes the attempt lifecycle inside live portal code.
+- **The worker has its own attempt-recovery pass** at the start of a run, which marks stale `reserved`/`submitting` attempts as failed rather than using `recoverExpiredAttempts` from the domain layer. The two are equivalent in effect but are not the same code path.
 
 ## 8. Cloud deployment
 

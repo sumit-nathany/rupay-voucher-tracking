@@ -1,0 +1,122 @@
+name: worker-deploy
+
+# Builds the ordering worker image and updates the Cloud Run Job.
+#
+# The job is deployed but NOT executed here — the Cloud Scheduler job invokes
+# it hourly. Use `worker/infra/run-now.sh` to trigger a single run.
+#
+# Authentication is by Workload Identity Federation: the workflow never holds
+# a service account key. See docs/worker-hosting-runbook.md for the one-time
+# setup.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'web/src/db/**'
+      - 'web/src/domain/**'
+      - 'web/src/lib/**'
+      - '.github/workflows/worker-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy the image to Cloud Run (overrides AUTO_DEPLOY_WORKER)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  REPOSITORY: worker
+  JOB_NAME: rupay-order-worker
+
+# `AUTO_DEPLOY_WORKER` decides whether a push to main updates the Cloud Run
+# Job's template. Set it to 'true' once the first manual deploy has been
+# validated — otherwise the deployed worker would keep running the old image
+# while new code lands on main.
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: worker/Dockerfile
+          push: true
+          tags: |
+            ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:${{ steps.meta.outputs.tag }}
+            ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Export image reference
+        run: |
+          echo "IMAGE=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:${{ steps.meta.outputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve secret bindings
+        id: bindings
+        run: |
+          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,CAPSOLVER_API_KEY=CAPSOLVER_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+          # The keyring is optional — it holds rotated encryption keys and is
+          # only needed when a stored credential uses a key that is no longer
+          # the primary one.
+          if gcloud secrets describe ENCRYPTION_KEYRING --project="${GCP_PROJECT_ID}" >/dev/null 2>&1; then
+            ARGS="${ARGS},ENCRYPTION_KEYRING=ENCRYPTION_KEYRING:latest"
+          fi
+          echo "args=${ARGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the Cloud Run Job
+        if: ${{ github.event_name == 'workflow_dispatch' || vars.AUTO_DEPLOY_WORKER == 'true' }}
+        run: |
+          # Updates the job's *template*. A running execution keeps the
+          # template it started with, so an in-flight order is never affected
+          # by a deploy. This does NOT touch the Cloud Scheduler job: the
+          # schedule stays exactly as the operator configured it, and
+          # `worker/infra/schedule.sh --disable` remains the kill switch.
+          gcloud run jobs update "${JOB_NAME}" \
+            --project="${GCP_PROJECT_ID}" \
+            --region="${GCP_REGION}" \
+            --image="${IMAGE}" \
+            --max-instances=1 \
+            --parallelism=1 \
+            --tasks=1 \
+            --task-timeout=1800s \
+            --service-account="rupay-order-worker-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+            --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles" \
+            --set-secrets="${{ steps.bindings.outputs.args }}" \
+            --no-invoker-iam-check
