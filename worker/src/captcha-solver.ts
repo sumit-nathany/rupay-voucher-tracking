@@ -101,7 +101,10 @@ export async function solveWithAzCaptcha(
     const taskId = inData.taskId;
     console.log(`[captcha] AZCaptcha task submitted (ID: ${taskId}). Polling for solution...`);
 
-    for (let i = 0; i < 20; i++) {
+    // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
+    // too tight. 30 x 3s = 90s, which still leaves room inside the token's
+    // two-minute lifetime.
+    for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://azcaptcha.com/getTaskResult', {
         method: 'POST',
@@ -175,7 +178,10 @@ export async function solveWithYesCaptcha(
     const taskId = inData.taskId;
     console.log(`[captcha] YesCaptcha task submitted (ID: ${taskId}). Polling for solution...`);
 
-    for (let i = 0; i < 20; i++) {
+    // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
+    // too tight. 30 x 3s = 90s, which still leaves room inside the token's
+    // two-minute lifetime.
+    for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://api.yescaptcha.com/getTaskResult', {
         method: 'POST',
@@ -259,7 +265,10 @@ export async function solveWithCapMonster(
     const taskId = inData.taskId;
     console.log(`[captcha] CapMonster task submitted (ID: ${taskId}). Polling for solution...`);
 
-    for (let i = 0; i < 20; i++) {
+    // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
+    // too tight. 30 x 3s = 90s, which still leaves room inside the token's
+    // two-minute lifetime.
+    for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 3000));
       const resRes = await fetch('https://api.capmonster.cloud/getTaskResult', {
         method: 'POST',
