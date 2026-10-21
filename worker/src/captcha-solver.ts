@@ -327,7 +327,9 @@ export async function solveWithCapSolver(
     const taskId = inData.taskId;
     console.log(`[captcha] CapSolver task submitted (ID: ${taskId}). Polling for solution...`);
 
-    for (let i = 0; i < 18; i++) {
+    // 30 x 4s = 120s: a measured solve took 66 seconds, and the token is
+    // only valid for two minutes from the moment it is issued.
+    for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 4000));
       const resRes = await fetch('https://api.capsolver.com/getTaskResult', {
         method: 'POST',
