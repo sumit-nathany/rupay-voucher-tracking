@@ -21,15 +21,31 @@ the `drizzle` schema that Drizzle keeps its ledger in. The ledger is also
 missing from production, which means the migrator would try to re-apply every
 migration from the beginning.
 
-Apply a migration to production with the database owner's credentials instead:
+Apply a migration to production with `scripts/db/apply-migration.ts` instead. It
+takes the **Management API** route by default, which needs no database
+password — the SQL runs server-side, as the database owner:
 
 ```bash
 cd web
+export SUPABASE_ACCESS_TOKEN=$(security find-generic-password -s "Supabase CLI" -w)  # macOS
+export SUPABASE_PROJECT_REF=<project-ref>
+npx tsx scripts/db/apply-migration.ts prod <tag>
+```
+
+On a machine without the Supabase CLI token, pass the owner's connection
+instead:
+
+```bash
 npx tsx scripts/db/apply-migration.ts prod <tag> '<owner-database-url>'
 ```
 
 The script applies the migration file, skips statements that are already there,
-and records the migration in the ledger so the normal migrator stays in step.
+and records the migration in the ledger so the history stays accurate.
+
+> The ledger in production was repaired on 2026-10-21: several migrations had
+> been applied by hand without being recorded, and Drizzle would have re-applied
+> them. `scripts/db/bootstrap-migration-ledger.ts` does that repair — it only
+> ever records history, it never changes a table.
 
 > **Check the ledger before the first migration.** If a migration was applied by
 > hand and never recorded, the migrator will try to apply it again. Repair the
