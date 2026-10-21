@@ -509,12 +509,25 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
         try {
           const submitButton = page.locator('button.btn-login-submit, button:has-text("Sign In"):visible').first();
           if (await submitButton.isVisible()) {
-            clickedSignIn = true;
-            console.log('[captcha] ✓ CAPTCHA solved! Automatically clicking Sign In...');
-            await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
-            await page.waitForTimeout(2000);
+            // The site enables its submit button from the reCAPTCHA callback,
+            // so a button that is visible but disabled means the callback
+            // never reached the site. Say so, rather than clicking it and
+            // waiting four minutes for nothing.
+            if (await submitButton.isEnabled().catch(() => true)) {
+              clickedSignIn = true;
+              console.log('[captcha] ✓ CAPTCHA solved! Automatically clicking Sign In...');
+              await humanClick(submitButton, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+              await page.waitForTimeout(2000);
+            } else {
+              console.warn(
+                '[captcha] The submit button is still disabled — the site has not accepted the ' +
+                  'captcha response. Skipping the click.',
+              );
+            }
           }
-        } catch {}
+        } catch (err) {
+          console.warn('[captcha] Could not click the submit button:', err);
+        }
       }
     }
 

@@ -473,24 +473,53 @@ export async function injectRecaptchaToken(page: Page, token: string): Promise<b
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    // Try finding and invoking the client-side reCAPTCHA callback
-    const anyWin = window as any;
-    if (typeof anyWin.___grecaptcha_cfg !== 'undefined') {
-      const clients = anyWin.___grecaptcha_cfg.clients;
-      if (clients) {
-        for (const cid of Object.keys(clients)) {
-          const client = clients[cid];
-          for (const key of Object.keys(client)) {
-            const val = client[key];
-            if (val && typeof val === 'object' && typeof val.callback === 'function') {
-              val.callback(sol);
-              return true;
+    // The site's own script listens for reCAPTCHA's callback, and the depth
+    // at which reCAPTCHA keeps it varies: the checkbox widget holds it one
+    // level under the client id, the invisible widget two levels down
+    // (`clients[id][key][key].callback`). Searching only one level means the
+    // site never hears that the challenge was solved, its submit button
+    // stays disabled, and clicking it silently does nothing.
+    //
+    // So walk the whole tree instead of guessing a depth.
+    const cfg = (window as any).___grecaptcha_cfg;
+    let fired = false;
+
+    // Keys that are configuration rather than a callback.
+    const CONFIG_KEYS = new Set([
+      'k', 'co', 'hl', 'size', 'rs', 'cd', 'v', 'b', 'isq', 'f', 'id', 's',
+      'tl', 'fast', 'action', 'c', 'r', 'co' , 'ds', 'sws', 'csl', 'rc', 'a',
+    ]);
+
+    const seen = new Set<any>();
+    const walk = (node: any, depth: number) => {
+      if (fired || !node || typeof node !== 'object' || depth > 6) return;
+      if (seen.has(node)) return;
+      seen.add(node);
+      for (const key of Object.keys(node)) {
+        const val = node[key];
+        if (typeof val === 'function') {
+          const looksLikeCallback =
+            key === 'callback' ||
+            key === 'promise-callback' ||
+            key.endsWith('-callback') ||
+            (depth === 1 && !CONFIG_KEYS.has(key));
+          if (looksLikeCallback) {
+            try {
+              val(sol);
+              fired = true;
+              return;
+            } catch {
+              // A callback that throws is not the one we wanted; keep looking.
             }
           }
+        } else if (val && typeof val === 'object') {
+          walk(val, depth + 1);
         }
       }
-    }
-    return Boolean(textarea && textarea.value === sol);
+    };
+    if (cfg?.clients) walk(cfg.clients, 0);
+
+    return fired || Boolean(textarea && textarea.value === sol);
   }, token);
 }
 
