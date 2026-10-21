@@ -7,7 +7,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    hookTimeout: 30000,
+    // The beforeAll hooks here spin up an in-memory Postgres and replay every
+    // migration, and the suite runs many of those in parallel — 30s was
+    // knife-edge and made unrelated files time out.
+    hookTimeout: 60000,
     testTimeout: 30000,
   },
 });

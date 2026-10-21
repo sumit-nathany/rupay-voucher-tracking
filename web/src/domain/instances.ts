@@ -394,6 +394,26 @@ export async function updateDetails(
   return update(ctx, row, patch);
 }
 
+/**
+ * Clears a portal refusal so the instance becomes eligible for ordering again.
+ *
+ * A refusal is the portal's word, not the user's: it is recorded automatically
+ * when the portal or the bank will not serve the benefit for this card. This
+ * lets the user overrule it — the portal may have been wrong, or the card may
+ * have been re-issued. See REQUIREMENTS.md §6 and RH#16.
+ */
+export async function dismissPortalRefusal(ctx: Ctx, instanceId: string): Promise<InstanceView> {
+  const { instanceId: id } = idInput.parse({ instanceId });
+  const row = await load(ctx, id);
+  if (!row.portalRefusal) return loadView(ctx, id);
+  return update(ctx, row, {
+    portalRefusal: null,
+    portalRefusalSource: null,
+    portalRefusalDetail: null,
+    portalRefusalAt: null,
+  });
+}
+
 /** Encrypts with the instance's own id as AAD. Plaintext is never stored or logged. */
 export async function setCode(
   ctx: Ctx,

@@ -549,6 +549,21 @@ CREATE TABLE benefit_instances (
   rupay_booking_id        TEXT,
   code_encrypted          TEXT,                   -- AES-256-GCM, associated data = this row's id (see Security model); never stored or logged in plaintext
   comments                TEXT,
+  -- Portal refusal: the RuPay portal or the bank refused this order outright
+  -- (benefit not available for this card, the card's limit for this benefit is
+  -- used up, or the portal says it is already ordered). This is a fact about
+  -- the portal's view of the entitlement, not a stage of the order, so it is
+  -- tracked in its own columns rather than as an order_status value — see
+  -- REQUIREMENTS.md §6 "Portal refusal" and RH#16. All nullable, so existing
+  -- rows are unaffected. A refused instance is excluded from automatic
+  -- ordering for its period; the user can dismiss the refusal to retry.
+  portal_refusal          TEXT
+                          CHECK (portal_refusal IS NULL OR portal_refusal IN
+                                 ('benefit_unavailable','card_limit_reached','already_ordered')),
+  portal_refusal_source   TEXT
+                          CHECK (portal_refusal_source IS NULL OR portal_refusal_source IN ('rupay_portal','bank')),
+  portal_refusal_detail   TEXT,                   -- the portal's own wording, for diagnosis
+  portal_refusal_at       TIMESTAMPTZ,            -- when it was observed
   created_at              TIMESTAMPTZ DEFAULT now(),
   updated_at              TIMESTAMPTZ DEFAULT now(),
   FOREIGN KEY (workspace_id, card_id) REFERENCES cards (workspace_id, id),

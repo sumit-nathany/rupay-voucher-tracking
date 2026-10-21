@@ -52,6 +52,20 @@ export function StatusCounts({ view, s }: { view: ViewedPeriod; s: DashboardSumm
               </Link>
             </li>
           ))}
+          {s.portalRefusedCount > 0 && (
+            <li>
+              <Link
+                href={benefitsStatusHref(view, 'Not Ordered')}
+                className="flex items-center justify-between gap-3 rounded-md border-t border-border/60 pt-2 text-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring -mx-2 px-2 py-1"
+              >
+                <span className="flex min-w-0 items-center gap-2 text-warning">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-warning" aria-hidden />
+                  Refused by the portal
+                </span>
+                <span className="font-semibold tabular-nums">{s.portalRefusedCount}</span>
+              </Link>
+            </li>
+          )}
           {s.lapsedCount > 0 && (
             <li>
               <Link

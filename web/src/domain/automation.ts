@@ -1380,6 +1380,11 @@ export async function findCandidateFromGlobalQueue(
           eq(benefitInstances.workspaceId, workspaceId),
           inArray(benefitInstances.id, queueInstanceIds),
           eq(benefitInstances.orderStatus, 'Not Ordered'),
+          // A portal refusal (benefit unavailable, card limit reached, already
+          // ordered) means the portal will not serve this benefit for this
+          // card, so it must not be picked up again on the next sweep. See
+          // REQUIREMENTS.md §6 and RH#16.
+          isNull(benefitInstances.portalRefusal),
           gte(benefitInstances.orderDeadline, today),
           isNull(benefitInstances.soldFor),
         ),
@@ -1679,6 +1684,11 @@ export async function findCandidatesForAccount(
           inArray(benefitInstances.id, queueInstanceIds),
           inArray(benefitInstances.cardId, mappedCardIds),
           eq(benefitInstances.orderStatus, 'Not Ordered'),
+          // A portal refusal (benefit unavailable, card limit reached, already
+          // ordered) means the portal will not serve this benefit for this
+          // card, so it must not be picked up again on the next sweep. See
+          // REQUIREMENTS.md §6 and RH#16.
+          isNull(benefitInstances.portalRefusal),
           gte(benefitInstances.orderDeadline, today),
           isNull(benefitInstances.soldFor),
         ),
@@ -1800,6 +1810,9 @@ export async function findCandidatesForAccount(
         eq(benefitInstances.workspaceId, account.workspaceId),
         inArray(benefitInstances.cardId, mappedCardIds),
         eq(benefitInstances.orderStatus, 'Not Ordered'),
+        // A portal refusal excludes the instance from automatic ordering —
+        // see REQUIREMENTS.md §6 and RH#16.
+        isNull(benefitInstances.portalRefusal),
         gte(benefitInstances.orderDeadline, today),
         isNull(benefitInstances.soldFor),
       ),
