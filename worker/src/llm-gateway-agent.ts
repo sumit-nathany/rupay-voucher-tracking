@@ -962,7 +962,7 @@ export async function handlePostPaymentTransition(
     phoneNumber?: string | null;
     email?: string | null;
   },
-): Promise<{ reachedOtp: boolean; reachedSuccess: boolean; reason?: string }> {
+): Promise<{ reachedOtp: boolean; reachedSuccess: boolean; reason?: string; cardExhausted?: boolean }> {
   const maxWaitSec = options?.maxWaitSec ?? 60;
   const apiKey = options?.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
@@ -986,6 +986,29 @@ export async function handlePostPaymentTransition(
     if (await isOtpScreenPresent(page)) {
       console.log('[gateway] ✓ Bank 3D-Secure OTP screen detected via DOM indicators!');
       return { reachedOtp: true, reachedSuccess: false };
+    }
+
+    // 1c. Fast check: Card redemption limit or offer exhaustion on gateway!
+    const exhaustedError = await page.evaluate(() => {
+      const texts = Array.from(document.querySelectorAll('div, p, span, .error, .text-danger, [class*="error"], [class*="alert"]'));
+      for (const el of texts) {
+        const t = (el.textContent || '').trim().toLowerCase();
+        if (
+          t.includes('maximum uses exhausted') ||
+          t.includes('uses exhausted on this card') ||
+          t.includes('exhausted on this card') ||
+          t.includes('offer already availed') ||
+          t.includes('limit exceeded on this card')
+        ) {
+          return el.textContent?.trim() || 'Maximum uses exhausted on this card number';
+        }
+      }
+      return null;
+    }).catch(() => null);
+
+    if (exhaustedError) {
+      console.warn(`[gateway] ❌ Card redemption limit reached: "${exhaustedError}".`);
+      return { reachedOtp: false, reachedSuccess: false, cardExhausted: true, reason: exhaustedError };
     }
 
     // 2. Primary Autonomous LLM Visual Assessment & Click Action
@@ -1012,13 +1035,12 @@ export async function handlePostPaymentTransition(
     // 2b. Heuristic fallback ONLY if Gemini API key is not configured or LLM returned nothing
     let modalHandled = false;
     for (const t of [page, ...page.frames()]) {
-      const secureAndPayBtn = t.locator(':is(button, [role="button"], a, div):has-text("Secure & Pay")').first();
-      const optOutBtn = t.locator(':is(button, [role="button"], a, div):has-text("Opt out for now")').first();
-      const modalHeader = t.locator(':is(h1, h2, h3, h4, div, span):has-text("Secure your card")').first();
+      const secureAndPayBtn = t.locator(':is(button, [role="button"], a):has-text("Secure & Pay")').first();
+      const optOutBtn = t.locator(':is(button, [role="button"], a):has-text("Opt out for now")').first();
 
       const isModalVisible =
         (await secureAndPayBtn.isVisible().catch(() => false)) ||
-        (await modalHeader.isVisible().catch(() => false));
+        (await optOutBtn.isVisible().catch(() => false));
 
       if (isModalVisible) {
         console.log('[gateway] 🛡️ Detected RBI Tokenization Modal fallback.');

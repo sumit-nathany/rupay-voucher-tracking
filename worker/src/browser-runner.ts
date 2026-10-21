@@ -797,10 +797,14 @@ async function addCardToPortalAccount(
   // Identify the target card using scoring on provider, duration, and keywords
   const matched = await page.evaluate(({ provider, exactOffer }) => {
     const pLower = (provider || '').toLowerCase().trim();
+    const pClean = pLower.replace(/[\s-_]+/g, '');
     const offerLower = (exactOffer || '').toLowerCase().trim();
 
     // Clear previous attributes
-    document.querySelectorAll('[data-target-offer]').forEach((el) => el.removeAttribute('data-target-offer'));
+    document.querySelectorAll('[data-target-offer], [data-target-redeem]').forEach((el) => {
+      el.removeAttribute('data-target-offer');
+      el.removeAttribute('data-target-redeem');
+    });
 
     // Find all candidate action elements (buttons / links with 'redeem')
     const allActionEls = Array.from(document.querySelectorAll('button, a, [role="button"], div.od-redeem-btn')).filter((el) => {
@@ -809,6 +813,7 @@ async function addCardToPortalAccount(
     });
 
     let bestContainer: HTMLElement | null = null;
+    let bestActionEl: HTMLElement | null = null;
     let bestScore = -999;
     let bestIndex = -1;
 
@@ -817,8 +822,13 @@ async function addCardToPortalAccount(
       let curr: HTMLElement | null = btn;
       let cardContainer: HTMLElement | null = null;
 
-      // Walk up DOM hierarchy to find the card container
-      for (let depth = 0; depth < 8 && curr && curr !== document.body; depth++) {
+      // Walk up DOM hierarchy to find the card container (stop at common card boundary or 5 levels)
+      for (let depth = 0; depth < 5 && curr && curr !== document.body; depth++) {
+        const cls = (curr.getAttribute('class') || '').toLowerCase();
+        if (cls.includes('card') || cls.includes('deal') || cls.includes('item') || cls.includes('col-') || cls.includes('service')) {
+          cardContainer = curr;
+          break;
+        }
         const innerActionCount = Array.from(curr.querySelectorAll('button, a, [role="button"], div.od-redeem-btn')).filter((el) => {
           const t = el.textContent?.trim().toLowerCase() || '';
           return t.includes('redeem');
@@ -833,18 +843,19 @@ async function addCardToPortalAccount(
       if (!cardContainer) continue;
 
       const cardText = (cardContainer.textContent || '').toLowerCase();
+      const cardTextClean = cardText.replace(/[\s-_]+/g, '');
       const imgs = Array.from(cardContainer.querySelectorAll('img'));
       const imgMatches = imgs.some((img) => {
-        const src = (img.src || '').toLowerCase();
-        const alt = (img.alt || '').toLowerCase();
-        return pLower && (src.includes(pLower) || alt.includes(pLower));
+        const src = (img.src || '').toLowerCase().replace(/[\s-_]+/g, '');
+        const alt = (img.alt || '').toLowerCase().replace(/[\s-_]+/g, '');
+        return pClean && (src.includes(pClean) || alt.includes(pClean));
       });
 
       let score = 0;
 
       // Check provider match
-      if (pLower) {
-        if (cardText.includes(pLower) || imgMatches) {
+      if (pClean) {
+        if (cardTextClean.includes(pClean) || imgMatches) {
           score += 50;
         } else {
           continue; // Must match provider if specified
@@ -892,13 +903,20 @@ async function addCardToPortalAccount(
       if (score > bestScore) {
         bestScore = score;
         bestContainer = cardContainer;
+        bestActionEl = btn;
         bestIndex = i;
       }
     }
 
-    if (bestContainer) {
+    if (bestActionEl && bestContainer) {
       bestContainer.setAttribute('data-target-offer', 'true');
-      return { found: true, score: bestScore, index: bestIndex, cardTextSnippet: (bestContainer.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80) };
+      bestActionEl.setAttribute('data-target-redeem', 'true');
+      return {
+        found: true,
+        score: bestScore,
+        index: bestIndex,
+        cardTextSnippet: (bestContainer.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+      };
     }
 
     return { found: false, score: bestScore, index: -1, cardTextSnippet: '' };
@@ -906,12 +924,15 @@ async function addCardToPortalAccount(
 
   if (matched.found) {
     console.log(`[step 5] ✓ Matched exact target card (score: ${matched.score}, index: ${matched.index}): "${matched.cardTextSnippet}"`);
-    const cardEl = page.locator('[data-target-offer="true"]').first();
-    await cardEl.scrollIntoViewIfNeeded().catch(() => {});
-    redeemBtn = cardEl.locator('button:has-text("Redeem"), a:has-text("Redeem"), [role="button"]:has-text("Redeem"), div.od-redeem-btn, button').first();
+    redeemBtn = page.locator('[data-target-redeem="true"]').first();
+    if (!(await redeemBtn.isVisible().catch(() => false))) {
+      const cardEl = page.locator('[data-target-offer="true"]').first();
+      await cardEl.scrollIntoViewIfNeeded().catch(() => {});
+      redeemBtn = cardEl.locator(':is(button, a, [role="button"], div.od-redeem-btn):has-text("Redeem"), div.od-redeem-btn').first();
+    }
   } else {
     // Fallback: standard Redeem locator
-    redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem")').first();
+    redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem"), div.od-redeem-btn').first();
   }
 
   if (!redeemBtn || !(await redeemBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
@@ -922,6 +943,7 @@ async function addCardToPortalAccount(
   await redeemBtn.scrollIntoViewIfNeeded().catch(() => {});
   await redeemBtn.waitFor({ state: 'visible', timeout: 5000 });
   await humanClick(redeemBtn, { hesitateBeforeMs: 600, pauseAfterMs: 1500 });
+  await redeemBtn.evaluate((el: HTMLElement) => el.click()).catch(() => {});
 
   console.log('\n--- Step 6: Checking Benefit Page / Payment Modal ---');
   await humanHesitate(1800, 2800);
@@ -1124,6 +1146,34 @@ async function addCardToPortalAccount(
       jobRunId: options?.jobRunId ?? null,
     })
     .returning();
+
+  if (transitionResult.cardExhausted) {
+    console.log(`\n❌ Card redemption limit reached on RuPay portal (${transitionResult.reason}).`);
+    await db
+      .update(schema.portalOrderAttempts)
+      .set({ state: 'failed_pre_submit', failureCode: 'card_limit_exhausted', finishedAt: new Date() })
+      .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+    // Update the instance with comments and mark as Coupon Received so the global queue moves forward
+    await db
+      .update(schema.benefitInstances)
+      .set({
+        orderStatus: 'Coupon Received',
+        comments: `RuPay portal reported: ${transitionResult.reason} on ${todayInIST()}`,
+      })
+      .where(eq(schema.benefitInstances.id, candidate.instanceId));
+
+    console.log(`[portal] Benefit instance ${candidate.instanceId} marked as 'Coupon Received' (card already redeemed).`);
+    await activePaymentPage.waitForTimeout(1000).catch(() => {});
+    await context.close().catch(() => {});
+    await client.end().catch(() => {});
+    return {
+      attempted: true,
+      accountLabel: account.label,
+      instanceId: candidate.instanceId,
+      reason: 'card_limit_exhausted',
+    };
+  }
 
   if (transitionResult.reachedSuccess) {
     console.log('✓ Order confirmation screen reached directly!');
