@@ -50,6 +50,8 @@ export interface BrowserRunResult {
     | 'no_candidate'
     | 'missing_payment_details'
     | 'cooldown_detected'
+    | 'cooldown_active'
+    | 'card_limit_exhausted'
     | 'gateway_redirect_failed'
     | 'payment_failed';
   /** The instance the run acted on, when one was selected. */
@@ -533,6 +535,13 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     console.log(`✓ Login complete! Session token saved in profile for ${account.label}.`);
   }
 
+  // Ensure we navigate directly to the offers page if not already there
+  if (!page.url().includes('/offers')) {
+    console.log('Navigating to https://rupayselect.truztee.com/#/offers ...');
+    await page.goto('https://rupayselect.truztee.com/#/offers', { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(2500);
+  }
+
   // Extract user details and registered mobile number from portal storage
   try {
     const portalUserDetails = await page.evaluate(() => {
@@ -679,14 +688,53 @@ async function addCardToPortalAccount(
   await humanHesitate(1200, 2000);
 
   console.log(`\n--- Step 3: Selecting Card for ${cardRow?.cardName || 'PNB'} (••${cardRow?.last4}) ---`);
+  // Ensure we are on the offers page
+  if (!page.url().includes('/offers')) {
+    console.log('Navigating to https://rupayselect.truztee.com/#/offers ...');
+    await page.goto('https://rupayselect.truztee.com/#/offers', { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(2500);
+  }
+
   // The first dropdown trigger in the navbar is the Card selector
-  const cardDropdownTrigger = page.locator(':is(button, a)[id*="card" i], button.nav-dropdown-trigger:not(:has-text("Explore Benefits")), :is(button, a):has-text("RuPay Select")').first();
+  let cardDropdownTrigger = page.locator(':is(button, a)[id*="card" i], button.nav-dropdown-trigger:not(:has-text("Explore Benefits")), :is(button, a):has-text("RuPay Select"), .navbar :is(button, a).dropdown-toggle').first();
+  let triggerVisible = await cardDropdownTrigger.isVisible({ timeout: 5000 }).catch(() => false);
+
+  if (!triggerVisible) {
+    console.log('[step 3] Card dropdown not immediately visible. Consulting Autonomous LLM with full page text...');
+    const step3Analysis = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Step 3: Card Selection',
+      goal: `Find card dropdown or navbar to switch card to ${cardRow?.cardName}`,
+      cardName: cardRow?.cardName,
+      accountLabel: account.label,
+    });
+
+    if (step3Analysis.classification === 'LOGIN_OR_CAPTCHA') {
+      console.log(`[step 3] LLM detected session expired or login required: ${step3Analysis.explanation}`);
+      throw new Error(`[LLM Analysis] Session expired or re-login required for ${account.label}: ${step3Analysis.explanation}`);
+    }
+    if (step3Analysis.classification === 'COOLDOWN_LIMIT') {
+      const cdTime = new Date(Date.now() + (step3Analysis.cooldownMinutes ?? 20) * 60 * 1000);
+      await recordPortalAccountCooldown(db, account.id, cdTime, 'portal_cooldown_detected');
+      throw new Error(`[LLM Analysis] Portal cooldown active: ${step3Analysis.explanation}`);
+    }
+    if (step3Analysis.classification === 'BLOCKED_ERROR') {
+      throw new Error(`[LLM Analysis] Card selection blocked: ${step3Analysis.explanation}`);
+    }
+    if (step3Analysis.recommendedAction?.selector) {
+      const el = page.locator(step3Analysis.recommendedAction.selector).first();
+      if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+        cardDropdownTrigger = el;
+        triggerVisible = true;
+      }
+    }
+  }
+
   const currentCardHeader = (await cardDropdownTrigger.textContent().catch(() => ''))?.trim() ?? '';
   const bankCoreName = cardRow?.cardName?.replace(/RuPay|Select|Card|Debit|Credit/gi, '').trim() || (cardRow?.cardName?.includes('India') ? 'Bank of India' : 'PNB');
 
   const isCardAlreadySelected = currentCardHeader.toLowerCase().includes(bankCoreName.toLowerCase());
 
-  if (!isCardAlreadySelected) {
+  if (!isCardAlreadySelected && triggerVisible) {
     console.log(`Current card is "${currentCardHeader}". Checking if "${bankCoreName}" is available in dropdown...`);
     await humanClick(cardDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
 
@@ -739,8 +787,29 @@ async function addCardToPortalAccount(
   const targetCategory = benefitDetails.benefitType || 'Gym Access';
   console.log(`\n--- Step 4: Navigating to ${targetCategory} ---`);
   await humanHesitate(1000, 1800);
-  const exploreDropdownTrigger = page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits"), :is(button, a):has-text("Explore Benefits")').first();
-  await humanClick(exploreDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
+  let exploreDropdownTrigger = page.locator('button.nav-dropdown-trigger:has-text("Explore Benefits"), :is(button, a):has-text("Explore Benefits")').first();
+  let exploreVisible = await exploreDropdownTrigger.isVisible({ timeout: 4000 }).catch(() => false);
+
+  if (!exploreVisible) {
+    console.log(`[step 4] "Explore Benefits" dropdown trigger not immediately visible. Consulting Autonomous LLM...`);
+    const step4Analysis = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Step 4: Category Navigation',
+      goal: `Find "Explore Benefits" or navigate to category "${targetCategory}"`,
+      cardName: cardRow?.cardName,
+      accountLabel: account.label,
+    });
+    if (step4Analysis.recommendedAction?.selector) {
+      const el = page.locator(step4Analysis.recommendedAction.selector).first();
+      if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+        exploreDropdownTrigger = el;
+        exploreVisible = true;
+      }
+    }
+  }
+
+  if (exploreVisible) {
+    await humanClick(exploreDropdownTrigger, { hesitateBeforeMs: 500, pauseAfterMs: 1000 });
+  }
 
   const dropdownTexts = await page.locator('.dropdown-menu.show a.dropdown-item, a.dropdown-item:visible').allTextContents().catch(() => []);
   console.log(`[dropdown] Available categories: ${dropdownTexts.map((t) => t.trim()).filter(Boolean).join(', ')}`);

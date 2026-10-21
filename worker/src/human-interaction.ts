@@ -192,7 +192,7 @@ export async function humanClick(
   await locator.scrollIntoViewIfNeeded({ timeout: 4000 }).catch(() => {});
   await humanDelay(60, 150);
 
-  const box = await locator.boundingBox();
+  const box = await locator.boundingBox({ timeout: 4000 }).catch(() => null);
   if (box) {
     const page = locator.page();
     // Pick a point near the center with natural variation (within 20% to 80% of width/height)

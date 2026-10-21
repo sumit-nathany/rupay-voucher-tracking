@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 /**
  * Telegram Bot Client Service
  * 100% Free, unlimited, instantaneous messaging for OTP prompts and confirmations.
@@ -152,8 +155,35 @@ export class MockTelegramClient implements TelegramClient {
   }
 }
 
+export function getTelegramToken(): string | null {
+  if (process.env.TELEGRAM_BOT_TOKEN) return process.env.TELEGRAM_BOT_TOKEN;
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true') return null;
+  try {
+    for (const p of [
+      path.resolve(process.cwd(), 'web/.env.prod'),
+      path.resolve(process.cwd(), 'web/.env.local'),
+      path.resolve(process.cwd(), '.env.prod'),
+      path.resolve(process.cwd(), '.env.local'),
+      path.resolve(process.cwd(), '../web/.env.prod'),
+      path.resolve(process.cwd(), '../web/.env.local'),
+      path.resolve(process.cwd(), '../.env.local'),
+      path.resolve(process.cwd(), '.env'),
+    ]) {
+      if (fs.existsSync(p)) {
+        const text = fs.readFileSync(p, 'utf-8');
+        const match = text.match(/TELEGRAM_BOT_TOKEN="?([^"\n\r]+)"?/);
+        if (match && match[1]) {
+          process.env.TELEGRAM_BOT_TOKEN = match[1];
+          return match[1];
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
 export function getTelegramClient(): TelegramClient {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const token = getTelegramToken();
   if (token) {
     return new RealTelegramClient(token);
   }

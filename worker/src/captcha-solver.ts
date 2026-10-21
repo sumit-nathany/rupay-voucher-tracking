@@ -1,5 +1,6 @@
 import { Page, Frame } from 'playwright';
 import { humanClick, humanType, humanHesitate, humanDelay } from './human-interaction';
+import { getGeminiApiKey } from './llm-gateway-agent';
 
 /**
  * Solves reCAPTCHA v2 using 2Captcha API.
@@ -543,7 +544,7 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
   }
 
   // 5. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
-  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const geminiApiKey = getGeminiApiKey();
   if (geminiApiKey) {
     console.log('[captcha] Attempting in-browser audio capture & Gemini transcription...');
     const solved = await solveRecaptchaViaAudio(page, geminiApiKey);
