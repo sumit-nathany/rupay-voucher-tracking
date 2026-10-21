@@ -12,6 +12,36 @@ This guide describes the dual-environment topology (Production and Pre-Productio
 | **Pre-Production (`preprod`)** | Testing new features, schema migrations, automated ordering worker tests | Supabase Pre-Prod (`ap-south-1` Mumbai, port 6543 pooler) | Vercel Preview (`bom1`, feature/PR branches) | Test accounts / staging |
 | **Local / Test (`local`)** | Unit and domain testing | PGlite in-memory (vitest with all migrations replayed) | Local Node / Next.js dev server | Developer machine |
 
+### Applying migrations to production
+
+`npm run db:migrate:prod` **cannot run against production.** The application
+connects to production as a least-privilege role (`rupay_worker`) that owns no
+table in the `app` schema, so it cannot `ALTER TABLE` — and it cannot create
+the `drizzle` schema that Drizzle keeps its ledger in. The ledger is also
+missing from production, which means the migrator would try to re-apply every
+migration from the beginning.
+
+Apply a migration to production with the database owner's credentials instead:
+
+```bash
+cd web
+npx tsx scripts/db/apply-migration.ts prod <tag> '<owner-database-url>'
+```
+
+The script applies the migration file, skips statements that are already there,
+and records the migration in the ledger so the normal migrator stays in step.
+
+> **Check the ledger before the first migration.** If a migration was applied by
+> hand and never recorded, the migrator will try to apply it again. Repair the
+> ledger with:
+>
+> ```bash
+> npx tsx scripts/db/bootstrap-migration-ledger.ts prod <last-applied-tag>
+> ```
+
+Pre-production is different: it connects as the database owner, so
+`npm run db:migrate:preprod` works normally there.
+
 ### Ordering worker
 
 The automated ordering worker is **not** part of the Vercel deployment — it is a standalone container that runs on Google Cloud Run Jobs, triggered hourly by Cloud Scheduler in `Asia/Kolkata`. It is deployed per environment:
