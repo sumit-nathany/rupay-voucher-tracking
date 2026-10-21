@@ -21,13 +21,44 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 require_auth
 
-ENV_FILE="${1:-}"
-if [[ -z "$ENV_FILE" || ! -f "$ENV_FILE" ]]; then
-  echo "usage: $0 <env-file> [SECRET_NAME=ENV_KEY ...]" >&2
-  echo "  e.g. $0 web/.env.prod" >&2
+# A leading --dry-run is a flag, not a mapping.
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
+
+# One or more env files, searched in order: the first file that has a key
+# wins. The database URL and the encryption key live in the environment's own
+# file, while the solver keys usually live in .env.local — so both are needed.
+ENV_FILES=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    *=*)
+      break
+      ;;
+    *)
+      ENV_FILES+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ ${#ENV_FILES[@]} -eq 0 ]]; then
+  echo "usage: $0 [--dry-run] <env-file> [<env-file> ...] [SECRET_NAME=ENV_KEY ...]" >&2
+  echo "  e.g. $0 web/.env.prod web/.env.local" >&2
   exit 2
 fi
-shift
+
+for f in "${ENV_FILES[@]}"; do
+  if [[ ! -f "$f" ]]; then
+    echo "error: env file not found: $f" >&2
+    exit 2
+  fi
+done
 
 READ_ENV="node $(dirname "${BASH_SOURCE[0]}")/read-env.mjs"
 
@@ -43,19 +74,29 @@ if [[ $# -gt 0 ]]; then
   MAPPING=("$@")
 fi
 
-echo "==> Reading secrets from ${ENV_FILE}"
+echo "==> Reading secrets from ${ENV_FILES[*]}"
 
 for pair in "${MAPPING[@]}"; do
   secret="${pair%%=*}"
   env_key="${pair#*=}"
 
-  value="$($READ_ENV "$ENV_FILE" "$env_key" 2>/dev/null || true)"
+  value=""
+  source_file=""
+  for f in "${ENV_FILES[@]}"; do
+    candidate="$($READ_ENV "$f" "$env_key" 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+      value="$candidate"
+      source_file="$f"
+      break
+    fi
+  done
+
   if [[ -z "$value" ]]; then
-    echo "    skip ${secret}: ${env_key} is not set in ${ENV_FILE}"
+    echo "    skip ${secret}: ${env_key} is not set in any of ${ENV_FILES[*]}"
     continue
   fi
 
-  echo "    setting ${secret}"
+  echo "    setting ${secret} (from ${source_file})"
   if [[ "$DRY_RUN" == "0" ]]; then
     printf '%s' "$value" | gcloud secrets versions add "$secret" \
       --data-file=- \

@@ -101,6 +101,29 @@ worker/infra/secret-set.sh GEMINI_API_KEY
 
 ---
 
+## 2.5 The short version
+
+Once `gcloud auth login` has been done, the whole deployment is one command:
+
+```bash
+worker/infra/deploy-all.sh --dry-run web/.env.prod web/.env.local   # read it
+worker/infra/deploy-all.sh web/.env.prod web/.env.local             # apply it
+```
+
+It runs setup → secrets → deploy → a plan-only validation run → and creates
+the schedule **paused**. Read the validation output, then:
+
+```bash
+worker/infra/schedule.sh --enable
+```
+
+Env files are searched in order, first match wins. The first file is the
+environment the job targets (database URL, encryption key, keyring); the
+second supplies the solver keys, which usually live only in `.env.local`.
+
+The individual steps below are what `deploy-all.sh` runs, and are useful on
+their own when something needs re-running.
+
 ## 3. Deploy
 
 ### 3.1 From a workstation
