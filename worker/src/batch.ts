@@ -51,6 +51,20 @@ async function main() {
     process.exit(1);
   }
 
+  // Without the encryption key, payment details cannot be decrypted, so no
+  // card mapping is ever eligible and the run would report "nothing eligible"
+  // and exit 0 — a successful-looking run that silently does nothing. Fail
+  // loudly instead: in an unattended hourly job, silence is the dangerous
+  // outcome.
+  if (!process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY) {
+    console.error(
+      '[worker] Fatal: PORTAL_CREDENTIAL_ENCRYPTION_KEY is required. Without it, ' +
+        'payment details cannot be decrypted and no benefit would ever be eligible. ' +
+        'It must be the key for the same environment as the database.',
+    );
+    process.exit(1);
+  }
+
   const client = postgres(dbUrl, { max: 2 });
   const db = drizzle(client, { schema }) as unknown as Database;
 
@@ -123,7 +137,16 @@ async function main() {
         const candidate = await selectCandidateForAccount(db, account, today);
 
         if (!candidate) {
-          console.log(`[worker] Account "${account.label}": nothing eligible right now.`);
+          const [acc] = await db
+            .select({ cooldownUntil: schema.portalAccounts.cooldownUntil })
+            .from(schema.portalAccounts)
+            .where(eq(schema.portalAccounts.id, account.id));
+          const inCooldown =
+            acc?.cooldownUntil && new Date(acc.cooldownUntil) > new Date();
+          const reason = inCooldown
+            ? `in its 24h cooldown until ${new Date(acc.cooldownUntil!).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST`
+            : 'no eligible candidate (no matching rule, card not mapped, or no valid payment details)';
+          console.log(`[worker] Account "${account.label}": ${reason}.`);
           continue;
         }
 

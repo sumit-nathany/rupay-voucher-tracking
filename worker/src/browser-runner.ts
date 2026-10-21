@@ -1401,7 +1401,16 @@ async function addCardToPortalAccount(
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// The CLI block runs only when this module is the entry point AND the caller
+// explicitly asked for it.
+//
+// The `import.meta.url` check alone is not enough: the worker is bundled by
+// esbuild into a single file, and inside that bundle `import.meta.url` is the
+// *bundle's* URL — which is also `process.argv[1]`. Without the environment
+// guard, the bundled worker would fire this block and place an order through
+// the CLI path, in parallel with the batch entry point, ignoring plan-only
+// mode. The explicit flag is what keeps that from happening.
+if (process.env.RUN_BROWSER_RUNNER_CLI === 'true' && import.meta.url === `file://${process.argv[1]}`) {
   const cleanupAndExit = async (code: number) => {
     if (activeBrowserContext) {
       await activeBrowserContext.close().catch(() => {});

@@ -16,7 +16,8 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 require_auth
 
-ACTION="status"
+# Default to the create/update plan. `--status` is an explicit choice.
+ACTION="plan"
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;

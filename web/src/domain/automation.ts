@@ -1576,22 +1576,39 @@ export async function findCandidatesForAccount(
       ),
     );
 
-  // Filter for only cards with valid payment details configured
+  // Filter for only cards with valid payment details configured.
+  // A decryption failure means the encryption key does not match the data —
+  // almost always a wrong PORTAL_CREDENTIAL_ENCRYPTION_KEY for the
+  // environment. Swallowing it would make every mapping look ineligible and
+  // the worker would report "nothing eligible" and exit successfully, so it
+  // is logged. The message never contains card data.
+  let decryptionFailures = 0;
   const eligibleMappings = mappings.filter((m) => {
     if (m.cardPaymentDetailsEncrypted) {
       try {
         const dec = decryptPaymentDetails(m.cardPaymentDetailsEncrypted, m.cardId);
         if (isValidPaymentDetails(dec)) return true;
-      } catch {}
+      } catch {
+        decryptionFailures++;
+      }
     }
     if (m.mappingPaymentDetailsEncrypted) {
       try {
         const dec = decryptPaymentDetails(m.mappingPaymentDetailsEncrypted, m.id);
         if (isValidPaymentDetails(dec)) return true;
-      } catch {}
+      } catch {
+        decryptionFailures++;
+      }
     }
     return false;
   });
+
+  if (decryptionFailures > 0) {
+    console.warn(
+      `[automation] ${decryptionFailures} card mapping(s) could not be decrypted for account ${portalAccountId}. ` +
+        'Check that PORTAL_CREDENTIAL_ENCRYPTION_KEY matches the environment of this database.',
+    );
+  }
 
   if (eligibleMappings.length === 0) return null;
 

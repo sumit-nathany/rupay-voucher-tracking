@@ -41,6 +41,14 @@ else
   echo
 fi
 
+# Strip a matching pair of surrounding quotes. A dotenv file often quotes its
+# values, and a stray quote would silently corrupt the secret.
+if [[ "${VALUE:0:1}" == '"' && "${VALUE: -1}" == '"' && ${#VALUE} -ge 2 ]]; then
+  VALUE="${VALUE:1:${#VALUE}-2}"
+elif [[ "${VALUE:0:1}" == "'" && "${VALUE: -1}" == "'" && ${#VALUE} -ge 2 ]]; then
+  VALUE="${VALUE:1:${#VALUE}-2}"
+fi
+
 if [[ -z "${VALUE:-}" ]]; then
   echo "error: refusing to set an empty secret." >&2
   exit 1

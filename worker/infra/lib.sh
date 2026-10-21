@@ -48,9 +48,14 @@ require_gcloud() {
 }
 
 # Require that the active gcloud account can act on the project.
+# A dry run deliberately skips the account check: you read the plan *before*
+# authenticating, and the plan must not need credentials to print.
 require_auth() {
   require_gcloud
-  if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' | grep -q .; then
+  if [[ "$DRY_RUN" == "1" ]]; then
+    return
+  fi
+  if ! gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
     echo "error: no active gcloud account. Run: gcloud auth login" >&2
     exit 1
   fi
@@ -88,5 +93,6 @@ secret_env_args() {
   if secret_exists "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; then
     args+=",ENCRYPTION_KEYRING=${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}:latest"
   fi
-  printf -- '--set-secrets=%s' "$args"
+  # The bare list. The caller adds the `--set-secrets=` flag.
+  printf -- '%s' "$args"
 }
