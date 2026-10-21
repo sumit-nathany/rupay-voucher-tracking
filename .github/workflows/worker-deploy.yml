@@ -77,6 +77,8 @@ jobs:
         with:
           context: .
           file: worker/Dockerfile
+          # Cloud Run runs x86-64 images.
+          platforms: linux/amd64
           push: true
           tags: |
             ${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${REPOSITORY}/worker:${{ steps.meta.outputs.tag }}
@@ -108,15 +110,13 @@ jobs:
           # by a deploy. This does NOT touch the Cloud Scheduler job: the
           # schedule stays exactly as the operator configured it, and
           # `worker/infra/schedule.sh --disable` remains the kill switch.
-          gcloud run jobs update "${JOB_NAME}" \
+          gcloud run jobs deploy "${JOB_NAME}" \
             --project="${GCP_PROJECT_ID}" \
             --region="${GCP_REGION}" \
             --image="${IMAGE}" \
-            --max-instances=1 \
             --parallelism=1 \
             --tasks=1 \
             --task-timeout=1800s \
             --service-account="rupay-order-worker-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
             --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles" \
-            --set-secrets="${{ steps.bindings.outputs.args }}" \
-            --no-invoker-iam-check
+            --set-secrets="${{ steps.bindings.outputs.args }}"

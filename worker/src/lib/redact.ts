@@ -30,8 +30,12 @@ interface RedactionRule {
 const RULES: RedactionRule[] = [
   // JSON Web Tokens — three base64url segments.
   { pattern: /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b/g, replacement: '[REDACTED_JWT]' },
-  // RuPay order / booking identifiers (RUPS-*, RUP*).
-  { pattern: /\bRUP[A-Z0-9-]{3,}\b/gi, replacement: '[REDACTED_ORDER_ID]' },
+  // RuPay order / booking identifiers (RUPS-XXXXXXXX).
+  // Case-sensitive and requiring a dash and a digit: the portal's own host
+  // name (rupayselect.truztee.com) and the worker's profile directory
+  // (rupay-worker-profiles) would otherwise be redacted, which made every
+  // portal URL in the logs unreadable.
+  { pattern: /\bRUP[A-Z0-9]*-\d[A-Z0-9-]*\b/g, replacement: '[REDACTED_ORDER_ID]' },
   // Bearer tokens and explicit auth headers.
   { pattern: /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/gi, replacement: '$1 [REDACTED_TOKEN]' },
   // Cookie and authorization headers, in any casing, with any separator.

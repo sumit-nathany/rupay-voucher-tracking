@@ -200,7 +200,46 @@ candidate, launching a browser, or writing an attempt. It uses the same
 candidate selection a live run uses — the global ordering queue first, the
 legacy per-account rules as a fallback — so the preview is accurate.
 
-### 4.3 Calendar dates
+### 4.4 The captcha solver is required
+
+The portal's login form is protected by a Google reCAPTCHA v2, so **every run
+must solve it** — the portal's session token expires one hour after login, so
+neither a fresh login nor a persisted browser profile avoids the challenge.
+There is no way around it: the worker is not logged in when it starts.
+
+The worker solves the challenge through a third-party solving service
+(CapSolver, 2Captcha or NopeCHA — set whichever you have), and falls back to
+the in-browser audio challenge transcribed with Gemini. The audio fallback
+does **not** work from a Google Cloud IP: Google answers the audio request
+with "Your computer or network may be sending automated queries", because
+data-centre addresses are treated as automated traffic. A paid solver
+service does not have that problem — it solves from its own infrastructure —
+so it is the one that has to work.
+
+Before the browser is opened, the worker checks that each configured solver
+accepts its key and has balance, and fails immediately with a clear message
+if none of them do. A run therefore costs seconds to diagnose, not ten
+minutes per account.
+
+To set a working key:
+
+```bash
+# in web/.env.local
+CAPSOLVER_API_KEY=<your key>          # or NOPECHA_API_KEY / TWOCAPTCHA_API_KEY
+worker/infra/set-secrets-from-env.sh web/.env.local
+```
+
+Then re-run the worker to confirm:
+
+```bash
+worker/infra/run-now.sh --no-logs
+gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"rupay-order-worker\"" \
+  --project=rupay-order-worker-prod --limit=20 --format='value(textPayload)'
+```
+
+Look for `captcha solver capsolver: usable`.
+
+### 4.5 Calendar dates
 
 Eligibility is evaluated against the **Asia/Kolkata** calendar date, matching
 the rest of the app (`web/src/lib/periods.ts` `today()`), not UTC. Between
@@ -273,6 +312,7 @@ CPU allowance and 3% of its memory allowance.
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | Job exits 1 immediately, "WORKER_DATABASE_URL … is required" | The secret is not wired to the job | `worker/infra/secret-set.sh WORKER_DATABASE_URL`, then re-run |
+| Job exits 1, "every configured captcha solver rejected its key" | The solver key is invalid or the account has no balance | The login CAPTCHA cannot be solved without it. Get a working key and re-set it — see §4.4 |
 | `401` / `403` reading a secret | The run service account lacks `secretmanager.secretAccessor` | Re-run `setup.sh`; it re-applies the binding |
 | Job exits 0 but orders nothing | Every account is in its 24-hour cooldown, or automation is paused, or there is no eligible candidate | Read the log lines — each account says which. Check `automation_settings.enabled` |
 | "challenge_required" / "needs_attention" | The captcha solve failed, or the portal wants an OTP | The runner stops before ordering. Re-authenticate the account in the UI. **OTP and device verification are never solved automatically.** |

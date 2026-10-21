@@ -37,7 +37,7 @@ run gcloud run jobs execute "$JOB_NAME" \
   --project="$GCP_PROJECT_ID" \
   --region="$GCP_REGION" \
   --wait \
-  --set-env-vars="$ENV_OVERRIDE"
+  --update-env-vars="$ENV_OVERRIDE"
 
 if [[ "$TAIL_LOGS" == "1" && "$DRY_RUN" == "0" ]]; then
   echo

@@ -37,6 +37,7 @@ import type { Database } from '../../web/src/lib/context';
 import { today as todayInIST } from '../../web/src/lib/periods';
 import { installLogRedaction } from './lib/redact';
 import { runBrowserTest } from './browser-runner';
+import { checkSolverBackends } from './captcha-solver';
 import { selectCandidateForAccount } from './candidate-selection';
 
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -63,6 +64,29 @@ async function main() {
         'It must be the key for the same environment as the database.',
     );
     process.exit(1);
+  }
+
+  // Check the captcha solver credentials before touching the database or a
+  // browser. A rejected key is the most common cause of a failed unattended
+  // run, and it is otherwise only visible after the runner has opened a
+  // browser, waited out a challenge, and burned minutes per account.
+  const backends = await checkSolverBackends();
+  const configured = backends.filter((b) => b.configured);
+  if (configured.length > 0) {
+    for (const b of configured) {
+      console.log(
+        `[worker] captcha solver ${b.service}: ${b.usable ? 'usable' : 'REJECTED'}` +
+          (b.detail ? ` (${b.detail})` : ''),
+      );
+    }
+    if (configured.every((b) => b.usable === false)) {
+      console.error(
+        '[worker] Fatal: every configured captcha solver rejected its key. ' +
+          'The login CAPTCHA cannot be solved, so no benefit could be ordered. ' +
+          'Check the key for the service in use, and that the account has balance.',
+      );
+      process.exit(1);
+    }
   }
 
   const client = postgres(dbUrl, { max: 2 });

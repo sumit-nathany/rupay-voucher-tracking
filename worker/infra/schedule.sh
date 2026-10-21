@@ -65,7 +65,7 @@ if [[ "$DRY_RUN" == "0" ]]; then
       --description="Hourly sweep of the RuPay ordering worker"
   else
     echo "    creating schedule"
-    gcloud scheduler jobs create "$SCHEDULER_JOB_NAME" \
+    gcloud scheduler jobs create http "$SCHEDULER_JOB_NAME" \
       --location="$GCP_REGION" \
       --project="$GCP_PROJECT_ID" \
       --schedule="$SCHEDULE" \

@@ -554,3 +554,106 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
   console.log('👉 Please solve the visual puzzle in the Chrome window — the automation will automatically resume as soon as it is verified.');
   return false;
 }
+
+// ── Preflight ───────────────────────────────────────────────────────────────
+
+export interface SolverBackendStatus {
+  service: 'capsolver' | '2captcha' | 'nopecha';
+  configured: boolean;
+  /** null = not configured, so not checked. false = configured but rejected. */
+  usable: boolean | null;
+  detail?: string;
+}
+
+/**
+ * Checks that each configured solving service actually accepts its key.
+ *
+ * A rejected key is the single most common cause of a failed unattended run,
+ * and it is invisible until the runner has already opened a browser, waited
+ * out a challenge and burned several minutes per account. Checking the
+ * credentials up front turns that into a one-line error.
+ *
+ * Only the account balance endpoint is called — no CAPTCHA is solved.
+ */
+export async function checkSolverBackends(): Promise<SolverBackendStatus[]> {
+  const results: SolverBackendStatus[] = [];
+
+  const capKey = process.env.CAPSOLVER_API_KEY;
+  results.push({ service: 'capsolver', configured: Boolean(capKey), usable: null });
+  if (capKey) {
+    try {
+      const res = await fetch('https://api.capsolver.com/getBalance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientKey: capKey }),
+      });
+      const json = (await res.json()) as { errorId?: number; errorCode?: string; errorDescription?: string; balance?: number };
+      const ok = json.errorId === 0;
+      results[results.length - 1] = {
+        service: 'capsolver',
+        configured: true,
+        usable: ok,
+        detail: ok ? `balance ${json.balance}` : `${json.errorCode ?? 'error'}: ${json.errorDescription ?? 'rejected'}`,
+      };
+    } catch (err) {
+      results[results.length - 1] = {
+        service: 'capsolver',
+        configured: true,
+        usable: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const twoKey = process.env.TWOCAPTCHA_API_KEY;
+  results.push({ service: '2captcha', configured: Boolean(twoKey), usable: null });
+  if (twoKey) {
+    try {
+      const res = await fetch(
+        `https://api.2captcha.com/getbalance?key=${encodeURIComponent(twoKey)}`,
+      );
+      const body = (await res.text()).trim();
+      const ok = /^[0-9.]+$/.test(body);
+      results[results.length - 1] = {
+        service: '2captcha',
+        configured: true,
+        usable: ok,
+        detail: ok ? `balance ${body}` : body.slice(0, 120),
+      };
+    } catch (err) {
+      results[results.length - 1] = {
+        service: '2captcha',
+        configured: true,
+        usable: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  const nopeKey = process.env.NOPECHA_API_KEY;
+  results.push({ service: 'nopecha', configured: Boolean(nopeKey), usable: null });
+  if (nopeKey) {
+    try {
+      const res = await fetch(
+        `https://api.nopecha.com/getBalance?key=${encodeURIComponent(nopeKey)}`,
+      );
+      const body = (await res.text()).trim();
+      const ok = /^[0-9.]+$/.test(body);
+      results[results.length - 1] = {
+        service: 'nopecha',
+        configured: true,
+        usable: ok,
+        detail: ok ? `balance ${body}` : body.slice(0, 120),
+      };
+    } catch (err) {
+      results[results.length - 1] = {
+        service: 'nopecha',
+        configured: true,
+        usable: false,
+        detail: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  return results;
+}

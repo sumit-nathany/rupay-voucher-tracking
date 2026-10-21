@@ -26,10 +26,16 @@ echo "==> Project: ${GCP_PROJECT_ID} (${GCP_REGION})"
 if [[ "$DRY_RUN" == "0" ]]; then
   echo "==> Ensuring the project exists"
   gcloud projects describe "$GCP_PROJECT_ID" >/dev/null 2>&1 || {
-    echo "    creating project (this attaches the billing account)"
-    gcloud projects create "$GCP_PROJECT_ID" --name="RuPay ordering worker" --billing-account="$GCP_BILLING_ACCOUNT_ID"
+    echo "    creating project"
+    # Billing is attached in a separate step: current gcloud versions no
+    # longer accept --billing-account on `projects create`.
+    gcloud projects create "$GCP_PROJECT_ID" --name="RuPay ordering worker"
   }
   gcloud config set project "$GCP_PROJECT_ID"
+
+  echo "==> Attaching the billing account"
+  gcloud billing projects link "$GCP_PROJECT_ID" \
+    --billing-account="$GCP_BILLING_ACCOUNT_ID"
 fi
 
 echo "==> Enabling APIs"
@@ -56,15 +62,34 @@ if [[ "$DRY_RUN" == "0" ]]; then
   }
 fi
 
+echo "==> Secret Manager secrets (created empty; set their values with secret-set.sh)"
+# The secrets must exist before the IAM bindings below — binding to a
+# secret that does not exist yet fails with a 404.
+for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
+  if gcloud secrets describe "$secret" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
+    echo "    secret $secret already exists"
+  else
+    run gcloud secrets create "$secret" --replication-policy=automatic --project="$GCP_PROJECT_ID"
+  fi
+done
+
 echo "==> Service accounts"
 for sa in "$RUN_SA" "$SCHEDULER_SA"; do
-  run gcloud iam service-accounts create "$sa" \
-    --display-name="Ordering worker: $sa" \
-    --project="$GCP_PROJECT_ID"
+  # Idempotent: creating a service account that already exists is a conflict,
+  # so only create it when it is missing. `describe` needs the full email
+  # address, not the short name.
+  if gcloud iam service-accounts describe "${sa}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
+      --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
+    echo "    service account $sa already exists"
+  else
+    run gcloud iam service-accounts create "$sa" \
+      --display-name="Ordering worker: $sa" \
+      --project="$GCP_PROJECT_ID"
+  fi
 
   # The run service account may read the worker's secrets.
   if [[ "$sa" == "$RUN_SA" ]]; then
-    for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI"; do
+    for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
       run gcloud secrets add-iam-policy-binding "$secret" \
         --member="serviceAccount:${sa}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
         --role="roles/secretmanager.secretAccessor" \
@@ -79,27 +104,25 @@ for sa in "$RUN_SA" "$SCHEDULER_SA"; do
     --project="$GCP_PROJECT_ID" 2>/dev/null || true
 done
 
-echo "==> Secret Manager secrets (created empty; set their values with secret-set.sh)"
-for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI"; do
-  run gcloud secrets create "$secret" --replication-policy=automatic --project="$GCP_PROJECT_ID"
-done
-
 echo "==> Billing budget (${BUDGET_AMOUNT_USD} USD/month)"
 if [[ "$DRY_RUN" == "0" ]]; then
-  budget_id="$(gcloud billing budgets list --project="$GCP_PROJECT_ID" \
-    --filter="displayName='${BUDGET_DISPLAY_NAME}'" --format='value(name)' | head -1)"
+  # Budgets live on the billing account, not the project, so both are needed.
+  budget_id="$(gcloud billing budgets list \
+    --billing-account="$GCP_BILLING_ACCOUNT_ID" \
+    --filter="displayName='${BUDGET_DISPLAY_NAME}'" --format='value(name)' 2>/dev/null | head -1)"
 
   if [[ -z "$budget_id" ]]; then
+    threshold_args=()
+    IFS=',' read -ra _thresholds <<< "$BUDGET_ALERT_THRESHOLDS"
+    for t in "${_thresholds[@]}"; do
+      threshold_args+=(--threshold-rule="percent=${t}")
+    done
     gcloud billing budgets create \
-      --project="$GCP_PROJECT_ID" \
+      --billing-account="$GCP_BILLING_ACCOUNT_ID" \
       --display-name="$BUDGET_DISPLAY_NAME" \
-      --budget-amount="${BUDGET_AMOUNT_USD}" \
-      --budget-type=REGIONAL \
-      --filter-scope=REGIONS:$GCP_REGION \
-      --threshold-rules="$(python3 -c "
-thresholds='$BUDGET_ALERT_THRESHOLDS'.split(',')
-print(','.join('BASIC,0.${t#0.}' if t.startswith('0.') else f'BASIC,{t}' for t in thresholds))
-")"
+      --budget-amount="$BUDGET_AMOUNT_USD" \
+      --filter-projects="projects/${GCP_PROJECT_ID}" \
+      "${threshold_args[@]}"
   else
     echo "    budget already exists: $budget_id"
   fi

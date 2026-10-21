@@ -23,6 +23,17 @@ describe('redactText', () => {
     expect(out).toContain('[REDACTED_ORDER_ID]');
   });
 
+  it('leaves the portal host name and the profile directory alone', () => {
+    // These start with "rup" but are not order identifiers. Redacting them
+    // made every portal URL in the logs unreadable.
+    expect(redactText('GET https://rupayselect.truztee.com/api/Public/x')).toBe(
+      'GET https://rupayselect.truztee.com/api/Public/x',
+    );
+    expect(redactText('Profile Directory: /tmp/rupay-worker-profiles/account_9cdce6b9')).toBe(
+      'Profile Directory: /tmp/rupay-worker-profiles/account_9cdce6b9',
+    );
+  });
+
   it('removes labelled booking references', () => {
     const out = redactText('bookingReference: BK-9F2A11C3 confirmed');
     expect(out).not.toContain('BK-9F2A11C3');
