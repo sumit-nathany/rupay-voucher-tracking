@@ -26,9 +26,11 @@ import {
   setCodeAction,
   setStatusAction,
   unskipInstanceAction,
+  dismissPortalRefusalAction,
   updateDetailsAction,
 } from '@/actions/instances';
 import type { BenefitOptionView, InstanceView, OrderStatus, RevealedCode } from '@/domain/instances';
+import { PORTAL_REFUSAL_LABELS, type PortalRefusalCode } from '@/domain/portal-refusal';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -197,7 +199,10 @@ function DrawerBody({
       {/* 2. Choose One Option (if applicable) */}
       <OptionSection inst={inst} editable={editable} applied={applied} />
 
-      {/* 3. Withdrawn notice (if withdrawn) */}
+      {/* 3. Portal refusal notice (if the portal or bank refused this benefit) */}
+      <PortalRefusalNotice inst={inst} applied={applied} reload={reload} />
+
+      {/* 4. Withdrawn notice (if withdrawn) */}
       {kind === 'withdrawn' && (
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3.5 text-xs" role="note">
           <p className="font-semibold text-destructive">Withdrawn Benefit</p>
@@ -208,10 +213,10 @@ function DrawerBody({
         </div>
       )}
 
-      {/* 4. Voucher Code Vault */}
+      {/* 5. Voucher Code Vault */}
       <CodeSection inst={inst} open={open} editable={editable} applied={applied} />
 
-      {/* 5. Booking & Order Details (Clean read-only by default, editable on demand) */}
+      {/* 6. Booking & Order Details (Clean read-only by default, editable on demand) */}
       <DetailsSection
         inst={inst}
         editable={editable}
@@ -219,7 +224,7 @@ function DrawerBody({
         reload={reload}
       />
 
-      {/* 6. Sale Tracking (Collapsible) */}
+      {/* 7. Sale Tracking (Collapsible) */}
       {kind === 'workflow' && (
         <SaleSection
           inst={inst}
@@ -227,6 +232,81 @@ function DrawerBody({
           reload={reload}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Shown when the RuPay portal or the bank refused this benefit for this card.
+ *
+ * The refusal is the portal's word, not the user's, so it is shown as a notice
+ * rather than as a status the user can change — but the user can dismiss it, so
+ * a wrong refusal does not block the benefit forever. See REQUIREMENTS.md §6
+ * and RH#16.
+ */
+function PortalRefusalNotice({
+  inst,
+  applied,
+  reload,
+}: {
+  inst: InstanceView;
+  applied: (v: InstanceView) => void;
+  reload: () => Promise<void>;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  if (!inst.portalRefusal) return null;
+
+  const code = inst.portalRefusal as PortalRefusalCode;
+  const source = inst.portalRefusalSource === 'bank' ? 'Bank' : 'RuPay portal';
+  const label = PORTAL_REFUSAL_LABELS[code] ?? code;
+
+  async function dismiss() {
+    setBusy(true);
+    setError(null);
+    try {
+      applied(await dismissPortalRefusalAction(inst.id));
+    } catch (e) {
+      setError(errorMessage(e));
+      void reload();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-warning/40 bg-warning/5 p-3.5 text-xs" role="note">
+      <p className="font-semibold text-foreground">
+        {source}: {label}
+      </p>
+      <p className="mt-1 text-muted-foreground leading-relaxed">
+        The {source.toLowerCase()} will not serve this benefit on this card, so it was not ordered and the
+        automation will not try again for this period.
+        {inst.portalRefusalDetail ? (
+          <>
+            {' '}
+            It said: &ldquo;{inst.portalRefusalDetail}&rdquo;
+          </>
+        ) : null}
+        {inst.portalRefusalAt ? (
+          <span className="block text-muted-foreground/80">
+            Recorded {new Date(inst.portalRefusalAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST
+          </span>
+        ) : null}
+      </p>
+      <div className="mt-2.5 flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={dismiss}
+          disabled={busy}
+        >
+          {busy ? 'Clearing…' : 'Try ordering it anyway'}
+        </Button>
+        {error ? <span className="text-destructive">{error}</span> : null}
+      </div>
     </div>
   );
 }

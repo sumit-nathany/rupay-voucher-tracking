@@ -16,6 +16,7 @@ import { calendarQuarterForDate, expandViewedPeriod, type ViewedPeriod } from '@
 import { benefitOptionLabel } from './benefit-label';
 import { type OfferKind, resolveOfferKind } from './benefit-offer-kind';
 import { ORDER_STATUSES, type OrderStatus } from './instances';
+import type { PortalRefusalCode, PortalRefusalSource } from './portal-refusal';
 import { ValidationError } from './workspace-data';
 
 // Read queries for the Dashboard / Benefits list (PLAN.md Phase 4a). Every query
@@ -95,6 +96,11 @@ export interface InstanceListItem {
   soldFor: number | null;
   rupayBookingId: string | null;
   comments: string | null;
+  /** Portal refusal status, when the portal or bank refused this benefit. */
+  portalRefusal: PortalRefusalCode | null;
+  portalRefusalSource: PortalRefusalSource | null;
+  portalRefusalDetail: string | null;
+  portalRefusalAt: Date | null;
   hasCode: boolean;
   benefitName: string;
   benefitType: string;
@@ -165,6 +171,10 @@ export interface DashboardPeriodSummary {
   lapsedValue: number;
   /** Sum of sold_for over instances with sold_for set (any non-Skipped/Withdrawn status). */
   soldValue: number;
+  /** Instances the portal or bank refused for this card. Excluded from the
+   *  "need to order" queue: the portal will not serve them. */
+  portalRefusedCount: number;
+  portalRefusedValue: number;
   perHolder: HolderProgress[];
   /** True when the workspace has zero cards configured. */
   isDeskEmpty: boolean;
@@ -209,6 +219,10 @@ export interface DashboardSummary {
   lapsedValue: number;
   /** Sum of sold_for over instances with sold_for set (any non-Skipped/Withdrawn status). */
   soldValue: number;
+  /** Instances the portal or bank refused for this card. Excluded from the
+   *  "need to order" queue: the portal will not serve them. */
+  portalRefusedCount: number;
+  portalRefusedValue: number;
   perHolder: HolderProgress[];
   /** Coupon Received, not sold, expiry_date in [today, today+30], workspace-wide (not limited to the view). */
   expiringSoon: InstanceListItem[];
@@ -252,6 +266,10 @@ const selection = {
   soldFor: benefitInstances.soldFor,
   rupayBookingId: benefitInstances.rupayBookingId,
   comments: benefitInstances.comments,
+  pRefusal: benefitInstances.portalRefusal,
+  pRefusalSource: benefitInstances.portalRefusalSource,
+  pRefusalDetail: benefitInstances.portalRefusalDetail,
+  pRefusalAt: benefitInstances.portalRefusalAt,
   hasCode: sql<boolean>`${benefitInstances.codeEncrypted} IS NOT NULL`,
   overrideId: benefitInstances.overrideId,
   vType: benefitCatalogVersions.benefitType,
@@ -317,6 +335,10 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     soldFor: num(r.soldFor),
     rupayBookingId: r.rupayBookingId,
     comments: r.comments,
+    portalRefusal: (r.pRefusal as PortalRefusalCode | null) ?? null,
+    portalRefusalSource: (r.pRefusalSource as PortalRefusalSource | null) ?? null,
+    portalRefusalDetail: r.pRefusalDetail ?? null,
+    portalRefusalAt: r.pRefusalAt ?? null,
     hasCode: Boolean(r.hasCode),
     benefitName,
     benefitType,
@@ -662,6 +684,7 @@ export async function getDashboardPeriodSummary(
   const holders = new Map<string, HolderProgress>();
   let totalCount = 0, totalValue = 0, orderedValue = 0, redeemedValue = 0;
   let outstandingValue = 0, lapsedCount = 0, lapsedValue = 0, soldValue = 0;
+  let portalRefusedCount = 0, portalRefusedValue = 0;
   let needOrder = 0,
     needOrderCount = 0,
     awaitingCoupon = 0,
@@ -675,7 +698,14 @@ export async function getDashboardPeriodSummary(
     totalCount += 1;
     totalValue += it.value;
     const voucherQueue = it.offerKind !== 'discount';
-    if (voucherQueue && it.status === 'Not Ordered' && !it.lapsed) {
+    // A portal refusal means the portal will not serve this benefit for this
+    // card, so it is not something to order — it is counted separately. See
+    // REQUIREMENTS.md §6 and RH#16.
+    if (it.portalRefusal) {
+      portalRefusedCount += 1;
+      portalRefusedValue += it.value;
+    }
+    if (voucherQueue && it.status === 'Not Ordered' && !it.lapsed && !it.portalRefusal) {
       needOrder += it.value;
       needOrderCount += 1;
     }
@@ -732,6 +762,8 @@ export async function getDashboardPeriodSummary(
     lapsedCount,
     lapsedValue: round2(lapsedValue),
     soldValue: round2(soldValue),
+    portalRefusedCount,
+    portalRefusedValue: round2(portalRefusedValue),
     perHolder: [...holders.values()].sort((a, b) => a.holderName.localeCompare(b.holderName)),
     isDeskEmpty,
   };
@@ -822,6 +854,8 @@ export async function getDashboardSummary(
   return {
     counts: period.counts,
     actionValues: period.actionValues,
+    portalRefusedCount: period.portalRefusedCount,
+    portalRefusedValue: period.portalRefusedValue,
     totalCount: period.totalCount,
     totalValue: period.totalValue,
     orderedValue: period.orderedValue,

@@ -183,6 +183,13 @@
       "when": 1792485755834,
       "tag": "0025_tired_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792578177286,
+      "tag": "0026_first_mongu",
+      "breakpoints": true
     }
   ]
 }

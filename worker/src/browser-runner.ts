@@ -18,6 +18,12 @@ import { solveRecaptchaViaService } from './captcha-service-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { today as todayInIST } from '../../web/src/lib/periods';
 import { selectCandidateForAccount } from './candidate-selection';
+import {
+  classifyPortalRefusal,
+  type PortalRefusalCode,
+  type PortalRefusalSource,
+} from '../../web/src/domain/portal-refusal';
+import { recordPortalRefusal } from '../../web/src/domain/portal-refusal-store';
 import { isPortalCooldownMessage, parsePortalCooldownDate, parsePortalCooldown } from '../../web/src/lib/portal-cooldown';
 import { getAccountProfilePath } from './browser-profile';
 import { fillCardDetailsOnGateway, clickPayButton, promptForOtpAndSubmit } from './payment-gateway-automation';
@@ -53,7 +59,8 @@ export interface BrowserRunResult {
     | 'cooldown_active'
     | 'card_limit_exhausted'
     | 'gateway_redirect_failed'
-    | 'payment_failed';
+    | 'payment_failed'
+    | 'portal_refused';
   /** The instance the run acted on, when one was selected. */
   instanceId?: string;
 }
@@ -1300,23 +1307,58 @@ async function addCardToPortalAccount(
     })
     .returning();
 
-  if (transitionResult.cardExhausted) {
-    console.log(`\n❌ Card redemption limit reached on RuPay portal (${transitionResult.reason}).`);
+  // A portal refusal: the portal or the bank will not serve this benefit for
+  // this card. The wording on the page is the authority — the LLM only tells
+  // us that something is blocking, and its explanation is a paraphrase. So the
+  // page text is classified, with the explanation as a fallback.
+  //
+  // Only read the page when the transition did not succeed or reach the OTP
+  // screen: on those paths the page is a confirmation or a bank form, and
+  // reading it would be wasted work.
+  const mayHaveBeenRefused =
+    !transitionResult.reachedSuccess && !transitionResult.reachedOtp;
+
+  let refusalCode: PortalRefusalCode | null = null;
+  if (mayHaveBeenRefused) {
+    const pageText = await activePaymentPage
+      .evaluate(() => document.body.innerText)
+      .catch(() => '');
+    refusalCode =
+      classifyPortalRefusal(pageText) ??
+      classifyPortalRefusal(transitionResult.reason) ??
+      (transitionResult.cardExhausted ? 'card_limit_reached' : null);
+  }
+
+  if (refusalCode) {
+    const refusalSource: PortalRefusalSource = 'rupay_portal';
+    const detail = (transitionResult.reason ?? '').trim() || null;
+    console.log(
+      `\n❌ RuPay portal refused this benefit: ${refusalCode} (${transitionResult.reason ?? 'no detail'}).`,
+    );
+
     await db
       .update(schema.portalOrderAttempts)
-      .set({ state: 'failed_pre_submit', failureCode: 'card_limit_exhausted', finishedAt: new Date() })
+      .set({
+        state: 'failed_pre_submit',
+        failureCode: refusalCode === 'card_limit_reached' ? 'card_limit_exhausted' : 'offer_unavailable',
+        finishedAt: new Date(),
+      })
       .where(eq(schema.portalOrderAttempts.id, attempt.id));
 
-    // Update the instance with comments and mark as Coupon Received so the global queue moves forward
-    await db
-      .update(schema.benefitInstances)
-      .set({
-        orderStatus: 'Coupon Received',
-        comments: `RuPay portal reported: ${transitionResult.reason} on ${todayInIST()}`,
-      })
-      .where(eq(schema.benefitInstances.id, candidate.instanceId));
+    // Record the refusal against the benefit instance. The instance's order
+    // status is deliberately left alone — the benefit was never ordered, so it
+    // stays 'Not Ordered'. The refusal is what explains why, and it is what
+    // stops the worker retrying it every hour. See REQUIREMENTS.md §6 and RH#16.
+    await recordPortalRefusal(db, {
+      instanceId: candidate.instanceId,
+      code: refusalCode,
+      source: refusalSource,
+      detail,
+    });
 
-    console.log(`[portal] Benefit instance ${candidate.instanceId} marked as 'Coupon Received' (card already redeemed).`);
+    console.log(
+      `[portal] Benefit instance ${candidate.instanceId} recorded as refused by the portal: ${refusalCode}.`,
+    );
     await activePaymentPage.waitForTimeout(1000).catch(() => {});
     await context.close().catch(() => {});
     await client.end().catch(() => {});
@@ -1324,7 +1366,7 @@ async function addCardToPortalAccount(
       attempted: true,
       accountLabel: account.label,
       instanceId: candidate.instanceId,
-      reason: 'card_limit_exhausted',
+      reason: 'portal_refused',
     };
   }
 
