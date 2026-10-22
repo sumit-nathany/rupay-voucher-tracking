@@ -4,16 +4,19 @@
 #
 #   worker/infra/set-secrets-from-env.sh <env-file> [SECRET_NAME=ENV_KEY ...]
 #
-# With no mapping, it sets the four the worker always needs, reading them
+# With no mapping, it sets the keys the worker always needs, reading them
 # from the given env file:
 #
 #   WORKER_DATABASE_URL              <- DATABASE_URL
 #   PORTAL_CREDENTIAL_ENCRYPTION_KEY <- PORTAL_CREDENTIAL_ENCRYPTION_KEY
-#   CAPSOLVER_API_KEY                <- CAPSOLVER_API_KEY
 #   GEMINI_API_KEY                   <- GEMINI_API_KEY
 #
 # It also sets ENCRYPTION_KEYRING when the env file has one — the worker
 # needs it to decrypt any credential encrypted with a rotated key.
+#
+# The worker does NOT hold captcha solver keys anymore: all CAPTCHA solving
+# is delegated to the external ReCaptcha Solver service, whose key is managed
+# by that service's own deployment scripts.
 #
 # Values are piped straight into secret-set.sh, so they never appear in
 # shell history, the process list, or this script's output.
@@ -66,7 +69,6 @@ READ_ENV="node $(dirname "${BASH_SOURCE[0]}")/read-env.mjs"
 MAPPING=(
   "WORKER_DATABASE_URL=DATABASE_URL"
   "PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY"
-  "CAPSOLVER_API_KEY=CAPSOLVER_API_KEY"
   "GEMINI_API_KEY=GEMINI_API_KEY"
   "ENCRYPTION_KEYRING=ENCRYPTION_KEYRING"
 )

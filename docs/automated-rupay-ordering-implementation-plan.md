@@ -49,7 +49,7 @@ Do not merge or enable the submission adapter until all of the following are kno
 5. Which result field is safe to store as `rupay_booking_id`.
 6. Whether the portal's terms and the account owner's authorization permit the intended automation.
 
-Do not implement or enable a write path until the portal flow is confirmed and the terms/authorization check is resolved. If login requires a challenge that cannot be completed unattended, the initial release supports account status `challenge_required` only. It does not implement an OTP relay, browser streaming, or an unsafe challenge workaround. A reCAPTCHA solver *is* implemented, in `worker/src/captcha-solver.ts`: it calls out to a third-party solving service (CapSolver / 2Captcha / NopeCHA) and falls back to transcribing the in-browser audio challenge with Gemini; the worker proceeds only on a verified token.
+Do not implement or enable a write path until the portal flow is confirmed and the terms/authorization check is resolved. If login requires a challenge that cannot be completed unattended, the initial release supports account status `challenge_required` only. It does not implement an OTP relay, browser streaming, or an unsafe challenge workaround. A reCAPTCHA solver *is* implemented — but in a **separate** ReCaptcha Solver service, not in the worker. The worker delegates all CAPTCHA solving to that service (a separate Cloud Run service in the same project) via `CAPTCHA_SERVICE_URL`, and proceeds only on a verified token.
 
 ## 3. Database design and migrations
 
@@ -316,8 +316,8 @@ The Secrets are:
 
 - `PORTAL_CREDENTIAL_ENCRYPTION_KEY`.
 - `WORKER_DATABASE_URL` (the worker connection string).
-- The captcha solver key actually in use — one of `CAPSOLVER_API_KEY`, `NOPECHA_API_KEY`, or `TWOCAPTCHA_API_KEY`.
-- `GEMINI_API_KEY`, for transcribing the in-browser audio challenge when no third-party solver is configured.
+- `RECAPTCHA_SOLVER_KEY` — the shared key for the external ReCaptcha Solver service (the worker delegates all CAPTCHA solving to that service; it never solves challenges itself).
+- `GEMINI_API_KEY`, used by the service's fallback audio path when no third-party solver is configured.
 
 Set Cloud Logging exclusions or application-level redaction to ensure credentials, cookies, tokens, code values, and portal payloads cannot be emitted even in errors.
 
@@ -417,7 +417,7 @@ The immediate kill switch is `automation_settings.enabled = false`; it is checke
 
 The discovery gate and live browser validation resolved the operational questions (see [automated-rupay-ordering-architecture.md](./automated-rupay-ordering-architecture.md) for full details):
 
-1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. The deployed job logs in fresh on every execution and solves the challenge through the captcha solver in `worker/src/captcha-solver.ts` — a third-party solving service (CapSolver / 2Captcha / NopeCHA) or, as a fallback, the in-browser audio challenge transcribed with Gemini — and proceeds only on a verified token. The portal session JWT expires one hour after login, so no persisted profile would survive between hourly runs in any case; a fresh login per execution is both simpler and safer than persisting session state. The per-account profile directories under `worker/.browser-data/` remain a **local development** convenience only and are never written by the deployed job.
+1. **Unattended login & CAPTCHA:** Google reCAPTCHA v2 is enforced on portal login. The deployed job logs in fresh on every execution and delegates the challenge to the external ReCaptcha Solver service (a separate Cloud Run service in the same project) via `CAPTCHA_SERVICE_URL`, which returns a verified token; the worker injects that token into its own page and proceeds only on verification. No solver API keys are mounted on the worker itself — the service's shared key (`RECAPTCHA_SOLVER_KEY`) is the only captcha-related secret the worker carries. The portal session JWT expires one hour after login, so no persisted profile would survive between hourly runs in any case; a fresh login per execution is both simpler and safer than persisting session state. The per-account profile directories under `worker/.browser-data/` remain a **local development** convenience only and are never written by the deployed job.
 2. **24-hour cadence vs calendar day:** The portal enforces a strict rolling 24-hour limit from the last booking. Resolved via `cooldown_until` on `app.portal_accounts` and automated IST parsing. The deployed job is a **batch**, not a persistent daemon: because the cooldown is enforced in the database, a scheduled sweep that runs every hour is equivalent to waking exactly at each unlock instant — it simply re-evaluates eligibility each time and finds nothing to do when an account is still cooling down. The event-loop daemon in `worker/src/daemon.ts` is retained as a local development and operations tool, and its scheduling logic (`getNextEligibleRunTime`) is shared with the UI header and the batch job.
 3. **Card mapping & BIN lookup:** Entitlements are bound to `(account, cardtypeid, quarter)` on the portal, not individual physical card numbers. The registered card dropdown in the UI provides the composite `${cardtypeid}_${cardbinid}` identifier.
 4. **Order submission contract:** Confirmed as `POST /api/Select/addUserTransaction`, which returns an HTML payment gateway redirect on success and a timestamped rate limit message on cooldown.

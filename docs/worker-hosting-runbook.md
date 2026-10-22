@@ -92,8 +92,8 @@ worker/infra/secret-set.sh GEMINI_API_KEY
 |---|---|
 | `WORKER_DATABASE_URL` | The Supabase **transaction pooler** URL (`:6543`) for the environment the job targets. |
 | `PORTAL_CREDENTIAL_ENCRYPTION_KEY` | The 32-byte base64 key that encrypts the portal credentials in the database. **Must match** the key the web app uses for that environment. |
-| `CAPSOLVER_API_KEY` | One captcha solver key. The runner also accepts `NOPECHA_API_KEY` or `TWOCAPTCHA_API_KEY`. |
-| `GEMINI_API_KEY` | Used to transcribe the audio challenge when no solver service is configured. |
+| `RECAPTCHA_SOLVER_KEY` | The shared key for the external ReCaptcha Solver service. The worker delegates all CAPTCHA solving to the service and never solves challenges itself — no solver API keys are needed on the worker. |
+| `GEMINI_API_KEY` | Used by the service's fallback audio path when no cloud solver is configured. |
 | `ENCRYPTION_KEYRING` | **Optional.** A space-separated list of base64 keys, tried in order. Only needed if a stored portal credential was encrypted with a rotated key that is no longer the primary one — a worker holding only the primary key cannot decrypt those. The deploy scripts include it automatically when the secret exists. |
 
 > Secret Manager's free allowance is six versions per secret per month. Each
@@ -200,38 +200,34 @@ candidate, launching a browser, or writing an attempt. It uses the same
 candidate selection a live run uses — the global ordering queue first, the
 legacy per-account rules as a fallback — so the preview is accurate.
 
-### 4.4 The captcha solver is required
+### 4.4 The captcha solving service is required
 
 The portal's login form is protected by a Google reCAPTCHA v2, so **every run
 must solve it** — the portal's session token expires one hour after login, so
 neither a fresh login nor a persisted browser profile avoids the challenge.
 There is no way around it: the worker is not logged in when it starts.
 
-The worker solves the challenge through a third-party solving service. The
-service is chosen by one variable, `CAPTCHA_PROVIDER`, and **only the named
-one is ever called** — a key that happens to be mounted on the worker cannot
-quietly take the traffic. The routed provider is **AZCaptcha**; the other
-token backends (`capmonster`, `yescaptcha`, `capsolver`, `2captcha`,
-`nopecha`), the in-browser audio challenge (`gemini-audio`) and the
-self-hosted solving service (`service`) are still supported and are used
-only when they are named.
+The worker never solves CAPTCHAs itself. All solving is delegated to the
+external ReCaptcha Solver service (a separate Cloud Run service in the same
+project), reached via `CAPTCHA_SERVICE_URL` with the shared key
+`RECAPTCHA_SOLVER_KEY`. The service chooses which backend to use internally
+(YesCaptcha, CapSolver, local vision, etc.) — that decision does not reach the
+worker.
 
-The audio fallback does **not** work from a Google Cloud IP: Google answers
-the audio request with "Your computer or network may be sending automated
-queries", because data-centre addresses are treated as automated traffic. A
-paid solver service does not have that problem — it solves from its own
-infrastructure — so it is the one that has to work.
+The audio fallback in the service does **not** work from a Google Cloud IP:
+Google answers the audio request with "Your computer or network may be sending
+automated queries", because data-centre addresses are treated as automated
+traffic. A paid solver service does not have that problem — it solves from its
+own infrastructure — so it is the one that has to work.
 
-Before the browser is opened, the worker checks that the routed provider
-accepts its key and has balance, and fails immediately with a clear message
-if it does not. A run therefore costs seconds to diagnose, not ten minutes
-per account.
+Before the browser is opened, the worker checks that the solving service is
+reachable and healthy, and fails immediately with a clear message if it is not.
+A run therefore costs seconds to diagnose, not ten minutes per account.
 
-To set a working key:
+To set a working service key:
 
 ```bash
-# in web/.env.local
-AZCAPTCHA_API_KEY=<your key>
+# in the recaptcha-solver service's own deployment (not the worker)
 worker/infra/set-secrets-from-env.sh web/.env.local
 ```
 
@@ -243,8 +239,7 @@ gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_nam
   --project=rupay-order-worker-prod --limit=20 --format='value(textPayload)'
 ```
 
-Look for `captcha solver azcaptcha: usable` and `captcha provider:
-azcaptcha`.
+Look for `captcha: external solving service configured and reachable`.
 
 ### 4.5 Checking the login by itself
 
@@ -253,14 +248,20 @@ check the captcha path. This script logs in and stops:
 
 ```bash
 cd worker
-AZCAPTCHA_API_KEY=<your key> npm run test:verify-login -- --headless
+CAPTCHA_SERVICE_URL=http://localhost:8787 RECAPTCHA_SOLVER_KEY=local-dev \
+  AZCAPTCHA_API_KEY=<your key> npm run test:verify-login -- --headless
 ```
 
+> **Note:** For local development without the solving service running, a
+> third-party solver key (e.g. `AZCAPTCHA_API_KEY`) is still needed by the
+> local sign-in scripts. The **deployed** worker never uses these keys — it
+> always delegates to the service.
+
 It opens the portal, opens the login modal, types the stored credentials,
-clicks the reCAPTCHA checkbox, asks AZCaptcha for a token, injects it the
-way the worker injects it, clicks "Sign In" and waits for the portal's
-`jwt` session cookie. `unattended login succeeded` means the whole path
-worked. It spends one token per run.
+clicks the reCAPTCHA checkbox, asks the solving service (or the local
+third-party key) for a token, injects it the way the worker injects it,
+clicks "Sign In" and waits for the portal's `jwt` session cookie. `unattended
+login succeeded` means the whole path worked. It spends one token per run.
 
 The portal has no `#/login` route: the login form is a modal that opens on
 the offers page, so `#/login` renders an empty shell with no inputs and no

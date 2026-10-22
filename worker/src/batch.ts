@@ -37,7 +37,7 @@ import type { Database } from '../../web/src/lib/context';
 import { today as todayInIST } from '../../web/src/lib/periods';
 import { installLogRedaction } from './lib/redact';
 import { runBrowserTest } from './browser-runner';
-import { checkSolverBackends, CAPTCHA_PROVIDER } from './captcha-solver';
+import { isSolverServiceConfigured } from './captcha-service-client';
 import { selectCandidateForAccount } from './candidate-selection';
 
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -52,11 +52,6 @@ async function main() {
     process.exit(1);
   }
 
-  // Without the encryption key, payment details cannot be decrypted, so no
-  // card mapping is ever eligible and the run would report "nothing eligible"
-  // and exit 0 — a successful-looking run that silently does nothing. Fail
-  // loudly instead: in an unattended hourly job, silence is the dangerous
-  // outcome.
   if (!process.env.PORTAL_CREDENTIAL_ENCRYPTION_KEY) {
     console.error(
       '[worker] Fatal: PORTAL_CREDENTIAL_ENCRYPTION_KEY is required. Without it, ' +
@@ -66,52 +61,17 @@ async function main() {
     process.exit(1);
   }
 
-  // Check the captcha solver credentials before touching the database or a
-  // browser. A rejected key is the most common cause of a failed unattended
-  // run, and it is otherwise only visible after the runner has opened a
-  // browser, waited out a challenge, and burned minutes per account.
-  const backends = await checkSolverBackends();
-  const configured = backends.filter((b) => b.configured);
-  if (configured.length > 0) {
-    for (const b of configured) {
-      console.log(
-        `[worker] captcha solver ${b.service}: ${b.usable ? 'usable' : 'REJECTED'}` +
-          (b.detail ? ` (${b.detail})` : ''),
-      );
-    }
-    if (configured.every((b) => b.usable === false)) {
-      console.error(
-        '[worker] Fatal: every configured captcha solver rejected its key. ' +
-          'The login CAPTCHA cannot be solved, so no benefit could be ordered. ' +
-          'Check the key for the service in use, and that the account has balance.',
-      );
-      process.exit(1);
-    }
+  // The worker never solves CAPTCHAs itself — it delegates to the external
+  // ReCaptcha Solver service. Without it configured, every login challenge
+  // would fail, so fail fast with a clear message.
+  if (!(await isSolverServiceConfigured())) {
+    console.error(
+      '[worker] Fatal: CAPTCHA_SERVICE_URL is not set or the solving service is not reachable. ' +
+        'The worker delegates all CAPTCHA solving to the external service and cannot solve challenges itself.',
+    );
+    process.exit(1);
   }
-
-  // The routed provider is the one that matters. A missing key for it is
-  // fatal even when another backend is configured, because the others are
-  // never called.
-  const routed = backends.find((b) => b.service === CAPTCHA_PROVIDER);
-  if (routed) {
-    if (!routed.configured) {
-      console.error(
-        `[worker] Fatal: the captcha provider "${CAPTCHA_PROVIDER}" is selected but its ` +
-          'API key is not set. Every challenge would fail before it reaches the portal. ' +
-          'Set the key, or point CAPTCHA_PROVIDER at a backend that is configured.',
-      );
-      process.exit(1);
-    }
-    if (routed.usable === false) {
-      console.error(
-        `[worker] Fatal: the captcha provider "${CAPTCHA_PROVIDER}" rejected its key` +
-          (routed.detail ? ` (${routed.detail})` : '') +
-          '. The login CAPTCHA cannot be solved, so no benefit could be ordered.',
-      );
-      process.exit(1);
-    }
-    console.log(`[worker] captcha provider: ${CAPTCHA_PROVIDER}`);
-  }
+  console.log('[worker] captcha: external solving service configured and reachable');
 
   const client = postgres(dbUrl, { max: 2 });
   const db = drizzle(client, { schema }) as unknown as Database;

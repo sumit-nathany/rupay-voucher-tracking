@@ -12,7 +12,7 @@ import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
-import { autoSolveRecaptcha, CAPTCHA_PROVIDER } from './captcha-solver';
+import { captureRecaptchaCallback, injectRecaptchaToken } from './captcha-solver';
 import { installPageGlobals } from './page-globals';
 import { solveRecaptchaViaService } from './captcha-service-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
@@ -486,24 +486,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
       // Start the auto-solver after a brief pause once credentials are input.
       //
-      // Two flows, chosen by CAPTCHA_PROVIDER. The default is a third-party
-      // token service (AZCaptcha), which is what the worker is routed to;
-      // `service` opts into the self-hosted solving service instead.
+      // All CAPTCHA solving is delegated to the external ReCaptcha Solver
+      // service. The worker never solves challenges itself.
       if (!autoSolveInitiated && sec >= 1) {
         autoSolveInitiated = true;
-        const useService = CAPTCHA_PROVIDER === 'service';
-        console.log(
-          useService
-            ? '[captcha] Using the shared solving service.'
-            : `[captcha] Using the ${CAPTCHA_PROVIDER} service.`,
-        );
+        console.log('[captcha] Using the shared solving service.');
         // The service opens the portal in its own browser, so it has to be
         // told how to reach the login form: the modal is opened by the Login
         // button on the offers page.
-        const attempt = useService
-          ? solveRecaptchaViaService(page, { loginButton: 'Login' })
-          : autoSolveRecaptcha(page);
-        attempt
+        solveRecaptchaViaService(page, { loginButton: 'Login' })
           .then((success) => {
             if (success) {
               console.log('[captcha] ✓ Auto-solver finished successfully!');

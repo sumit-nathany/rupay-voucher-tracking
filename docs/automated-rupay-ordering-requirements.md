@@ -36,7 +36,7 @@ The feature must give the user a clear record of what was attempted, ordered, de
 ### In scope
 
 - A workspace owner configures one or more RuPay portal accounts and maps its tracked cards to them.
-- The worker solves the Google reCAPTCHA v2 challenge presented on the portal login form, unattended, and continues the login only when the solver reports a verified token.
+- The worker delegates the Google reCAPTCHA v2 challenge on the portal login form to the external ReCaptcha Solver service, unattended, and continues the login only when the service reports a verified token. The worker itself never solves CAPTCHAs.
 - The owner creates, enables, pauses, and prioritizes ordering rules.
 - A scheduled job selects at most one safe candidate per portal account and orders it through the portal.
 - Rules may restrict ordering to particular cards or benefits.
@@ -52,7 +52,7 @@ The feature must give the user a clear record of what was attempted, ordered, de
 - Guessing portal endpoints, card/BIN identifiers, or another person's account/card information.
 - Ordering more than one benefit per portal account in 24 hours.
 
-**Scoped exception — the login CAPTCHA.** The Google reCAPTCHA v2 challenge on the portal login form is the one challenge the worker solves. It is solved unattended by the worker's captcha solver (see §6), and only for the portal's own login form. No other challenge is solved, relayed, or bypassed, and the worker never proceeds on an unverified token.
+**Scoped exception — the login CAPTCHA.** The Google reCAPTCHA v2 challenge on the portal login form is the one challenge solved during automation. It is solved unattended by delegating to the external ReCaptcha Solver service (see §6), and only for the portal's own login form. No other challenge is solved, relayed, or bypassed, and the worker never proceeds on an unverified token.
 
 ## 4. User configuration
 
@@ -124,7 +124,7 @@ On timeout, connection loss, malformed response, browser crash after submission,
 
 If login presents OTP, device verification, an expired credential, or an unrecognized portal flow, the worker must stop before ordering, mark the account `needs attention`, and report a generic reason. It must never attempt to solve, relay, or bypass that challenge.
 
-A Google reCAPTCHA v2 challenge on the portal login form is the one exception. The worker solves it automatically through its captcha solver (`worker/src/captcha-solver.ts`) and continues the login only when the solver reports a **verified** token. A missing or unverified token is treated as a failure: the worker must stop before ordering, mark the account `needs attention`, and report a generic reason.
+A Google reCAPTCHA v2 challenge on the portal login form is the one exception. The worker delegates it automatically to the external ReCaptcha Solver service and continues the login only when the service reports a **verified** token. A missing or unverified token is treated as a failure: the worker must stop before ordering, mark the account `needs attention`, and report a generic reason.
 
 The account state `needs attention` also applies to ambiguous outcomes and tracker reconciliation conflicts; it must be cleared only through an explicit user action after resolving the issue.
 
