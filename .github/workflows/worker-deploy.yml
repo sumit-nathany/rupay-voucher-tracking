@@ -93,12 +93,13 @@ jobs:
       - name: Resolve secret bindings
         id: bindings
         run: |
-          # AZCAPTCHA_API_KEY is the routed captcha provider. Without it the
-          # worker has no way to solve the login CAPTCHA, so it is mounted
-          # unconditionally rather than when it happens to exist.
-          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,AZCAPTCHA_API_KEY=AZCAPTCHA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+          # The worker delegates all captcha solving to the external solver
+          # service, so it needs the service's shared key (RECAPTCHA_SOLVER_KEY).
+          # AZCAPTCHA_API_KEY is used only by local-dev scripts, never by the
+          # deployed job.
+          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,RECAPTCHA_SOLVER_KEY=RECAPTCHA_SOLVER_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
           # The keyring is optional — it holds rotated encryption keys and is
-          # only needed when a stored credential uses a key that is no longer
+          # only needed when a stored portal credential uses a key that is no longer
           # the primary one.
           if gcloud secrets describe ENCRYPTION_KEYRING --project="${GCP_PROJECT_ID}" >/dev/null 2>&1; then
             ARGS="${ARGS},ENCRYPTION_KEYRING=ENCRYPTION_KEYRING:latest"
@@ -121,5 +122,5 @@ jobs:
             --tasks=1 \
             --task-timeout=1800s \
             --service-account="rupay-order-worker-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-            --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=azcaptcha" \
+            --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=service,CAPTCHA_SERVICE_URL=https://recaptcha-solver-3mm5ybafoq-el.a.run.app" \
             --set-secrets="${{ steps.bindings.outputs.args }}"

@@ -69,7 +69,7 @@ run gcloud run jobs deploy "$JOB_NAME" \
   --parallelism=1 \
   --task-timeout="${TASK_TIMEOUT}s" \
   --service-account="$RUN_SA@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-service},CAPTCHA_SERVICE_URL=${CAPTCHA_SERVICE_URL:-}" \
+  --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-service},CAPTCHA_SERVICE_URL=${CAPTCHA_SERVICE_URL:-https://recaptcha-solver-3mm5ybafoq-el.a.run.app}" \
   --set-secrets="$SECRET_ARGS"
 
 echo
