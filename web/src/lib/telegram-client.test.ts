@@ -48,41 +48,21 @@ describe('telegram client service', () => {
     expect(url).toBe('https://api.telegram.org/botfake_bot_token/sendMessage');
     const body = JSON.parse(options.body);
     expect(body.chat_id).toBe('987654321');
-    expect(body.text).toContain('Swiggy One');
     expect(body.text).toContain('₹2');
+    expect(body.text).toContain('RuPay Benefit Verification Required');
 
     const res2 = await tg.sendOtpPrompt({
       chatId: '987654321',
       benefitName: 'Redeemable Coupon - INR 100',
-      provider: 'Uber',
-      category: 'Cab Services',
-      voucherValue: 100,
-      cardName: 'Bank of India RuPay Select Card',
-      cardLast4: '6356',
-      portalAccountLabel: 'surendranathany@gmail.com',
+      isRetry: true,
+      errorMessage: 'Incorrect OTP entered',
     });
     expect(res2.success).toBe(true);
     const [, options2] = fetchMock.mock.calls[1];
     const body2 = JSON.parse(options2.body);
-    expect(body2.text).toContain('surendranathany@gmail.com');
-    expect(body2.text).toContain('•••• 6356');
-    expect(body2.text).toContain('*Brand / Merchant:* *Uber*');
-    expect(body2.text).toContain('*Category:* Cab Services');
-    expect(body2.text).toContain('Redeemable Coupon - INR 100 (₹100 value)');
-
-    const resRetry = await tg.sendOtpPrompt({
-      chatId: '987654321',
-      benefitName: 'Redeemable Coupon - INR 100',
-      cardName: 'Bank of India RuPay Select Card',
-      isRetry: true,
-      errorMessage: 'Incorrect OTP entered',
-    });
-    expect(resRetry.success).toBe(true);
-    const [, optionsRetry] = fetchMock.mock.calls[2];
-    const bodyRetry = JSON.parse(optionsRetry.body);
-    expect(bodyRetry.text).toContain('Wrong OTP Entered — Please Re-enter OTP');
-    expect(bodyRetry.text).toContain('Incorrect OTP entered');
-    expect(bodyRetry.text).toContain('CORRECT 6-digit Bank OTP');
+    expect(body2.text).toContain('Wrong OTP Entered — Please Re-enter OTP');
+    expect(body2.text).toContain('Incorrect OTP entered');
+    expect(body2.text).toContain('CORRECT 6-digit Bank OTP');
   });
 
   it('getTelegramClient defaults to MockTelegramClient when token is missing', () => {

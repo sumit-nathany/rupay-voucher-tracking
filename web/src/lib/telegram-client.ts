@@ -107,56 +107,23 @@ export class RealTelegramClient implements TelegramClient {
     const amount = options.amount ?? 1;
     const timeout = options.timeoutMinutes ?? 3;
 
-    const accountLine = options.portalAccountLabel ? `• *RuPay Account:* \`${options.portalAccountLabel}\`\n` : '';
-    const cardLine = options.cardLast4
-      ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
-      : `• *Card:* ${options.cardName}\n`;
-    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
-    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
-    const voucherLine = options.voucherValue
-      ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
-      : `• *Voucher Details:* ${options.benefitName}\n`;
-
     const header = options.isRetry
       ? `❌ *Wrong OTP Entered — Please Re-enter OTP*\n\n` +
         `The bank reported: *${options.errorMessage || 'Invalid OTP'}*.\n\n`
-      : `💳 *RuPay Benefit Verification Required*\n\nYour automated voucher order is ready to finalize:\n`;
+      : `💳 *RuPay Benefit Verification Required*\n\n`;
 
     const cta = options.isRetry
       ? `👉 *Please check your SMS and reply with the CORRECT 6-digit Bank OTP* to authenticate the payment.`
       : `👉 *Please reply with the 6-digit Bank OTP* received on your phone within ${timeout} minutes to complete your order.`;
 
-    const messageText =
-      header +
-      accountLine +
-      cardLine +
-      brandLine +
-      categoryLine +
-      voucherLine +
-      `• *Verification Charge:* ₹${amount} (nominal)\n\n` +
-      cta;
+    const messageText = header + `• *Verification Charge:* ₹${amount} (nominal)\n\n` + cta;
 
     return this.sendMessage(options.chatId, messageText);
   }
 
   async sendBookingConfirmation(options: TelegramConfirmationOptions): Promise<{ success: boolean; error?: string }> {
-    const accountLine = options.portalAccountLabel ? `• *RuPay Account:* \`${options.portalAccountLabel}\`\n` : '';
-    const cardLine = options.cardLast4
-      ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
-      : `• *Card:* ${options.cardName}\n`;
-    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
-    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
-    const voucherLine = options.voucherValue
-      ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
-      : `• *Voucher Details:* ${options.benefitName}\n`;
-
     const messageText =
       `🎉 *Voucher Order Confirmed!*\n\n` +
-      accountLine +
-      cardLine +
-      brandLine +
-      categoryLine +
-      voucherLine +
       `• *Booking Reference:* \`${options.bookingRef}\`\n\n` +
       `Your voucher code will be available in your RuPay Tracker dashboard shortly.`;
 
@@ -189,28 +156,10 @@ export class RealTelegramClient implements TelegramClient {
   }
 
   private buildOrderFailureMessage(options: TelegramOrderFailureOptions): string {
-    const accountLine = options.portalAccountLabel ? `• *RuPay Account:* \`${options.portalAccountLabel}\`\n` : '';
-    const cardLine = options.cardLast4
-      ? `• *Card:* ${options.cardName ?? 'RuPay Card'} (•••• ${options.cardLast4})\n`
-      : options.cardName
-      ? `• *Card:* ${options.cardName}\n`
-      : '';
-    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
-    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
-    const voucherLine = options.benefitName
-      ? options.voucherValue
-        ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
-        : `• *Voucher Details:* ${options.benefitName}\n`
-      : '';
     const detailLine = options.errorDetail ? `\n*Details:* ${options.errorDetail}\n` : '';
 
     return (
       `⚠️ *RuPay Order Attempt Failed*\n\n` +
-      accountLine +
-      cardLine +
-      brandLine +
-      categoryLine +
-      voucherLine +
       `• *Reason:* ${options.reason}\n` +
       detailLine +
       `\nThe order was not completed. The automation will continue to the next eligible candidate.`
