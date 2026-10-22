@@ -9,8 +9,12 @@
 import { chromium } from 'playwright';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { installPageGlobals } from '../src/page-globals';
 
-const PORTAL = 'https://rupayselect.truztee.com/#/login';
+// The portal has no `#/login` route: the login form is a modal that opens on
+// the offers page. Opening `#/login` renders an empty shell with no inputs
+// and no reCAPTCHA widget.
+const PORTAL = 'https://rupayselect.truztee.com/#/offers';
 const SITEKEY = '6Ldhf84rAAAAAFx1OwOS2HfC7cMutRGcBmi0WPCF';
 
 function key(): string {
@@ -46,6 +50,7 @@ async function azToken(): Promise<string> {
 
 const browser = await chromium.launch({ headless: true, channel: 'chrome', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'en-US' });
+await installPageGlobals(ctx);
 const page = await ctx.newPage();
 
 const posts: string[] = [];
@@ -59,6 +64,14 @@ page.on('console', (m) => {
 
 await page.goto(PORTAL, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await page.waitForTimeout(4000);
+
+// Open the login modal — the widget lives inside it.
+const loginButton = page.locator('button:has-text("Login")').first();
+if (await loginButton.isVisible().catch(() => false)) {
+  console.log('clicking Login');
+  await loginButton.click();
+  await page.waitForTimeout(3500);
+}
 
 const anchor = page.frames().find((f) => f.url().includes('/recaptcha/api2/anchor'));
 if (!anchor) { console.log('NO ANCHOR'); await browser.close(); process.exit(1); }

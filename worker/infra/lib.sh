@@ -88,21 +88,25 @@ secret_exists() {
 secret_env_args() {
   local args="WORKER_DATABASE_URL=${SECRET_WORKER_DATABASE_URL}:latest"
   args+=",PORTAL_CREDENTIAL_ENCRYPTION_KEY=${SECRET_PORTAL_KEY}:latest"
-  args+=",CAPSOLVER_API_KEY=${SECRET_CAPTCHA_SOLVER}:latest"
   args+=",GEMINI_API_KEY=${SECRET_GEMINI}:latest"
-  # The shared solving service's key. Only mounted when the service is
-  # configured, so a worker that does not use it needs no access.
-  # CapMonster is optional: it is only mounted once the secret exists, so a
-  # deploy does not break for a worker that has not set it up yet.
+  # The captcha provider the worker is routed to. Its key is mounted
+  # unconditionally: without it every login challenge fails, and an
+  # unattended run would look successful while doing nothing.
+  args+=",AZCAPTCHA_API_KEY=${SECRET_CAPTCHA_AZCAPTCHA:-AZCAPTCHA_API_KEY}:latest"
+  # The other token services are only mounted when the secret exists, so a
+  # deploy does not break for a worker that has not set them up yet. They are
+  # only called when CAPTCHA_PROVIDER names them.
+  if secret_exists "${SECRET_CAPTCHA_SOLVER:-CAPSOLVER_API_KEY}"; then
+    args+=",CAPSOLVER_API_KEY=${SECRET_CAPTCHA_SOLVER:-CAPSOLVER_API_KEY}:latest"
+  fi
   if secret_exists "${SECRET_CAPTCHA_MONSTER:-CAPMONSTER_API_KEY}"; then
     args+=",CAPMONSTER_API_KEY=${SECRET_CAPTCHA_MONSTER:-CAPMONSTER_API_KEY}:latest"
   fi
   if secret_exists "${SECRET_CAPTCHA_YESCAPTCHA:-YESCAPTCHA_API_KEY}"; then
     args+=",YESCAPTCHA_API_KEY=${SECRET_CAPTCHA_YESCAPTCHA:-YESCAPTCHA_API_KEY}:latest"
   fi
-  if secret_exists "${SECRET_CAPTCHA_AZCAPTCHA:-AZCAPTCHA_API_KEY}"; then
-    args+=",AZCAPTCHA_API_KEY=${SECRET_CAPTCHA_AZCAPTCHA:-AZCAPTCHA_API_KEY}:latest"
-  fi
+  # The shared solving service's key. Only mounted when the service is
+  # configured, so a worker that does not use it needs no access.
   if [[ -n "${CAPTCHA_SERVICE_URL:-}" ]]; then
     args+=",CAPTCHA_SERVICE_KEY=${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}:latest"
   fi

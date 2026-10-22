@@ -93,7 +93,10 @@ jobs:
       - name: Resolve secret bindings
         id: bindings
         run: |
-          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,CAPSOLVER_API_KEY=CAPSOLVER_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
+          # AZCAPTCHA_API_KEY is the routed captcha provider. Without it the
+          # worker has no way to solve the login CAPTCHA, so it is mounted
+          # unconditionally rather than when it happens to exist.
+          ARGS="WORKER_DATABASE_URL=WORKER_DATABASE_URL:latest,PORTAL_CREDENTIAL_ENCRYPTION_KEY=PORTAL_CREDENTIAL_ENCRYPTION_KEY:latest,AZCAPTCHA_API_KEY=AZCAPTCHA_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest"
           # The keyring is optional — it holds rotated encryption keys and is
           # only needed when a stored credential uses a key that is no longer
           # the primary one.
@@ -118,5 +121,5 @@ jobs:
             --tasks=1 \
             --task-timeout=1800s \
             --service-account="rupay-order-worker-run@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-            --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles" \
+            --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=azcaptcha" \
             --set-secrets="${{ steps.bindings.outputs.args }}"

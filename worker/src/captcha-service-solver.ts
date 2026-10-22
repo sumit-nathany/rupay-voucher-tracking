@@ -25,6 +25,17 @@ export interface ServiceSolveOptions {
 }
 
 /**
+ * The page the service opens to reach the login form.
+ *
+ * The portal has no `#/login` route: the login form is a modal that opens on
+ * the offers page, and `#/login` renders an empty shell with no inputs and
+ * no reCAPTCHA widget. So the service is pointed at `#/offers` and clicks the
+ * Login button to open the modal.
+ */
+export const CAPTCHA_SERVICE_PAGE_URL =
+  process.env.CAPTCHA_SERVICE_PAGE_URL || 'https://rupayselect.truztee.com/#/offers';
+
+/**
  * Put a token into the page so the form can submit with it.
  *
  * The invisible variant of the widget keeps a callback in
@@ -86,9 +97,7 @@ export async function solveRecaptchaViaService(
     throw new Error('CAPTCHA_SERVICE_URL is not set; cannot use the solving service');
   }
 
-  const pageUrl = opts.loginButton
-    ? 'https://rupayselect.truztee.com/#/login'
-    : page.url();
+  const pageUrl = opts.loginButton ? CAPTCHA_SERVICE_PAGE_URL : page.url();
 
   console.log(`[captcha-service] asking the service to solve ${pageUrl}`);
   const result = await solveViaService(pageUrl, opts.loginButton);

@@ -207,25 +207,31 @@ must solve it** — the portal's session token expires one hour after login, so
 neither a fresh login nor a persisted browser profile avoids the challenge.
 There is no way around it: the worker is not logged in when it starts.
 
-The worker solves the challenge through a third-party solving service
-(CapSolver, 2Captcha or NopeCHA — set whichever you have), and falls back to
-the in-browser audio challenge transcribed with Gemini. The audio fallback
-does **not** work from a Google Cloud IP: Google answers the audio request
-with "Your computer or network may be sending automated queries", because
-data-centre addresses are treated as automated traffic. A paid solver
-service does not have that problem — it solves from its own infrastructure —
-so it is the one that has to work.
+The worker solves the challenge through a third-party solving service. The
+service is chosen by one variable, `CAPTCHA_PROVIDER`, and **only the named
+one is ever called** — a key that happens to be mounted on the worker cannot
+quietly take the traffic. The routed provider is **AZCaptcha**; the other
+token backends (`capmonster`, `yescaptcha`, `capsolver`, `2captcha`,
+`nopecha`), the in-browser audio challenge (`gemini-audio`) and the
+self-hosted solving service (`service`) are still supported and are used
+only when they are named.
 
-Before the browser is opened, the worker checks that each configured solver
+The audio fallback does **not** work from a Google Cloud IP: Google answers
+the audio request with "Your computer or network may be sending automated
+queries", because data-centre addresses are treated as automated traffic. A
+paid solver service does not have that problem — it solves from its own
+infrastructure — so it is the one that has to work.
+
+Before the browser is opened, the worker checks that the routed provider
 accepts its key and has balance, and fails immediately with a clear message
-if none of them do. A run therefore costs seconds to diagnose, not ten
-minutes per account.
+if it does not. A run therefore costs seconds to diagnose, not ten minutes
+per account.
 
 To set a working key:
 
 ```bash
 # in web/.env.local
-CAPSOLVER_API_KEY=<your key>          # or NOPECHA_API_KEY / TWOCAPTCHA_API_KEY
+AZCAPTCHA_API_KEY=<your key>
 worker/infra/set-secrets-from-env.sh web/.env.local
 ```
 
@@ -237,9 +243,30 @@ gcloud logging read "resource.type=\"cloud_run_job\" AND resource.labels.job_nam
   --project=rupay-order-worker-prod --limit=20 --format='value(textPayload)'
 ```
 
-Look for `captcha solver capsolver: usable`.
+Look for `captcha solver azcaptcha: usable` and `captcha provider:
+azcaptcha`.
 
-### 4.5 Calendar dates
+### 4.5 Checking the login by itself
+
+The full run also adds cards and places orders, so it is not the way to
+check the captcha path. This script logs in and stops:
+
+```bash
+cd worker
+AZCAPTCHA_API_KEY=<your key> npm run test:verify-login -- --headless
+```
+
+It opens the portal, opens the login modal, types the stored credentials,
+clicks the reCAPTCHA checkbox, asks AZCaptcha for a token, injects it the
+way the worker injects it, clicks "Sign In" and waits for the portal's
+`jwt` session cookie. `unattended login succeeded` means the whole path
+worked. It spends one token per run.
+
+The portal has no `#/login` route: the login form is a modal that opens on
+the offers page, so `#/login` renders an empty shell with no inputs and no
+widget.
+
+### 4.6 Calendar dates
 
 Eligibility is evaluated against the **Asia/Kolkata** calendar date, matching
 the rest of the app (`web/src/lib/periods.ts` `today()`), not UTC. Between

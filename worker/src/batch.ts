@@ -37,7 +37,7 @@ import type { Database } from '../../web/src/lib/context';
 import { today as todayInIST } from '../../web/src/lib/periods';
 import { installLogRedaction } from './lib/redact';
 import { runBrowserTest } from './browser-runner';
-import { checkSolverBackends } from './captcha-solver';
+import { checkSolverBackends, CAPTCHA_PROVIDER } from './captcha-solver';
 import { selectCandidateForAccount } from './candidate-selection';
 
 const HEADLESS = process.env.HEADLESS !== 'false';
@@ -87,6 +87,30 @@ async function main() {
       );
       process.exit(1);
     }
+  }
+
+  // The routed provider is the one that matters. A missing key for it is
+  // fatal even when another backend is configured, because the others are
+  // never called.
+  const routed = backends.find((b) => b.service === CAPTCHA_PROVIDER);
+  if (routed) {
+    if (!routed.configured) {
+      console.error(
+        `[worker] Fatal: the captcha provider "${CAPTCHA_PROVIDER}" is selected but its ` +
+          'API key is not set. Every challenge would fail before it reaches the portal. ' +
+          'Set the key, or point CAPTCHA_PROVIDER at a backend that is configured.',
+      );
+      process.exit(1);
+    }
+    if (routed.usable === false) {
+      console.error(
+        `[worker] Fatal: the captcha provider "${CAPTCHA_PROVIDER}" rejected its key` +
+          (routed.detail ? ` (${routed.detail})` : '') +
+          '. The login CAPTCHA cannot be solved, so no benefit could be ordered.',
+      );
+      process.exit(1);
+    }
+    console.log(`[worker] captcha provider: ${CAPTCHA_PROVIDER}`);
   }
 
   const client = postgres(dbUrl, { max: 2 });

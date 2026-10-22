@@ -11,6 +11,7 @@
 import { chromium } from 'playwright';
 import { captureRecaptchaCallback, injectRecaptchaToken } from '../src/captcha-solver';
 import { humanClick, humanType, humanDelay } from '../src/human-interaction';
+import { installPageGlobals } from '../src/page-globals';
 
 const PORTAL = 'https://rupayselect.truztee.com/#/offers';
 const SITEKEY = '6Ldhf84rAAAAAFx1OwOS2HfC7cMutRGcBmi0WPCF';
@@ -54,6 +55,7 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
 });
 const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'en-US' });
+await installPageGlobals(ctx);
 const page = await ctx.newPage();
 
 const requests: string[] = [];

@@ -69,6 +69,26 @@ export async function solveWithAzCaptcha(
 ): Promise<string | null> {
   if (azCaptchaDisabled) return null;
   console.log('[captcha] Requesting AZCaptcha token for sitekey:', siteKey);
+
+  // A solve has been measured at 100s, 130s, and their own task timed out
+  // once in four attempts. One retry covers the timeout without doubling
+  // the cost of the happy path.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const token = await solveWithAzCaptchaOnce(apiKey, siteKey, pageUrl, userAgent, attempt);
+    if (token) return token;
+    if (azCaptchaDisabled) return null;
+  }
+  console.error('[captcha] AZCaptcha did not return a token.');
+  return null;
+}
+
+async function solveWithAzCaptchaOnce(
+  apiKey: string,
+  siteKey: string,
+  pageUrl: string,
+  userAgent: string | undefined,
+  attempt: number,
+): Promise<string | null> {
   try {
     const inRes = await fetch('https://azcaptcha.com/createTask', {
       method: 'POST',
@@ -99,7 +119,7 @@ export async function solveWithAzCaptcha(
     }
 
     const taskId = inData.taskId;
-    console.log(`[captcha] AZCaptcha task submitted (ID: ${taskId}). Polling for solution...`);
+    console.log(`[captcha] AZCaptcha task submitted (ID: ${taskId}, attempt ${attempt}). Polling for solution...`);
 
     // A measured AZCaptcha solve took 66 seconds, so a 60 second window was
     // too tight. 30 x 3s = 90s, which still leaves room inside the token's
@@ -117,17 +137,30 @@ export async function solveWithAzCaptcha(
       const resData = (await resRes.json()) as {
         errorId: number;
         status: string;
+        errorCode?: string;
+        errorDescription?: string;
         solution?: { gRecaptchaResponse?: string };
       };
       if (resData.status === 'ready' && resData.solution?.gRecaptchaResponse) {
         console.log('[captcha] AZCaptcha solved successfully!');
         return resData.solution.gRecaptchaResponse;
       }
-      if (resData.errorId !== 0 && resData.errorId !== 1) {
-        console.error('[captcha] AZCaptcha result error:', resData);
+      // A task that has failed comes back with an error code. Only the two
+      // "not ready" codes mean "keep waiting" — anything else is final, and
+      // waiting on it only burns the window. Their task timeout arrives as
+      // ERROR_TIMEOUT, which is exactly the case that matters here.
+      const code = resData.errorCode ?? '';
+      if (
+        code &&
+        code !== 'ERROR_NO_SLOT_AVAILABLE' &&
+        code !== 'CAPCHA_NOT_READY' &&
+        code !== 'ERROR_TASK_NOT_FOUND'
+      ) {
+        console.error(`[captcha] AZCaptcha task failed: ${code} ${resData.errorDescription ?? ''}`);
         return null;
       }
     }
+    console.error('[captcha] AZCaptcha task did not finish in time.');
   } catch (err) {
     console.error('[captcha] AZCaptcha network error:', err);
   }
@@ -483,6 +516,12 @@ export async function transcribeAudioWithGemini(
  * gone and calling whatever is left in that tree does nothing useful.
  *
  * So take a reference to it while it is still the site's, and keep it.
+ *
+ * Only the success callback is taken, and only the first one found in each
+ * client. The same tree also holds `expired-callback` — which resets the
+ * form when it fires — and zone internals with a `callback` key of their
+ * own. Calling either of those with a token breaks the login, so they are
+ * left alone.
  */
 export async function captureRecaptchaCallback(page: Page): Promise<boolean> {
   return await page.evaluate(() => {
@@ -498,24 +537,37 @@ export async function captureRecaptchaCallback(page: Page): Promise<boolean> {
         // couple of levels down: `clients[id].A.A.callback`. The depth has
         // moved between reCAPTCHA releases, so look for a function called
         // `callback` rather than hardcoding a path.
+        //
+        // The walk uses an explicit stack rather than a nested helper
+        // function: this body is serialised and run inside the page, so a
+        // function defined here would not exist there.
         const seen = new Set<any>();
-        const walk = (node: any, depth: number) => {
-          if (!node || typeof node !== 'object' || depth > 4) return;
-          if (seen.has(node)) return;
+        const stack: any[] = [[cfg.clients[cid], 0]];
+        while (stack.length > 0) {
+          const frame = stack.pop();
+          const node = frame[0];
+          const depth = frame[1];
+          if (!node || typeof node !== 'object' || depth > 4) continue;
+          if (seen.has(node)) continue;
           seen.add(node);
+          const children: any[] = [];
+          let found = false;
           for (const key of Object.keys(node)) {
             const val = node[key];
             if (typeof val === 'function') {
-              if (key === 'callback' || key.endsWith('-callback')) {
+              if (key === 'callback') {
                 w.__captchaCallbacks.push(val);
-                return;
+                found = true;
+                break;
               }
             } else if (val && typeof val === 'object') {
-              walk(val, depth + 1);
+              children.push([val, depth + 1]);
             }
           }
-        };
-        walk(cfg.clients[cid], 0);
+          if (found) break;
+          // Pushed in reverse, so the stack visits them in key order.
+          for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+        }
       }
     }
     return w.__captchaCallbacks.length > 0;
@@ -548,18 +600,20 @@ export async function injectRecaptchaToken(page: Page, token: string): Promise<b
     }
 
     // Fall back to the live configuration, in case the widget was rendered
-    // after we stashed the callback.
+    // after we stashed the callback. The callback sits two levels down
+    // (`clients[id].A.A.callback`), so both depths are tried.
     if (!fired) {
       const cfg = w.___grecaptcha_cfg;
       if (cfg?.clients) {
         for (const cid of Object.keys(cfg.clients)) {
-          const cb = cfg.clients[cid]?.A?.callback;
-          if (typeof cb === 'function') {
-            try {
-              cb(sol);
-              fired = true;
-            } catch {
-              // keep going
+          for (const cb of [cfg.clients[cid]?.A?.A?.callback, cfg.clients[cid]?.A?.callback]) {
+            if (typeof cb === 'function') {
+              try {
+                cb(sol);
+                fired = true;
+              } catch {
+                // keep going
+              }
             }
           }
         }
@@ -772,12 +826,81 @@ export async function solveRecaptchaViaAudio(
 }
 
 /**
+ * Which solver every challenge is routed to.
+ *
+ * `azcaptcha` is the routed provider. The other backends are still here and
+ * still work, but they only run when they are named here — so a key that
+ * happens to be mounted on the worker cannot quietly take the traffic.
+ *
+ * `gemini-audio` is not a token service: it is the in-browser audio
+ * challenge, transcribed locally. It is listed here so it can be chosen
+ * deliberately, and it is not the default because it does not work from a
+ * cloud address.
+ */
+export const CAPTCHA_PROVIDER = (process.env.CAPTCHA_PROVIDER || 'azcaptcha').toLowerCase();
+
+/**
+ * Ask the routed provider for a token.
+ *
+ * Returns null when the provider is not configured, so the caller can report
+ * that clearly rather than treating it as a solve failure.
+ */
+export async function solveWithProvider(
+  provider: string,
+  siteKey: string,
+  pageUrl: string,
+  userAgent?: string,
+): Promise<string | null> {
+  switch (provider) {
+    case 'azcaptcha': {
+      const key = process.env.AZCAPTCHA_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using AZCaptcha service...');
+      return await solveWithAzCaptcha(key, siteKey, pageUrl, userAgent);
+    }
+    case 'capmonster': {
+      const key = process.env.CAPMONSTER_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using CapMonster service...');
+      return await solveWithCapMonster(key, siteKey, pageUrl, userAgent);
+    }
+    case 'yescaptcha': {
+      const key = process.env.YESCAPTCHA_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using YesCaptcha service...');
+      return await solveWithYesCaptcha(key, siteKey, pageUrl, userAgent);
+    }
+    case 'capsolver': {
+      const key = process.env.CAPSOLVER_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using CapSolver service...');
+      return await solveWithCapSolver(key, siteKey, pageUrl);
+    }
+    case '2captcha': {
+      const key = process.env.TWOCAPTCHA_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using 2Captcha service...');
+      return await solveWith2Captcha(key, siteKey, pageUrl);
+    }
+    case 'nopecha': {
+      const key = process.env.NOPECHA_API_KEY;
+      if (!key) return null;
+      console.log('[captcha] Using NopeCHA service...');
+      return await solveWithNopeCHA(key, siteKey, pageUrl);
+    }
+    default:
+      console.error(`[captcha] Unknown captcha provider "${provider}".`);
+      return null;
+  }
+}
+
+/**
  * Main reCAPTCHA Orchestrator:
  * 1. Locates the anchor iframe and clicks the checkbox naturally.
  * 2. If it immediately passes (green checkmark), returns true.
  * 3. If a challenge is presented:
- *    - Uses 2Captcha / CapSolver if API key is in environment.
- *    - Uses Audio Challenge + Gemini if GEMINI_API_KEY is present.
+ *    - Asks the routed provider (AZCaptcha by default) for a token.
+ *    - Uses Audio Challenge + Gemini if CAPTCHA_PROVIDER is "gemini-audio".
  *    - Otherwise logs clearly and monitors for human/manual click.
  */
 export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
@@ -838,15 +961,16 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
 
   const pageUrl = page.url();
 
-  // 3. Strategy 1: CapMonster API
-  //
-  // The cheapest of the three by a distance — $0.60 per 1,000 with the
-  // proxy included in the price — and it has the simplest shape.
-  const capMonsterKey = process.env.CAPMONSTER_API_KEY;
-  if (capMonsterKey && siteKey) {
-    console.log('[captcha] Using CapMonster service...');
-    const token = await solveWithCapMonster(
-      capMonsterKey,
+  // 3. The routed provider. Every challenge goes to the one service named by
+  //    CAPTCHA_PROVIDER — AZCaptcha unless it says otherwise — so the spend
+  //    and the failure modes are predictable.
+  if (CAPTCHA_PROVIDER !== 'gemini-audio') {
+    if (!siteKey) {
+      console.error('[captcha] Could not read the sitekey from the page.');
+      return false;
+    }
+    const token = await solveWithProvider(
+      CAPTCHA_PROVIDER,
       siteKey,
       pageUrl,
       await page.evaluate(() => navigator.userAgent).catch(() => undefined),
@@ -855,76 +979,13 @@ export async function autoSolveRecaptcha(page: Page): Promise<boolean> {
       await injectRecaptchaToken(page, token);
       return true;
     }
-  }
-
-  // 4. Strategy 2: YesCaptcha — 1,500 free points on signup, about 100
-  //    v2 tokens, claimed by asking their support.
-  const yesCaptchaKey = process.env.YESCAPTCHA_API_KEY;
-  if (yesCaptchaKey && siteKey) {
-    console.log('[captcha] Using YesCaptcha service...');
-    const token = await solveWithYesCaptcha(
-      yesCaptchaKey,
-      siteKey,
-      pageUrl,
-      await page.evaluate(() => navigator.userAgent).catch(() => undefined),
+    console.error(
+      `[captcha] ${CAPTCHA_PROVIDER} did not return a token for this challenge.`,
     );
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
+    return false;
   }
 
-  // 5. Strategy 3: AZCaptcha — $0.10 of free credit once you verify your
-  //    email, no card needed.
-  const azCaptchaKey = process.env.AZCAPTCHA_API_KEY;
-  if (azCaptchaKey && siteKey) {
-    console.log('[captcha] Using AZCaptcha service...');
-    const token = await solveWithAzCaptcha(
-      azCaptchaKey,
-      siteKey,
-      pageUrl,
-      await page.evaluate(() => navigator.userAgent).catch(() => undefined),
-    );
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
-  }
-
-  // 6. Strategy 4: CapSolver API
-  const capSolverKey = process.env.CAPSOLVER_API_KEY;
-  if (capSolverKey && siteKey) {
-    console.log('[captcha] Using CapSolver service...');
-    const token = await solveWithCapSolver(capSolverKey, siteKey, pageUrl);
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
-  }
-
-  // 7. Strategy 5: NopeCHA Token API
-  const nopechaKey = process.env.NOPECHA_API_KEY;
-  if (nopechaKey && siteKey) {
-    console.log('[captcha] Using NopeCHA Token service...');
-    const token = await solveWithNopeCHA(nopechaKey, siteKey, pageUrl);
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
-  }
-
-  // 8. Strategy 6: 2Captcha API
-  const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY;
-  if (twoCaptchaKey && siteKey) {
-    console.log('[captcha] Using 2Captcha service...');
-    const token = await solveWith2Captcha(twoCaptchaKey, siteKey, pageUrl);
-    if (token) {
-      await injectRecaptchaToken(page, token);
-      return true;
-    }
-  }
-
-  // 9. Strategy C: Browser Audio Capture & Gemini Transcription (Zero external downloads)
+  // 4. The in-browser audio challenge, transcribed by Gemini.
   const geminiApiKey = getGeminiApiKey();
   if (geminiApiKey) {
     console.log('[captcha] Attempting in-browser audio capture & Gemini transcription...');

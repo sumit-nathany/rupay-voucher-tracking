@@ -20,7 +20,8 @@
     "browser:preprod": "RUN_BROWSER_RUNNER_CLI=true tsx --env-file ../web/.env.preprod src/browser-runner.ts",
     "browser:local": "RUN_BROWSER_RUNNER_CLI=true tsx --env-file ../web/.env.local src/browser-runner.ts",
     "test:live": "RUN_BROWSER_RUNNER_CLI=true tsx --env-file ../web/.env.local src/browser-runner.ts",
-    "test:signin": "node build.mjs scripts/local-signin.ts dist/local-signin.js && node dist/local-signin.js"
+    "test:signin": "node build.mjs scripts/local-signin.ts dist/local-signin.js && node dist/local-signin.js",
+    "test:verify-login": "node build.mjs scripts/verify-unattended-login.ts dist/verify-unattended-login.js && node --env-file=../web/.env.local dist/verify-unattended-login.js"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

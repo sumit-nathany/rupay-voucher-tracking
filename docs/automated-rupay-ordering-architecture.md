@@ -137,17 +137,25 @@ If a portal session expires:
 
 #### Two solver flows
 
-The runner can solve the challenge two ways, chosen by configuration. The existing local solver is untouched either way.
+The runner can solve the challenge two ways, chosen by `CAPTCHA_PROVIDER`.
 
-| | **Local solver** (default) | **Shared solving service** |
+| | **Third-party token service** (default: `azcaptcha`) | **Shared solving service** (`service`) |
 |---|---|---|
 | Code | `worker/src/captcha-solver.ts` | `worker/src/captcha-service-solver.ts` + `worker/src/captcha-service-client.ts` |
-| Selected when | `CAPTCHA_SERVICE_URL` is unset | `CAPTCHA_SERVICE_URL` is set |
-| How it works | The worker solves the challenge in its own browser, using a paid solver API or the audio challenge | The service opens the portal's login page in its own browser, solves it there, and returns a token, which the runner puts into its own page |
+| Selected when | `CAPTCHA_PROVIDER` is a token backend — `azcaptcha` by default | `CAPTCHA_PROVIDER=service` |
+| How it works | The worker clicks the checkbox in its own browser and asks the provider for a token, then puts the token into its own page | The service opens the portal's login page in its own browser, solves it there, and returns a token, which the runner puts into its own page |
 | Where it runs | Inside the worker's container | A separate Cloud Run service (`recaptcha-solver`) in the same project |
 | Cost | Per-solve fees | A service to keep running |
 
-The service is reached over IAM: the worker sends a Google identity token, plus the shared secret as `X-Solver-Key`. A token is bound to the sitekey and the page's origin rather than to the browser that obtained it, so handing it back to the worker's page is valid for the portal.
+The token service is reached over the public API with the provider's key. The
+shared service is reached over IAM: the worker sends a Google identity token,
+plus the shared secret as `X-Solver-Key`. Either way the token is bound to
+the sitekey and the page's origin rather than to the browser that obtained
+it, so handing it back to the worker's page is valid for the portal.
+
+> The portal has no `#/login` route — the login form is a modal that opens on
+> the offers page, so a solver that opens the page itself has to click the
+> Login button to reach the widget.
 
 > The deployed job **discards its browser profile** at the end of each execution, so every run starts with no session and needs the solver. The service keeps one browser profile warm across requests, which is why it can usually get through in seconds rather than showing a full image challenge.
 

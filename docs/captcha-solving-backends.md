@@ -14,17 +14,18 @@ to try.
 
 | Backend | How it works | Cost | State today |
 |---|---|---|---|
+| **AZCaptcha** | Third-party API. Sends the sitekey and page URL, gets back a token. | **$1.00 per 1,000** tokens; the grid is $0.10 per 1,000 | **The routed provider.** $0.10 of free credit once the email is verified, no card needed |
 | **CapSolver** | Third-party API. Sends the sitekey and page URL, gets back a token. | **$0.80 per 1,000** solves | The secret exists but **the key is dead** (`ERROR_KEY_DENIED_ACCESS`) |
 | **2Captcha** | Third-party API, same shape. | $1 – $2.99 per 1,000 | Not configured. The code is there. |
 | **NopeCHA** | Third-party API. The key is **optional** — without one it uses a free tier tied to the calling IP. | Roughly $0.011 – $0.083 per 1,000 (derived from their plans) | Not configured. The code is there. |
 | **In-browser audio + Gemini** | The worker clicks the audio challenge, transcribes it with Gemini, types the answer back. | One Gemini call per solve, no per-solve fee | Implemented, but **Google blocks the audio challenge from cloud IP addresses** — it returns "Your computer or network may be sending automated queries" instead of the clip |
 
-The order they are tried in is in `worker/src/captcha-solver.ts`:
-**CapMonster**, then **YesCaptcha**, then **AZCaptcha**, then CapSolver, then
-NopeCHA, then 2Captcha, then the audio path, then it waits for a human.
-
-The first three are the ones worth having keys for, because each of them has
-a free balance that costs nothing to claim.
+The order they are tried in is set by one variable, `CAPTCHA_PROVIDER`, and
+**only the named backend is called** — a key that happens to be mounted on
+the worker cannot quietly take the traffic. The routed provider is
+**AZCaptcha**. The other names are `capmonster`, `yescaptcha`, `capsolver`,
+`2captcha` and `nopecha`, plus `gemini-audio` for the in-browser audio
+challenge and `service` for the self-hosted solving service.
 
 A backend that rejects its key is disabled for the rest of the run rather
 than retried, so one dead key does not cost a minute per account.
@@ -36,14 +37,16 @@ picks it up on the next run.
 
 ```bash
 # 1. Get a key from the provider's dashboard.
-#    CapMonster:  https://capmonster.cloud/en/          (and ask support for
+#    AZCaptcha:   https://azcaptcha.com/          (and ask support for the
+#                 $0.10 free credit once the email is verified)
+#    CapMonster:  https://capmonster.cloud/en/      (and ask support for
 #                 the $0.10 test balance)
 #    CapSolver:   https://dashboard.capsolver.com/passport/register
 #    2Captcha:    https://2captcha.com/registration
 #    NopeCHA:     https://nopecha.com/dashboard
 
 # 2. Store it.
-printf '%s' 'THE_KEY' | gcloud secrets create CAPSOLVER_API_KEY \
+printf '%s' 'THE_KEY' | gcloud secrets create AZCAPTCHA_API_KEY \
   --project=rupay-order-worker-prod --replication-policy=automatic --data-file=-
 
 # 3. It is already mounted by worker/infra/deploy.sh, so redeploy the job's

@@ -12,8 +12,8 @@ import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { decryptPortalCredentials } from '../../web/src/lib/portal-credentials';
 import { decryptPaymentDetails, isValidPaymentDetails } from '../../web/src/lib/card-payment-details';
-import { autoSolveRecaptcha } from './captcha-solver';
-import { CAPTCHA_SERVICE_URL } from './captcha-service-client';
+import { autoSolveRecaptcha, CAPTCHA_PROVIDER } from './captcha-solver';
+import { installPageGlobals } from './page-globals';
 import { solveRecaptchaViaService } from './captcha-service-solver';
 import { findCandidatesForAccount, findCandidateFromGlobalQueue, recordPortalAccountCooldown } from '../../web/src/domain/automation';
 import { today as todayInIST } from '../../web/src/lib/periods';
@@ -327,6 +327,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     });
   }
   activeBrowserContext = context;
+  await installPageGlobals(context);
 
   const page: Page = context.pages().length > 0 ? context.pages()[0] : await context.newPage();
   await installVisualMouseCursor(page);
@@ -485,18 +486,24 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
       // Start the auto-solver after a brief pause once credentials are input.
       //
-      // Two flows, chosen by configuration. The existing local solver is
-      // untouched; the service flow is used when CAPTCHA_SERVICE_URL points
-      // at the shared solving service.
+      // Two flows, chosen by CAPTCHA_PROVIDER. The default is a third-party
+      // token service (AZCaptcha), which is what the worker is routed to;
+      // `service` opts into the self-hosted solving service instead.
       if (!autoSolveInitiated && sec >= 1) {
         autoSolveInitiated = true;
-        const runSolver = CAPTCHA_SERVICE_URL ? solveRecaptchaViaService : autoSolveRecaptcha;
+        const useService = CAPTCHA_PROVIDER === 'service';
         console.log(
-          CAPTCHA_SERVICE_URL
+          useService
             ? '[captcha] Using the shared solving service.'
-            : '[captcha] Using the local solver.',
+            : `[captcha] Using the ${CAPTCHA_PROVIDER} service.`,
         );
-        runSolver(page)
+        // The service opens the portal in its own browser, so it has to be
+        // told how to reach the login form: the modal is opened by the Login
+        // button on the offers page.
+        const attempt = useService
+          ? solveRecaptchaViaService(page, { loginButton: 'Login' })
+          : autoSolveRecaptcha(page);
+        attempt
           .then((success) => {
             if (success) {
               console.log('[captcha] ✓ Auto-solver finished successfully!');
