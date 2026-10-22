@@ -22,7 +22,9 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 IMAGE="$(image_ref)"
-DOCKERFILE="worker/Dockerfile"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+DOCKERFILE="$REPO_ROOT/worker/Dockerfile"
 
 echo "==> Building ${IMAGE}"
 echo "    (build context is the repository root: the worker imports web/src)"
@@ -48,7 +50,7 @@ if [[ "$DRY_RUN" == "0" ]]; then
     -t "$IMAGE" \
     -t "$(image_ref_latest)" \
     --push \
-    .
+    "$REPO_ROOT"
 else
   echo "  [dry-run] docker buildx build --platform $PLATFORM -f $DOCKERFILE -t $IMAGE --push ."
 fi
@@ -69,7 +71,7 @@ run gcloud run jobs deploy "$JOB_NAME" \
   --parallelism=1 \
   --task-timeout="${TASK_TIMEOUT}s" \
   --service-account="$RUN_SA@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-  --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-service},CAPTCHA_SERVICE_URL=${CAPTCHA_SERVICE_URL:-https://recaptcha-solver-3mm5ybafoq-el.a.run.app}" \
+   --set-env-vars="HEADLESS=true,USE_BROWSER_RUNNER=true,WORKER_PROFILE_DIR=/tmp/rupay-worker-profiles,CAPTCHA_PROVIDER=${CAPTCHA_PROVIDER:-service},CAPTCHA_SERVICE_URL=${CAPTCHA_SERVICE_URL:-https://recaptcha-solver-377870700428.asia-south1.run.app},NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME:-}" \
   --set-secrets="$SECRET_ARGS"
 
 echo

@@ -24,6 +24,42 @@ export interface ServiceSolveOptions {
   loginButton?: string;
 }
 
+/** The portal's reCAPTCHA sitekey, read from the page. */
+export const PORTAL_SITEKEY = '6Ldhf84rAAAAAFx1OwOS2HfC7cMutRGcBmi0WPCF';
+
+/**
+ * Extract the reCAPTCHA sitekey from the page.
+ *
+ * The widget may render with a `[data-sitekey]` attribute, or it may appear as
+ * a `g-recaptcha` element with the key set via the `data-sitekey` attribute,
+ * or the widget may be inside an iframe whose `src` contains `?k=<sitekey>`.
+ * We try each in turn. If all fail, we fall back to the portal's known sitekey.
+ */
+async function extractSiteKey(page: Page): Promise<string | null> {
+  // Wait for the reCAPTCHA widget to appear on the page.
+  try {
+    await page.waitForSelector('.g-recaptcha, [data-sitekey], iframe[src*="google.com/recaptcha"]', {
+      state: 'attached',
+      timeout: 15000,
+    });
+  } catch {
+    // Widget didn't appear within the timeout; fall through to known sitekey.
+  }
+
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-sitekey]') as HTMLElement | null;
+    if (el) return el.getAttribute('data-sitekey');
+
+    const iframe = document.querySelector(
+      'iframe[src*="google.com/recaptcha"]',
+    ) as HTMLIFrameElement | null;
+    const match = iframe?.src?.match(/[?&]k=([^&]+)/);
+    if (match) return match[1];
+
+    return null;
+  });
+}
+
 /**
  * The page the service opens to reach the login form.
  *
@@ -99,8 +135,22 @@ export async function solveRecaptchaViaService(
 
   const pageUrl = opts.loginButton ? CAPTCHA_SERVICE_PAGE_URL : page.url();
 
+   // Extract the reCAPTCHA sitekey so the solving backend (e.g. YesCaptcha)
+  // can create a properly-scoped task. The token is bound to the sitekey and
+  // page origin, so the backend needs it to request a valid token.
+  let siteKey = await extractSiteKey(page);
+  if (siteKey) {
+    console.log(`[captcha-service] extracted reCAPTCHA sitekey: ${siteKey}`);
+  } else {
+    console.warn(
+      '[captcha-service] could not read sitekey from the page; falling back to the portal\'s known sitekey',
+    );
+    siteKey = PORTAL_SITEKEY;
+    console.log(`[captcha-service] using known sitekey: ${siteKey}`);
+  }
+
   console.log(`[captcha-service] asking the service to solve ${pageUrl}`);
-  const result = await solveViaService(pageUrl, opts.loginButton);
+  const result = await solveViaService(pageUrl, opts.loginButton, siteKey);
   console.log(
     `[captcha-service] solved via "${result.method}" in ${result.elapsedMs}ms; injecting the token`,
   );

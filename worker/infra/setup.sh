@@ -65,7 +65,7 @@ fi
 echo "==> Secret Manager secrets (created empty; set their values with secret-set.sh)"
 # The secrets must exist before the IAM bindings below — binding to a
 # secret that does not exist yet fails with a 404.
-for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
+for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
   if gcloud secrets describe "$secret" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
     echo "    secret $secret already exists"
   else
@@ -89,7 +89,7 @@ for sa in "$RUN_SA" "$SCHEDULER_SA"; do
 
   # The run service account may read the worker's secrets.
   if [[ "$sa" == "$RUN_SA" ]]; then
-    for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "$SECRET_CAPTCHA_SOLVER" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
+    for secret in "$SECRET_WORKER_DATABASE_URL" "$SECRET_PORTAL_KEY" "${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}" "$SECRET_GEMINI" "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; do
       run gcloud secrets add-iam-policy-binding "$secret" \
         --member="serviceAccount:${sa}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
         --role="roles/secretmanager.secretAccessor" \

@@ -33,10 +33,41 @@ export interface TelegramConfirmationOptions {
   bookingRef: string;
 }
 
+export interface TelegramOrderAttemptOptions {
+  chatId: string;
+  cardName: string;
+  cardLast4?: string;
+  portalAccountLabel?: string;
+  benefitName: string;
+  provider?: string;
+  category?: string;
+  voucherValue?: number | string;
+}
+
+export interface TelegramOrderFailureOptions {
+  chatId: string;
+  cardName?: string;
+  cardLast4?: string;
+  portalAccountLabel?: string;
+  benefitName?: string;
+  provider?: string;
+  category?: string;
+  voucherValue?: number | string;
+  reason: string;
+  errorDetail?: string;
+}
+
+export interface TelegramOrderFailureWithScreenshotOptions extends TelegramOrderFailureOptions {
+  screenshotBuffer: Buffer;
+}
+
 export interface TelegramClient {
   sendMessage(chatId: string, text: string): Promise<{ success: boolean; messageId?: string; error?: string }>;
   sendOtpPrompt(options: TelegramSendOtpOptions): Promise<{ success: boolean; messageId?: string; error?: string }>;
   sendBookingConfirmation(options: TelegramConfirmationOptions): Promise<{ success: boolean; error?: string }>;
+  sendOrderAttempt(options: TelegramOrderAttemptOptions): Promise<{ success: boolean; error?: string }>;
+  sendOrderFailure(options: TelegramOrderFailureOptions): Promise<{ success: boolean; error?: string }>;
+  sendOrderFailureWithScreenshot(options: TelegramOrderFailureWithScreenshotOptions): Promise<{ success: boolean; messageId?: string; error?: string }>;
 }
 
 export class RealTelegramClient implements TelegramClient {
@@ -132,6 +163,93 @@ export class RealTelegramClient implements TelegramClient {
     const res = await this.sendMessage(options.chatId, messageText);
     return { success: res.success, error: res.error };
   }
+
+  async sendOrderAttempt(options: TelegramOrderAttemptOptions): Promise<{ success: boolean; error?: string }> {
+    const accountLine = options.portalAccountLabel ? `• *RuPay Account:* \`${options.portalAccountLabel}\`\n` : '';
+    const cardLine = options.cardLast4
+      ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
+      : `• *Card:* ${options.cardName}\n`;
+    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
+    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
+    const voucherLine = options.voucherValue
+      ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
+      : `• *Voucher Details:* ${options.benefitName}\n`;
+
+    const messageText =
+      `🚀 *RuPay Voucher Order Attempt Starting*\n\n` +
+      accountLine +
+      cardLine +
+      brandLine +
+      categoryLine +
+      voucherLine +
+      `The automation is now attempting to place this order on the RuPay portal. You will be notified of the result.`;
+
+    const res = await this.sendMessage(options.chatId, messageText);
+    return { success: res.success, error: res.error };
+  }
+
+  private buildOrderFailureMessage(options: TelegramOrderFailureOptions): string {
+    const accountLine = options.portalAccountLabel ? `• *RuPay Account:* \`${options.portalAccountLabel}\`\n` : '';
+    const cardLine = options.cardLast4
+      ? `• *Card:* ${options.cardName ?? 'RuPay Card'} (•••• ${options.cardLast4})\n`
+      : options.cardName
+      ? `• *Card:* ${options.cardName}\n`
+      : '';
+    const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
+    const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
+    const voucherLine = options.benefitName
+      ? options.voucherValue
+        ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
+        : `• *Voucher Details:* ${options.benefitName}\n`
+      : '';
+    const detailLine = options.errorDetail ? `\n*Details:* ${options.errorDetail}\n` : '';
+
+    return (
+      `⚠️ *RuPay Order Attempt Failed*\n\n` +
+      accountLine +
+      cardLine +
+      brandLine +
+      categoryLine +
+      voucherLine +
+      `• *Reason:* ${options.reason}\n` +
+      detailLine +
+      `\nThe order was not completed. The automation will continue to the next eligible candidate.`
+    );
+  }
+
+  async sendOrderFailure(options: TelegramOrderFailureOptions): Promise<{ success: boolean; error?: string }> {
+    const messageText = this.buildOrderFailureMessage(options);
+    const res = await this.sendMessage(options.chatId, messageText);
+    return { success: res.success, error: res.error };
+  }
+
+  async sendOrderFailureWithScreenshot(options: TelegramOrderFailureWithScreenshotOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const messageText = this.buildOrderFailureMessage(options);
+    try {
+      const formData = new FormData();
+      formData.append('chat_id', options.chatId);
+      formData.append('caption', messageText);
+      formData.append('parse_mode', 'Markdown');
+      formData.append('photo', new Blob([new Uint8Array(options.screenshotBuffer)], { type: 'image/png' }), 'screenshot.png');
+
+      const res = await fetch(`https://api.telegram.org/bot${this.botToken}/sendPhoto`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[telegram] sendPhoto API error:', res.status, errorText);
+        return { success: false, error: errorText };
+      }
+
+      const json = await res.json();
+      return { success: true, messageId: String(json.result?.message_id) };
+    } catch (err) {
+      console.error('[telegram] Error sending photo:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
 }
 
 export class MockTelegramClient implements TelegramClient {
@@ -152,6 +270,24 @@ export class MockTelegramClient implements TelegramClient {
     console.log(`\n💬 [Mock Telegram] Outbound to chat ${options.chatId}:`);
     console.log(`   "🎉 Confirmed: ${options.benefitName} booked! Reference: ${options.bookingRef}"`);
     return { success: true };
+  }
+
+  async sendOrderAttempt(options: TelegramOrderAttemptOptions): Promise<{ success: boolean; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Outbound to chat ${options.chatId}:`);
+    console.log(`   "🚀 Order attempt starting: ${options.benefitName} (${options.cardName})..."`);
+    return { success: true };
+  }
+
+  async sendOrderFailure(options: TelegramOrderFailureOptions): Promise<{ success: boolean; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Outbound to chat ${options.chatId}:`);
+    console.log(`   "⚠️ Order failed: ${options.reason}"`);
+    return { success: true };
+  }
+
+  async sendOrderFailureWithScreenshot(options: TelegramOrderFailureWithScreenshotOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Outbound to chat ${options.chatId} (with screenshot):`);
+    console.log(`   "⚠️ Order failed: ${options.reason}"`);
+    return { success: true, messageId: `mock_tg_screenshot_${Date.now()}` };
   }
 }
 

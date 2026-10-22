@@ -28,6 +28,15 @@ export interface SolverServiceResult {
   detail: string | null;
 }
 
+export interface SolveRequest {
+  /** The page carrying the challenge. */
+  pageUrl: string;
+  /** Text of a button to click first, e.g. "Login". */
+  loginButton?: string;
+  /** The reCAPTCHA sitekey (data-sitekey attribute), needed by solving backends like YesCaptcha. */
+  siteKey?: string;
+}
+
 /** Fetch a Google Cloud ID token, when running on Cloud Run. */
 async function getIdentityToken(): Promise<string | null> {
   const metadata = process.env.GCE_METADATA_HOST || 'metadata.google.internal';
@@ -54,6 +63,7 @@ async function getIdentityToken(): Promise<string | null> {
 export async function solveViaService(
   pageUrl: string,
   loginButton?: string,
+  siteKey?: string,
 ): Promise<SolverServiceResult> {
   if (!CAPTCHA_SERVICE_URL) {
     throw new Error('CAPTCHA_SERVICE_URL is not set');
@@ -66,10 +76,10 @@ export async function solveViaService(
   const identity = await getIdentityToken();
   if (identity) headers.authorization = `Bearer ${identity}`;
 
-  const res = await fetch(`${CAPTCHA_SERVICE_URL.replace(/\/+$/, '')}/v1/solve`, {
+   const res = await fetch(`${CAPTCHA_SERVICE_URL.replace(/\/+$/, '')}/v1/solve`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ pageUrl, loginButton }),
+    body: JSON.stringify({ pageUrl, loginButton, siteKey }),
     signal: AbortSignal.timeout(SOLVE_TIMEOUT_MS),
   });
 

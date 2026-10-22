@@ -900,9 +900,8 @@ export async function promptForOtpAndSubmit(
       const isPostPaymentSuccess =
         currUrl.includes('success') ||
         currUrl.includes('confirm') ||
-        currUrl.includes('truztee.com') ||
-        currUrl.includes('view-redeemed-offers') ||
-        currUrl.includes('myaccount');
+        currUrl.includes('truztee.com/#/myaccount') ||
+        currUrl.includes('truztee.com/#/view-redeemed-offers');
 
       if (isPostPaymentSuccess) {
         console.log(`\n✓ Detected gateway completion in browser! (URL: ${currUrl})`);

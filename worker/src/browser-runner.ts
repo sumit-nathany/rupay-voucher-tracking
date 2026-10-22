@@ -279,9 +279,54 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
   console.log(`Payment Details Mode: ${paymentDetails ? paymentDetails.mode : 'None'}`);
 
+  // Resolve notification settings early — needed for proactive Telegram notifications
+  const [settings] = await db
+    .select()
+    .from(schema.automationSettings)
+    .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
+
+  const telegramChatId = settings?.telegramChatId || null;
+  // Strictly use the portal account's own registered mobile number:
+  const targetPhoneNumber = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
+  console.log(`[gateway] Portal account mobile number for payment gateway contact: ${targetPhoneNumber || '(not configured, relying on prefill)'}`);
+
+  // Proactive notification: announce the order attempt starting
+  if (telegramChatId) {
+    const tg = getTelegramClient();
+    await tg.sendOrderAttempt({
+      chatId: telegramChatId,
+      cardName: cardRow?.cardName ?? 'RuPay Card',
+      cardLast4: cardRecord?.lastDigits ?? undefined,
+      portalAccountLabel: account.label,
+      benefitName: benefitDetails.exactBenefit,
+      provider: benefitDetails.benefitProvider || undefined,
+      category: benefitDetails.benefitType || undefined,
+      voucherValue: benefitDetails.cashValue || undefined,
+    }).catch((err) => console.error('[telegram] Failed to send order attempt notification:', err));
+    console.log(`[gateway] Proactive Telegram notification sent: order attempt starting.`);
+  }
+
   if (!paymentDetails || !isValidPaymentDetails(paymentDetails)) {
     console.error(`\n[runner] ❌ Aborting run: Card "${cardRow?.cardName}" (••${cardRow?.last4}) does not have valid payment details configured.`);
     console.error(`Automation cannot checkout without payment details (card number, expiry date, CVV). Please configure payment details on this card in the Cards section.`);
+
+    // Notify failure via Telegram
+    if (telegramChatId) {
+      const tg = getTelegramClient();
+      await tg.sendOrderFailure({
+        chatId: telegramChatId,
+        cardName: cardRow?.cardName ?? 'RuPay Card',
+        cardLast4: cardRecord?.lastDigits ?? undefined,
+        portalAccountLabel: account.label,
+        benefitName: benefitDetails.exactBenefit,
+        provider: benefitDetails.benefitProvider || undefined,
+        category: benefitDetails.benefitType || undefined,
+        voucherValue: benefitDetails.cashValue || undefined,
+        reason: 'Missing payment details',
+        errorDetail: `Card "${cardRow?.cardName}" (•${cardRow?.last4}) has no valid payment details configured.`,
+      }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+    }
+
     await client.end();
     return {
       attempted: true,
@@ -1121,13 +1166,48 @@ async function addCardToPortalAccount(
       targetOffer,
       accountLabel: account.label,
     });
-    if (step7Analysis.classification === 'COOLDOWN_LIMIT') {
+     if (step7Analysis.classification === 'COOLDOWN_LIMIT') {
       const cdTime = new Date(Date.now() + (step7Analysis.cooldownMinutes ?? 20) * 60 * 1000);
       console.log(`[step 7] ⏱️ Autonomous LLM detected portal cooldown: ${step7Analysis.explanation}`);
       await recordPortalAccountCooldown(db, account.id, cdTime, 'transaction_initiated_cooldown');
       cooldownDetectedUntil = cdTime;
+
+      // Notify failure via Telegram (with screenshot if available)
+      if (telegramChatId) {
+        const tg = getTelegramClient();
+        const screenshot = await page.screenshot({ timeout: 5000 }).catch(() => null);
+        if (screenshot) {
+          await tg.sendOrderFailureWithScreenshot({
+            chatId: telegramChatId,
+            cardName: cardRow?.cardName ?? 'RuPay Card',
+            cardLast4: cardRecord?.lastDigits ?? undefined,
+            portalAccountLabel: account.label,
+            benefitName: benefitDetails.exactBenefit,
+            provider: benefitDetails.benefitProvider || undefined,
+            category: benefitDetails.benefitType || undefined,
+            voucherValue: benefitDetails.cashValue || undefined,
+            reason: 'Portal cooldown detected',
+            errorDetail: step7Analysis.explanation,
+            screenshotBuffer: screenshot,
+          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+        } else {
+          await tg.sendOrderFailure({
+            chatId: telegramChatId,
+            cardName: cardRow?.cardName ?? 'RuPay Card',
+            cardLast4: cardRecord?.lastDigits ?? undefined,
+            portalAccountLabel: account.label,
+            benefitName: benefitDetails.exactBenefit,
+            provider: benefitDetails.benefitProvider || undefined,
+            category: benefitDetails.benefitType || undefined,
+            voucherValue: benefitDetails.cashValue || undefined,
+            reason: 'Portal cooldown detected',
+            errorDetail: step7Analysis.explanation,
+          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+        }
+      }
       await context.close().catch(() => {});
       await client.end().catch(() => {});
+
       return { attempted: true, accountLabel: account.label, instanceId: candidate.instanceId, reason: 'cooldown_active' };
     }
     if (step7Analysis.classification === 'BLOCKED_ERROR') {
@@ -1211,6 +1291,41 @@ async function addCardToPortalAccount(
     await activePaymentPage.screenshot({ path: 'gateway-redirect-failed.png' });
     await context.close();
     await client.end();
+
+    // Notify failure via Telegram (with screenshot)
+    if (telegramChatId) {
+      const tg = getTelegramClient();
+      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      if (screenshot) {
+        await tg.sendOrderFailureWithScreenshot({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'Gateway redirect failed',
+          errorDetail: 'Payment gateway did not redirect within 30s.',
+          screenshotBuffer: screenshot,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      } else {
+        await tg.sendOrderFailure({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'Gateway redirect failed',
+          errorDetail: 'Payment gateway did not redirect within 30s.',
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      }
+    }
+
     return {
       attempted: true,
       accountLabel: account.label,
@@ -1224,17 +1339,6 @@ async function addCardToPortalAccount(
   await activePaymentPage.waitForLoadState('domcontentloaded').catch(() => {});
   await activePaymentPage.waitForTimeout(3000); // Allow gateway and iframes to render
   console.log(`Payment Page Title: ${await activePaymentPage.title()}`);
-
-  // Resolve notification recipient & contact info before Step 8
-  const [settings] = await db
-    .select()
-    .from(schema.automationSettings)
-    .where(eq(schema.automationSettings.workspaceId, account.workspaceId));
-
-  const telegramChatId = settings?.telegramChatId || null;
-  // Strictly use the portal account's own registered mobile number:
-  const targetPhoneNumber = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
-  console.log(`[gateway] Portal account mobile number for payment gateway contact: ${targetPhoneNumber || '(not configured, relying on prefill)'}`);
 
   // Inspect payment form elements (inputs, iframes)
   const formAnalysis = await activePaymentPage.evaluate(() => {
@@ -1358,8 +1462,43 @@ async function addCardToPortalAccount(
       `[portal] Benefit instance ${candidate.instanceId} recorded as refused by the portal: ${refusalCode}.`,
     );
     await activePaymentPage.waitForTimeout(1000).catch(() => {});
+
+    // Notify failure via Telegram (with screenshot if available)
+    if (telegramChatId) {
+      const tg = getTelegramClient();
+      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      if (screenshot) {
+        await tg.sendOrderFailureWithScreenshot({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'Portal refused this benefit',
+          errorDetail: refusalCode === 'card_limit_reached' ? 'Card benefit limit exhausted' : `Refusal code: ${refusalCode}. ${detail ?? ''}`,
+          screenshotBuffer: screenshot,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      } else {
+        await tg.sendOrderFailure({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'Portal refused this benefit',
+          errorDetail: refusalCode === 'card_limit_reached' ? 'Card benefit limit exhausted' : `Refusal code: ${refusalCode}. ${detail ?? ''}`,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      }
+    }
     await context.close().catch(() => {});
     await client.end().catch(() => {});
+
     return {
       attempted: true,
       accountLabel: account.label,
@@ -1625,8 +1764,43 @@ async function addCardToPortalAccount(
         .set({ state: 'uncertain', failureCode: 'gateway_declined', finishedAt: new Date() })
         .where(eq(schema.portalOrderAttempts.id, attempt.id));
       await activePaymentPage.waitForTimeout(2000).catch(() => {});
+
+      // Notify failure via Telegram (with screenshot)
+      if (telegramChatId) {
+        const tg = getTelegramClient();
+        const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+        if (screenshot) {
+          await tg.sendOrderFailureWithScreenshot({
+            chatId: telegramChatId,
+            cardName: cardRow?.cardName ?? 'RuPay Card',
+            cardLast4: cardRecord?.lastDigits ?? undefined,
+            portalAccountLabel: account.label,
+            benefitName: benefitDetails.exactBenefit,
+            provider: benefitDetails.benefitProvider || undefined,
+            category: benefitDetails.benefitType || undefined,
+            voucherValue: benefitDetails.cashValue || undefined,
+            reason: 'Payment gateway declined the transaction',
+            errorDetail: `Page text indicates: ${finalPageText.slice(0, 100)}`,
+            screenshotBuffer: screenshot,
+          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+        } else {
+          await tg.sendOrderFailure({
+            chatId: telegramChatId,
+            cardName: cardRow?.cardName ?? 'RuPay Card',
+            cardLast4: cardRecord?.lastDigits ?? undefined,
+            portalAccountLabel: account.label,
+            benefitName: benefitDetails.exactBenefit,
+            provider: benefitDetails.benefitProvider || undefined,
+            category: benefitDetails.benefitType || undefined,
+            voucherValue: benefitDetails.cashValue || undefined,
+            reason: 'Payment gateway declined the transaction',
+            errorDetail: `Page text indicates: ${finalPageText.slice(0, 100)}`,
+          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+        }
+      }
       await context.close().catch(() => {});
       await client.end().catch(() => {});
+
       // Do not exit the process: a batch run must continue with the next
       // account and report this one as failed.
       return {
@@ -1642,6 +1816,40 @@ async function addCardToPortalAccount(
       .update(schema.portalOrderAttempts)
       .set({ state: 'failed_pre_submit', failureCode: 'otp_timeout', finishedAt: new Date() })
       .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+    // Notify failure via Telegram (with screenshot if available)
+    if (telegramChatId) {
+      const tg = getTelegramClient();
+      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      if (screenshot) {
+        await tg.sendOrderFailureWithScreenshot({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'OTP not completed or timed out',
+          errorDetail: transitionResult.reason || 'No OTP screen was reached or the OTP entry timed out.',
+          screenshotBuffer: screenshot,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      } else {
+        await tg.sendOrderFailure({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: 'OTP not completed or timed out',
+          errorDetail: transitionResult.reason || 'No OTP screen was reached or the OTP entry timed out.',
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      }
+    }
   }
 
   await activePaymentPage.waitForTimeout(2000).catch(() => {});

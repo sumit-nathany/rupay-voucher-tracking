@@ -95,6 +95,10 @@ secret_env_args() {
   if [[ -n "${CAPTCHA_SERVICE_URL:-}" ]]; then
     args+=",CAPTCHA_SERVICE_KEY=${SECRET_CAPTCHA_SERVICE_KEY:-RECAPTCHA_SOLVER_KEY}:latest"
   fi
+  # Telegram bot token for OTP prompts and booking confirmations.
+  if [[ -n "${SECRET_TELEGRAM_BOT_TOKEN:-}" ]]; then
+    args+=",TELEGRAM_BOT_TOKEN=${SECRET_TELEGRAM_BOT_TOKEN}:latest"
+  fi
   if secret_exists "${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}"; then
     args+=",ENCRYPTION_KEYRING=${SECRET_ENCRYPTION_KEYRING:-ENCRYPTION_KEYRING}:latest"
   fi
