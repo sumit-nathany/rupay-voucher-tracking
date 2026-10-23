@@ -185,7 +185,7 @@ export async function listDistinctWorkspaceBenefits(ctx: Ctx): Promise<Workspace
           eq(cardBenefitOverrides.workspaceId, ctx.workspaceId),
         ),
       )
-      .where(eq(benefitInstances.workspaceId, ctx.workspaceId)),
+      .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false))),
     listBenefitValueOverrides(ctx),
   ]);
 

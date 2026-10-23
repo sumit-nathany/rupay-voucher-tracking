@@ -18,6 +18,12 @@ export async function createVersionAction(input: Parameters<typeof d.createVersi
 export async function changeFrequencyAction(input: Parameters<typeof d.changeFrequency>[1]) {
   return d.changeFrequency(await getCtx(), input);
 }
+export async function previewFrequencyChangeAction(input: Parameters<typeof d.previewFrequencyChange>[1]) {
+  return d.previewFrequencyChange(await getCtx(), input);
+}
+export async function executeFrequencyChangeAction(input: Parameters<typeof d.executeFrequencyChange>[1]) {
+  return d.executeFrequencyChange(await getCtx(), input);
+}
 export async function closeVersionAction(input: Parameters<typeof d.closeVersion>[1]) {
   return d.closeVersion(await getCtx(), input);
 }

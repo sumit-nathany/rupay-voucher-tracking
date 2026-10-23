@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   bankCardTypes,
@@ -7,11 +7,14 @@ import {
   benefitOptions,
   benefits,
   cardVariants,
+  cards,
   systemAdmins,
+  workspaces,
 } from '@/db/schema';
 import { AuthzError, NotFoundError, type Ctx } from '@/lib/context';
 import { inferOfferKind, OFFER_KINDS, type OfferKind } from '@/domain/benefit-offer-kind';
 import { parseCardList } from '@/lib/card-list';
+import { computePeriods, type Frequency } from '@/lib/periods';
 
 // Admin-only curation of the shared catalog (PLAN.md Phase 3 / Database notes).
 // Global tables: no workspace scoping applies; access is gated by system_admins
@@ -24,6 +27,52 @@ import { parseCardList } from '@/lib/card-list';
 // plus closeVersion (bank drops a benefit) and setCurationStatus.
 
 export class CatalogRuleError extends Error {}
+
+export type { OfferKind } from '@/domain/benefit-offer-kind';
+
+// Preview types
+export interface WorkspaceImpact {
+  workspaceId: string;
+  workspaceName: string;
+  cardCount: number;
+  currentPeriod: {
+    totalInstances: number;
+    notOrdered: number;
+    orderedPlus: number;
+    withdrawn: number;
+    keep: { archive: number; add: number; preserve: number };
+    regenerateCurrent: { archive: number; add: number; preserve: number };
+    regenerateAllFuture: { archive: number; add: number; preserve: number };
+    migrate: { archive: number; add: number; preserve: number; sourceInstance: { period: string; status: string; hasCode: boolean; bookingId: string | null } | null; conflicts: string[] };
+  };
+  futurePeriods: {
+    totalInstances: number;
+    notOrdered: number;
+    orderedPlus: number;
+    withdrawn: number;
+    periodsAffected: number;
+    keep: { archive: number; add: number; preserve: number };
+    regenerateCurrent: { archive: number; add: number; preserve: number };
+    regenerateAllFuture: { archive: number; add: number; preserve: number };
+    migrate: { archive: number; add: number; preserve: number };
+  };
+}
+
+export interface FrequencyChangePreview {
+  oldBenefitId: string;
+  newBenefitId: string;
+  oldFrequency: string;
+  newFrequency: string;
+  effectiveFrom: string;
+  affectedWorkspaces: WorkspaceImpact[];
+  summary: {
+    totalWorkspaces: number;
+    totalCards: number;
+    currentPeriod: Record<string, { archive: number; add: number; preserve: number }>;
+    futurePeriods: Record<string, { archive: number; add: number; preserve: number }>;
+  };
+  warnings: string[];
+}
 
 export async function assertSystemAdmin(ctx: Ctx): Promise<void> {
   const [row] = await ctx.db
@@ -106,6 +155,15 @@ const forkInput = z
     instanceCount: details.instanceCount.optional(),
     defaultCashValue: details.defaultCashValue,
     offerKind: offerKind.optional(),
+  })
+  .strict();
+
+const frequencyChangePreviewInput = z
+  .object({
+    benefitId: uuid,
+    newFrequency: frequency,
+    effectiveFrom: isoDate,
+    instanceHandling: z.enum(['keep', 'regenerate_current', 'regenerate_all_future', 'migrate']),
   })
   .strict();
 
@@ -322,6 +380,405 @@ export async function changeFrequency(
       .returning({ id: benefitCatalogVersions.id });
     return { closedVersionId: current.id, newBenefitId: nb.id, versionId: v.id };
   });
+}
+
+/**
+ * PREVIEW: Computes the impact of a frequency change without modifying data.
+ */
+export async function previewFrequencyChange(
+  ctx: Ctx,
+  input: z.input<typeof frequencyChangePreviewInput>,
+): Promise<FrequencyChangePreview> {
+  await assertSystemAdmin(ctx);
+  const p = frequencyChangePreviewInput.parse(input);
+
+  // Get current benefit and its open version
+  const [benefit] = await ctx.db.select().from(benefits).where(eq(benefits.id, p.benefitId));
+  if (!benefit) throw new NotFoundError('Benefit not found');
+
+  const [currentVersion] = await ctx.db
+    .select()
+    .from(benefitCatalogVersions)
+    .where(and(eq(benefitCatalogVersions.benefitId, p.benefitId), isNull(benefitCatalogVersions.effectiveTo)));
+  if (!currentVersion) throw new CatalogRuleError('Benefit has no open version');
+
+  const bankCardTypeId = benefit.bankCardTypeId;
+  const todayStr = ctx.today;
+  const newFreq = p.newFrequency;
+
+  // Check if benefit has options
+  const options = await ctx.db
+    .select()
+    .from(benefitOptions)
+    .where(eq(benefitOptions.versionId, currentVersion.id));
+  const hasOptions = options.length > 0;
+
+  // Find all cards of this bank card type across all workspaces
+  const cardRows = await ctx.db
+    .select({
+      workspaceId: cards.workspaceId,
+      cardId: cards.id,
+      workspaceName: workspaces.name,
+    })
+    .from(cards)
+    .innerJoin(workspaces, eq(workspaces.id, cards.workspaceId))
+    .where(eq(cards.bankCardTypeId, bankCardTypeId));
+
+  // Group by workspace
+  const workspaceMap = new Map<string, { workspaceName: string; cardIds: string[] }>();
+  for (const c of cardRows) {
+    const entry = workspaceMap.get(c.workspaceId) ?? { workspaceName: c.workspaceName, cardIds: [] };
+    entry.cardIds.push(c.cardId);
+    workspaceMap.set(c.workspaceId, entry);
+  }
+
+  // For each workspace, query instances for the old benefitId
+  const affectedWorkspaces: FrequencyChangePreview['affectedWorkspaces'] = [];
+
+  for (const [workspaceId, { workspaceName, cardIds }] of workspaceMap) {
+    // Get instances for old benefitId where period_end >= effectiveFrom and not archived
+    const instances = await ctx.db
+      .select({
+        id: benefitInstances.id,
+        periodStart: benefitInstances.periodStart,
+        periodEnd: benefitInstances.periodEnd,
+        orderStatus: benefitInstances.orderStatus,
+        codeEncrypted: benefitInstances.codeEncrypted,
+        rupayBookingId: benefitInstances.rupayBookingId,
+      })
+      .from(benefitInstances)
+      .where(
+        and(
+          eq(benefitInstances.workspaceId, workspaceId),
+          inArray(benefitInstances.cardId, cardIds),
+          eq(benefitInstances.benefitId, p.benefitId),
+          gte(benefitInstances.periodEnd, p.effectiveFrom),
+          eq(benefitInstances.archived, false),
+        ),
+      );
+
+    // Split into current period and future periods
+    const currentPeriod = instances.filter((i) => i.periodStart <= todayStr && i.periodEnd >= todayStr);
+    const futurePeriods = instances.filter((i) => i.periodStart > todayStr);
+
+    // Count by status
+    const countByStatus = (arr: typeof instances) => ({
+      total: arr.length,
+      notOrdered: arr.filter((i) => i.orderStatus === 'Not Ordered').length,
+      orderedPlus: arr.filter((i) => i.orderStatus !== 'Not Ordered').length,
+      withdrawn: arr.filter((i) => i.orderStatus === 'Withdrawn').length,
+      hasCode: arr.filter((i) => i.codeEncrypted).length,
+      withBookingId: arr.filter((i) => i.rupayBookingId).length,
+    });
+
+    const currentCounts = countByStatus(currentPeriod);
+    const futureCounts = countByStatus(futurePeriods);
+
+    // Find non-Not-Ordered instances for migration mode
+    const nonNotOrdered = instances.filter((i) => i.orderStatus !== 'Not Ordered');
+    const sourceInstance = nonNotOrdered[0] ?? null;
+
+    // Check conflicts for migration
+    const conflicts: string[] = [];
+    if (p.instanceHandling === 'migrate') {
+      if (nonNotOrdered.length > 1) {
+        conflicts.push(`${nonNotOrdered.length} instances with status != Not Ordered`);
+      }
+      // Check for multiple different codes/booking IDs
+      const codes = new Set(nonNotOrdered.filter((i) => i.codeEncrypted).map((i) => i.codeEncrypted));
+      const bookingIds = new Set(nonNotOrdered.filter((i) => i.rupayBookingId).map((i) => i.rupayBookingId));
+      if (codes.size > 1) conflicts.push('Multiple different voucher codes');
+      if (bookingIds.size > 1) conflicts.push('Multiple different booking IDs');
+    }
+
+    // Get periods for new frequency
+    const currentPeriodObj = currentPeriod[0];
+    const futurePeriodObjs = futurePeriods;
+
+    // Simplified new instance counts for preview
+    const newInstanceCountForCurrentPeriod = currentPeriodObj ? currentVersion.instanceCount : 0;
+    const newInstanceCountForAllFuturePeriods = futurePeriodObjs.length * currentVersion.instanceCount;
+
+    affectedWorkspaces.push({
+      workspaceId,
+      workspaceName,
+      cardCount: cardIds.length,
+      currentPeriod: {
+        totalInstances: currentCounts.total,
+        notOrdered: currentCounts.notOrdered,
+        orderedPlus: currentCounts.orderedPlus,
+        withdrawn: currentCounts.withdrawn,
+        keep: { archive: 0, add: 0, preserve: currentCounts.total },
+        regenerateCurrent: { archive: currentCounts.notOrdered, add: newInstanceCountForCurrentPeriod, preserve: currentCounts.orderedPlus },
+        regenerateAllFuture: { archive: futureCounts.notOrdered, add: newInstanceCountForAllFuturePeriods, preserve: futureCounts.orderedPlus },
+        migrate: {
+          archive: currentCounts.total,
+          add: currentPeriodObj ? 1 : 0,
+          preserve: 0,
+          sourceInstance: sourceInstance
+            ? { period: sourceInstance.periodStart, status: sourceInstance.orderStatus, hasCode: !!sourceInstance.codeEncrypted, bookingId: sourceInstance.rupayBookingId }
+            : null,
+          conflicts,
+        },
+      },
+      futurePeriods: {
+        totalInstances: futureCounts.total,
+        notOrdered: futureCounts.notOrdered,
+        orderedPlus: futureCounts.orderedPlus,
+        withdrawn: futureCounts.withdrawn,
+        periodsAffected: futurePeriodObjs.length,
+        keep: { archive: 0, add: 0, preserve: futureCounts.total },
+        regenerateCurrent: { archive: 0, add: 0, preserve: futureCounts.total },
+        regenerateAllFuture: { archive: futureCounts.notOrdered, add: newInstanceCountForAllFuturePeriods, preserve: futureCounts.orderedPlus },
+        migrate: { archive: futureCounts.total, add: newInstanceCountForAllFuturePeriods, preserve: 0 },
+      },
+    });
+  }
+
+  // Summary totals
+  const summary = {
+    totalWorkspaces: affectedWorkspaces.length,
+    totalCards: affectedWorkspaces.reduce((sum, w) => sum + w.cardCount, 0),
+    currentPeriod: {
+      keep: { archive: 0, add: 0, preserve: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.totalInstances, 0) },
+      regenerateCurrent: {
+        archive: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateCurrent.archive, 0),
+        add: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateCurrent.add, 0),
+        preserve: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateCurrent.preserve, 0),
+      },
+      regenerateAllFuture: {
+        archive: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateAllFuture.archive, 0),
+        add: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateAllFuture.add, 0),
+        preserve: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.regenerateAllFuture.preserve, 0),
+      },
+      migrate: {
+        archive: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.migrate.archive, 0),
+        add: affectedWorkspaces.reduce((s, w) => s + w.currentPeriod.migrate.add, 0),
+        preserve: 0,
+      },
+    },
+    futurePeriods: {
+      keep: { archive: 0, add: 0, preserve: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.totalInstances, 0) },
+      regenerateCurrent: {
+        archive: 0,
+        add: 0,
+        preserve: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.totalInstances, 0),
+      },
+      regenerateAllFuture: {
+        archive: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.regenerateAllFuture.archive, 0),
+        add: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.regenerateAllFuture.add, 0),
+        preserve: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.regenerateAllFuture.preserve, 0),
+      },
+      migrate: {
+        archive: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.migrate.archive, 0),
+        add: affectedWorkspaces.reduce((s, w) => s + w.futurePeriods.migrate.add, 0),
+        preserve: 0,
+      },
+    },
+  };
+
+  const warnings: string[] = [];
+  if (hasOptions) {
+    warnings.push('Benefit has options — new benefit will start with 0 options (admin must re-add)');
+  }
+  if (p.instanceHandling === 'migrate' && affectedWorkspaces.some((w) => w.currentPeriod.migrate.conflicts.length > 0)) {
+    warnings.push('Migration mode has conflicts — multiple non-Not-Ordered instances found');
+  }
+
+  return {
+    oldBenefitId: p.benefitId,
+    newBenefitId: 'new-' + crypto.randomUUID().slice(0, 8), // placeholder
+    oldFrequency: currentVersion.frequency,
+    newFrequency: newFreq,
+    effectiveFrom: p.effectiveFrom,
+    affectedWorkspaces,
+    summary,
+    warnings,
+  };
+}
+
+/**
+ * EXECUTE: Performs the frequency change and handles instance migration/regeneration.
+ */
+export async function executeFrequencyChange(
+  ctx: Ctx,
+  input: z.input<typeof frequencyChangePreviewInput>,
+): Promise<{ closedVersionId: string; newBenefitId: string; versionId: string; migrated: number; archived: number }> {
+  await assertSystemAdmin(ctx);
+  const p = frequencyChangePreviewInput.parse(input);
+
+  // Get the benefit to know its bankCardTypeId
+  const [benefit] = await ctx.db.select().from(benefits).where(eq(benefits.id, p.benefitId));
+  if (!benefit) throw new NotFoundError('Benefit not found');
+
+  // Get the current version for archive reason
+  const [currentVersion] = await ctx.db
+    .select()
+    .from(benefitCatalogVersions)
+    .where(and(eq(benefitCatalogVersions.benefitId, p.benefitId), isNull(benefitCatalogVersions.effectiveTo)));
+  if (!currentVersion) throw new CatalogRuleError('Benefit has no open version');
+
+  // First, do the catalog frequency change
+  const catalogResult = await changeFrequency(ctx, {
+    benefitId: p.benefitId,
+    newFrequency: p.newFrequency,
+    effectiveFrom: p.effectiveFrom,
+  });
+
+  const { newBenefitId } = catalogResult;
+  const todayStr = ctx.today;
+
+  let migrated = 0;
+  let archived = 0;
+
+  // Then handle instances based on mode
+  if (p.instanceHandling !== 'keep') {
+    // Get all cards of this bank card type across all workspaces
+    const cardRows = await ctx.db
+      .select({ workspaceId: cards.workspaceId, cardId: cards.id })
+      .from(cards)
+      .where(eq(cards.bankCardTypeId, benefit.bankCardTypeId));
+
+    for (const { workspaceId, cardId } of cardRows) {
+      if (p.instanceHandling === 'regenerate_current') {
+        // Archive Not Ordered instances in current period
+        const res = await ctx.db
+          .update(benefitInstances)
+          .set({ archived: true, archivedAt: new Date(), archivedBy: ctx.userId, archiveReason: `frequency_regenerate_current:${p.effectiveFrom}` })
+          .where(
+            and(
+              eq(benefitInstances.workspaceId, workspaceId),
+              eq(benefitInstances.cardId, cardId),
+              eq(benefitInstances.benefitId, p.benefitId),
+              lte(benefitInstances.periodStart, todayStr),
+              gte(benefitInstances.periodEnd, todayStr),
+              eq(benefitInstances.orderStatus, 'Not Ordered'),
+              eq(benefitInstances.archived, false),
+            ),
+          )
+          .returning({ id: benefitInstances.id });
+        archived += res.length;
+
+        // Trigger ensureInstances for this card to generate new instances
+        // (handled by view refresh)
+      } else if (p.instanceHandling === 'regenerate_all_future') {
+        // Archive all future Not Ordered instances
+        const res = await ctx.db
+          .update(benefitInstances)
+          .set({ archived: true, archivedAt: new Date(), archivedBy: ctx.userId, archiveReason: `frequency_regenerate_all_future:${p.effectiveFrom}` })
+          .where(
+            and(
+              eq(benefitInstances.workspaceId, workspaceId),
+              eq(benefitInstances.cardId, cardId),
+              eq(benefitInstances.benefitId, p.benefitId),
+              gte(benefitInstances.periodEnd, p.effectiveFrom),
+              eq(benefitInstances.orderStatus, 'Not Ordered'),
+              eq(benefitInstances.archived, false),
+            ),
+          )
+          .returning({ id: benefitInstances.id });
+        archived += res.length;
+      } else if (p.instanceHandling === 'migrate') {
+        // Find the non-Not-Ordered instance (if any)
+        const [sourceInst] = await ctx.db
+          .select({
+            id: benefitInstances.id,
+            bankCardTypeId: benefitInstances.bankCardTypeId,
+            orderStatus: benefitInstances.orderStatus,
+            soldFor: benefitInstances.soldFor,
+            cashValue: benefitInstances.cashValue,
+            orderDate: benefitInstances.orderDate,
+            expiryDate: benefitInstances.expiryDate,
+            rupayBookingId: benefitInstances.rupayBookingId,
+            portalAccountId: benefitInstances.portalAccountId,
+            codeEncrypted: benefitInstances.codeEncrypted,
+            comments: benefitInstances.comments,
+            chosenOptionId: benefitInstances.chosenOptionId,
+            instanceNumber: benefitInstances.instanceNumber,
+          })
+          .from(benefitInstances)
+          .where(
+            and(
+              eq(benefitInstances.workspaceId, workspaceId),
+              eq(benefitInstances.cardId, cardId),
+              eq(benefitInstances.benefitId, p.benefitId),
+              ne(benefitInstances.orderStatus, 'Not Ordered'),
+              eq(benefitInstances.archived, false),
+            ),
+          )
+          .limit(1);
+
+        // Archive ALL instances for this benefitId
+        const allRes = await ctx.db
+          .update(benefitInstances)
+          .set({ archived: true, archivedAt: new Date(), archivedBy: ctx.userId, archiveReason: `frequency_migration:${currentVersion.frequency}->${p.newFrequency}` })
+          .where(
+            and(
+              eq(benefitInstances.workspaceId, workspaceId),
+              eq(benefitInstances.cardId, cardId),
+              eq(benefitInstances.benefitId, p.benefitId),
+              eq(benefitInstances.archived, false),
+            ),
+          )
+          .returning({ id: benefitInstances.id });
+        archived += allRes.length;
+
+        // Create new instance for the period covering effectiveFrom under new benefitId
+        if (sourceInst) {
+          // Find the period for the new frequency that covers effectiveFrom
+          const periods = computePeriods(Number(p.effectiveFrom.slice(0, 4)), p.newFrequency as Frequency);
+          const targetPeriod = periods.find((per) => per.start <= p.effectiveFrom && per.end >= p.effectiveFrom);
+          if (targetPeriod) {
+            await ctx.db.insert(benefitInstances).values({
+              workspaceId,
+              cardId,
+              bankCardTypeId: sourceInst.bankCardTypeId,
+              benefitId: newBenefitId,
+              generatedFromVersion: catalogResult.versionId,
+              periodStart: targetPeriod.start,
+              periodEnd: targetPeriod.end,
+              periodLabel: targetPeriod.label,
+              instanceNumber: sourceInst.instanceNumber,
+              orderDeadline: targetPeriod.end,
+              orderStatus: sourceInst.orderStatus,
+              soldFor: sourceInst.soldFor,
+              cashValue: sourceInst.cashValue,
+              orderDate: sourceInst.orderDate,
+              expiryDate: sourceInst.expiryDate,
+              rupayBookingId: sourceInst.rupayBookingId,
+              portalAccountId: sourceInst.portalAccountId,
+              codeEncrypted: sourceInst.codeEncrypted,
+              comments: sourceInst.comments,
+              chosenOptionId: sourceInst.chosenOptionId,
+            });
+            migrated++;
+          }
+        } else {
+          // No source instance - create blank Not Ordered
+          const periods = computePeriods(Number(p.effectiveFrom.slice(0, 4)), p.newFrequency as Frequency);
+          const targetPeriod = periods.find((per) => per.start <= p.effectiveFrom && per.end >= p.effectiveFrom);
+          if (targetPeriod) {
+            await ctx.db.insert(benefitInstances).values({
+              workspaceId,
+              cardId,
+              bankCardTypeId: benefit.bankCardTypeId,
+              benefitId: newBenefitId,
+              generatedFromVersion: catalogResult.versionId,
+              periodStart: targetPeriod.start,
+              periodEnd: targetPeriod.end,
+              periodLabel: targetPeriod.label,
+              instanceNumber: 1,
+              orderDeadline: targetPeriod.end,
+              orderStatus: 'Not Ordered',
+            });
+            migrated++;
+          }
+        }
+      }
+    }
+  }
+
+  return { ...catalogResult, migrated, archived };
 }
 
 /** Bank drops a benefit: close an open version's effective_to (no replacement). */

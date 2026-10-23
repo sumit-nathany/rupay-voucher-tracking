@@ -1396,6 +1396,7 @@ export async function findCandidateFromGlobalQueue(
           isNull(benefitInstances.portalRefusal),
           gte(benefitInstances.orderDeadline, today),
           isNull(benefitInstances.soldFor),
+          eq(benefitInstances.archived, false),
         ),
       );
 
@@ -1700,6 +1701,7 @@ export async function findCandidatesForAccount(
           isNull(benefitInstances.portalRefusal),
           gte(benefitInstances.orderDeadline, today),
           isNull(benefitInstances.soldFor),
+          eq(benefitInstances.archived, false),
         ),
       );
 
@@ -1824,6 +1826,7 @@ export async function findCandidatesForAccount(
         isNull(benefitInstances.portalRefusal),
         gte(benefitInstances.orderDeadline, today),
         isNull(benefitInstances.soldFor),
+        eq(benefitInstances.archived, false),
       ),
     );
 

@@ -1,6 +1,6 @@
 'use client';
 import * as React from 'react';
-import { Check, ChevronDown, ChevronRight, EyeOff, Eye, Loader2, Pencil, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, EyeOff, Eye, Loader2, Pencil, X, RotateCcw } from 'lucide-react';
 import {
   addCardTypesAction,
   correctVersionAction,
@@ -8,8 +8,11 @@ import {
   listCardTypeBenefitsAction,
   updateCardTypeAction,
   updateVariantAction,
+  previewFrequencyChangeAction,
+  executeFrequencyChangeAction,
 } from '@/actions/catalog-admin';
-import type { OfferKind } from '@/domain/benefit-offer-kind';
+import type { OfferKind, FrequencyChangePreview, WorkspaceImpact } from '@/domain/catalog-admin';
+import { type Frequency } from '@/lib/periods';
 import { CurationBadge } from '@/components/cards/curation-badge';
 import { formatDate, formatINR } from '@/components/dashboard/format';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { ErrorText, Field, SubmitButton, useRunAction } from '@/components/holders/form-kit';
+import { ErrorText, Field, SubmitButton, useRunAction, messageFor } from '@/components/holders/form-kit';
 import { cn } from '@/lib/utils';
 
 export interface VariantRow {
@@ -371,6 +375,9 @@ function BenefitCatalogRow({
               {b.versionCount} versions
             </Badge>
           )}
+          {editing && (
+            <FrequencyChangeTrigger benefit={b} />
+          )}
         </div>
       </div>
       <ErrorText>{error}</ErrorText>
@@ -393,6 +400,277 @@ function BenefitCatalogRow({
         </ul>
       )}
     </li>
+  );
+}
+
+function FrequencyChangeTrigger({ benefit }: { benefit: CatalogBenefit }) {
+  const [open, setOpen] = React.useState(false);
+  const [newFrequency, setNewFrequency] = React.useState<Frequency>('Annual');
+  const [effectiveFrom, setEffectiveFrom] = React.useState('');
+  const [instanceHandling, setInstanceHandling] =
+    React.useState<'keep' | 'regenerate_current' | 'regenerate_all_future' | 'migrate'>('migrate');
+  const [preview, setPreview] = React.useState<FrequencyChangePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const { run: runExecute, pending: executing, error: executeError, setError: setExecuteError } = useRunAction();
+
+  React.useEffect(() => {
+    if (open) {
+      setPreview(null);
+      setPreviewError(null);
+      setExecuteError(null);
+      setNewFrequency(benefit.frequency as Frequency);
+      setEffectiveFrom('');
+      setInstanceHandling('migrate');
+    }
+  }, [open, benefit, setExecuteError]);
+
+  const canPreview = newFrequency !== benefit.frequency && !!effectiveFrom;
+
+  async function showPreview() {
+    if (!canPreview) return;
+    setPreviewLoading(true);
+    setPreviewError(null);
+    try {
+      const result = await previewFrequencyChangeAction({
+        benefitId: benefit.benefitId,
+        newFrequency,
+        effectiveFrom,
+        instanceHandling,
+      });
+      setPreview(result);
+    } catch (e) {
+      setPreviewError(messageFor(e, 'Could not generate preview.'));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function handleExecute() {
+    if (!preview) return;
+    await runExecute(
+      async () => {
+        await executeFrequencyChangeAction({
+          benefitId: benefit.benefitId,
+          newFrequency,
+          effectiveFrom,
+          instanceHandling,
+        });
+      },
+      'Could not change frequency.',
+    );
+    setOpen(false);
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`Change frequency for ${benefit.benefitType}${benefit.benefitProvider ? ` ${benefit.benefitProvider}` : ''}`}
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden />
+        </Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>Change frequency</SheetTitle>
+          <SheetDescription>
+            {benefit.benefitType}
+            {benefit.benefitProvider ? ` · ${benefit.benefitProvider}` : ''}
+            <span className="block text-xs text-muted-foreground mt-1">
+              Current frequency: {benefit.frequency}
+            </span>
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-4 flex flex-col gap-4">
+          <Field id="new-frequency" label="New frequency">
+            <Select value={newFrequency} onValueChange={(v) => setNewFrequency(v as Frequency)}>
+              <SelectTrigger id="new-frequency" aria-label="New frequency" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Annual">Annual</SelectItem>
+                <SelectItem value="6 months">Half-yearly</SelectItem>
+                <SelectItem value="Quarterly">Quarterly</SelectItem>
+                <SelectItem value="Monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field
+            id="effective-from"
+            label="Effective from"
+            hint="Old instances through the day before this date are kept as-is."
+          >
+            <Input
+              id="effective-from"
+              type="date"
+              value={effectiveFrom}
+              onChange={(e) => setEffectiveFrom(e.target.value)}
+              required
+              min={benefit.effectiveFrom}
+            />
+          </Field>
+
+          <Field
+            id="instance-handling"
+            label="Instance handling"
+            hint="How to handle existing benefit instances after the frequency change."
+          >
+            <Select
+              value={instanceHandling}
+              onValueChange={(v) =>
+                setInstanceHandling(
+                  v as 'keep' | 'regenerate_current' | 'regenerate_all_future' | 'migrate',
+                )
+              }
+            >
+              <SelectTrigger id="instance-handling" aria-label="Instance handling" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="keep">Keep existing instances (no changes)</SelectItem>
+                <SelectItem value="regenerate_current">Regenerate current period instances</SelectItem>
+                <SelectItem value="regenerate_all_future">Regenerate all future period instances</SelectItem>
+                <SelectItem value="migrate">Migrate with history (preserve order/code state)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {!preview && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!canPreview || previewLoading}
+              onClick={showPreview}
+            >
+              {previewLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  Generating preview…
+                </>
+              ) : (
+                'Show impact preview'
+              )}
+            </Button>
+          )}
+
+          <ErrorText>{previewError}</ErrorText>
+
+          {preview && (
+            <FrequencyChangePreviewContent preview={preview} instanceHandling={instanceHandling} />
+          )}
+        </div>
+
+        <SheetFooter className="mt-6">
+          <ErrorText>{executeError}</ErrorText>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setOpen(false)}
+            disabled={executing}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant={preview?.warnings.length ? 'secondary' : 'default'}
+            disabled={!preview || executing || (preview?.warnings.length ?? 0) > 0}
+            onClick={handleExecute}
+          >
+            {executing && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+            Change frequency
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function FrequencyChangePreviewContent({
+  preview,
+  instanceHandling,
+}: {
+  preview: FrequencyChangePreview;
+  instanceHandling: 'keep' | 'regenerate_current' | 'regenerate_all_future' | 'migrate';
+}) {
+  const modeSummary =
+    instanceHandling === 'keep'
+      ? preview.summary.currentPeriod.keep
+      : instanceHandling === 'regenerate_current'
+        ? preview.summary.currentPeriod.regenerate_current
+        : instanceHandling === 'regenerate_all_future'
+          ? preview.summary.currentPeriod.regenerate_all_future
+          : preview.summary.currentPeriod.migrate;
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md bg-muted/40 p-3 text-sm">
+        <p>
+          <span className="font-medium">Old frequency:</span> {preview.oldFrequency} →{' '}
+          <span className="font-medium">New frequency:</span> {preview.newFrequency}
+        </p>
+        <p>
+          <span className="font-medium">Effective from:</span> {preview.effectiveFrom}
+        </p>
+        <p className="mt-1">
+          <span className="font-medium">{preview.summary.totalWorkspaces}</span> workspace
+          {preview.summary.totalWorkspaces === 1 ? '' : 's'} ·{' '}
+          <span className="font-medium">{preview.summary.totalCards}</span> card
+          {preview.summary.totalCards === 1 ? '' : 's'} affected
+        </p>
+      </div>
+
+      {preview.warnings.length > 0 && (
+        <div className="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+          <ul className="list-disc list-inside space-y-0.5">
+            {preview.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {modeSummary && (
+        <div className="rounded-md bg-blue-500/5 p-3 text-xs">
+          <span className="font-medium">Selected mode ({instanceHandling}) outcome:</span>{' '}
+          Archive {modeSummary.archive} · Add {modeSummary.add} · Preserve {modeSummary.preserve}
+        </div>
+      )}
+
+      {preview.affectedWorkspaces.length > 0 && (
+        <div className="max-h-56 overflow-y-auto rounded-md border">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="px-2 py-1.5 text-left">Workspace</th>
+                <th className="px-2 py-1.5 text-right">Cards</th>
+                <th className="px-2 py-1.5 text-right">Current period</th>
+                <th className="px-2 py-1.5 text-right">Future periods</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.affectedWorkspaces.map((w: WorkspaceImpact) => (
+                <tr key={w.workspaceId} className="border-t">
+                  <td className="px-2 py-1">{w.workspaceName}</td>
+                  <td className="px-2 py-1 text-right">{w.cardCount}</td>
+                  <td className="px-2 py-1 text-right text-muted-foreground">
+                    {w.currentPeriod.totalInstances} instance
+                    {w.currentPeriod.totalInstances === 1 ? '' : 's'}
+                  </td>
+                  <td className="px-2 py-1 text-right text-muted-foreground">
+                    {w.futurePeriods.totalInstances} instance
+                    {w.futurePeriods.totalInstances === 1 ? '' : 's'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 

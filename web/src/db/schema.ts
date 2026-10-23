@@ -422,6 +422,11 @@ export const benefitInstances = app.table(
     portalRefusalAt: timestamp("portal_refusal_at", { withTimezone: true }),
     // Which offer was taken, for a "redeem any one" benefit. Must belong to generated_from_version (checked in app).
     chosenOptionId: uuid("chosen_option_id").references(() => benefitOptions.id, { onDelete: "set null" }),
+    // Archive flag for frequency migrations / data corrections
+    archived: boolean("archived").default(false).notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: uuid("archived_by"),
+    archiveReason: text("archive_reason"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -444,7 +449,7 @@ export const benefitInstances = app.table(
       sql`num_nonnulls(${t.benefitId}, ${t.overrideId}) = 1`,
     ),
     unique("benefit_instances_identity_key")
-      .on(t.cardId, t.benefitId, t.overrideId, t.periodStart, t.instanceNumber)
+      .on(t.cardId, t.benefitId, t.overrideId, t.periodStart, t.instanceNumber, t.archived)
       .nullsNotDistinct(),
     uniqueIndex("benefit_instances_workspace_booking_unique")
       .on(t.workspaceId, t.rupayBookingId)
@@ -484,6 +489,7 @@ export const benefitInstances = app.table(
       foreignColumns: [portalAccounts.workspaceId, portalAccounts.id],
     }).onDelete("set null"),
     index("idx_benefit_instances_portal_account").on(t.workspaceId, t.portalAccountId),
+    index("idx_benefit_instances_archived").on(t.archived),
   ],
 );
 

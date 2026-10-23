@@ -226,6 +226,7 @@ async function sweep(tx: Tx, workspaceId: string, todayStr: string) {
     UPDATE app.benefit_instances bi
        SET order_status = 'Withdrawn', updated_at = ${now}::timestamptz
      WHERE bi.workspace_id = ${workspaceId}::uuid
+       AND bi.archived = false
        AND bi.period_end >= ${todayStr}::date
        AND bi.order_status = 'Not Ordered'
        AND NOT ${ELIGIBLE(todayStr)}
@@ -234,6 +235,7 @@ async function sweep(tx: Tx, workspaceId: string, todayStr: string) {
     UPDATE app.benefit_instances bi
        SET order_status = 'Not Ordered', updated_at = ${now}::timestamptz
      WHERE bi.workspace_id = ${workspaceId}::uuid
+       AND bi.archived = false
        AND bi.period_end >= ${todayStr}::date
        AND bi.order_status = 'Withdrawn'
        AND ${ELIGIBLE(todayStr)}

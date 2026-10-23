@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   benefitInstances,
   cardHolders,
@@ -76,7 +76,7 @@ export async function getProfileView(
       ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(benefitInstances)
-        .where(eq(benefitInstances.workspaceId, ctx.workspaceId)),
+        .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false))),
     ]);
 
   return {

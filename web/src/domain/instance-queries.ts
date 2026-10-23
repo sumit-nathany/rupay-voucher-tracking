@@ -401,7 +401,7 @@ async function query(ctx: Ctx, where: SQL | undefined): Promise<InstanceListItem
         sql`lower(trim(${benefitValueOverrides.benefitName})) = lower(trim(coalesce(${benefitOptions.offerName}, ${cardBenefitOverrides.exactBenefit}, ${benefitCatalogVersions.exactBenefit})))`,
       ),
     )
-    .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), where))
+    .where(and(eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false), where))
     .orderBy(
       asc(benefitInstances.periodEnd),
       sql`lower(coalesce(${benefitCatalogVersions.benefitType}, ${cardBenefitOverrides.benefitType}, ''))`,
@@ -549,7 +549,7 @@ export async function listBenefitFilterOptions(
 ): Promise<BenefitFilterOption[]> {
   const f = parse(benefitOptsSchema, input ?? {});
 
-  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId)];
+  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false)];
   if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
   if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
 
@@ -617,7 +617,7 @@ export async function listCategoryFilterOptions(
 ): Promise<CategoryFilterOption[]> {
   const f = parse(benefitOptsSchema, input ?? {});
 
-  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId)];
+  const conds: SQL[] = [eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false)];
   if (f.holderId) conds.push(eq(cards.holderId, f.holderId));
   if (f.cardId) conds.push(eq(benefitInstances.cardId, f.cardId));
 

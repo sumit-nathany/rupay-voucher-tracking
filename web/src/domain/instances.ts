@@ -100,7 +100,7 @@ export interface RevealedCode {
 // ── internals ───────────────────────────────────────────────────────────────
 
 const scope = (ctx: Ctx, instanceId: string) =>
-  and(eq(benefitInstances.id, instanceId), eq(benefitInstances.workspaceId, ctx.workspaceId));
+  and(eq(benefitInstances.id, instanceId), eq(benefitInstances.workspaceId, ctx.workspaceId), eq(benefitInstances.archived, false));
 
 async function load(ctx: Ctx, instanceId: string): Promise<Row> {
   const [row] = await ctx.db.select().from(benefitInstances).where(scope(ctx, instanceId));
@@ -360,6 +360,7 @@ export async function updateDetails(
         .where(
           and(
             eq(benefitInstances.workspaceId, ctx.workspaceId),
+            eq(benefitInstances.archived, false),
             ne(benefitInstances.id, p.instanceId),
             sql`lower(${benefitInstances.rupayBookingId}) = lower(${trimmed})`,
           ),

@@ -197,6 +197,7 @@ async function fetchRawQueueCandidates(
         eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
         isNotNull(schema.benefitInstances.portalAccountId),
         ne(schema.benefitInstances.orderStatus, 'Not Ordered'),
+        eq(schema.benefitInstances.archived, false),
       ),
     );
 
@@ -299,6 +300,7 @@ async function fetchRawQueueCandidates(
         isNull(schema.benefitInstances.portalRefusal),
         gte(schema.benefitInstances.orderDeadline, ctx.today),
         isNull(schema.benefitInstances.soldFor),
+        eq(schema.benefitInstances.archived, false),
       ),
     );
 
