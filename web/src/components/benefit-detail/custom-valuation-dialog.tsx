@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { IndianRupee, Loader2, Sparkles, Undo2 } from 'lucide-react';
+import { Globe, IndianRupee, Loader2, Sparkles, Undo2 } from 'lucide-react';
 import {
+  changeBenefitValueAction,
   deleteBenefitValueOverrideAction,
-  upsertBenefitValueOverrideAction,
 } from '@/actions/benefit-values';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { formatMoney } from './helpers';
 
 export interface CustomValuationDialogProps {
@@ -27,6 +28,11 @@ export interface CustomValuationDialogProps {
   benefitProvider?: string | null;
   catalogDefaultValue: number | null;
   customDefaultValue: number | null;
+  isSystemAdmin?: boolean;
+  benefitId?: string | null;
+  versionId?: string | null;
+  optionId?: string | null;
+  instanceId?: string | null;
   onSaved: () => void;
 }
 
@@ -38,15 +44,22 @@ export function CustomValuationDialog({
   benefitProvider,
   catalogDefaultValue,
   customDefaultValue,
+  isSystemAdmin = false,
+  benefitId,
+  versionId,
+  optionId,
+  instanceId,
   onSaved,
 }: CustomValuationDialogProps) {
   const [val, setVal] = React.useState('');
+  const [scope, setScope] = React.useState<'workspace' | 'all_workspaces'>('workspace');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (open) {
       setVal(customDefaultValue != null ? String(customDefaultValue) : catalogDefaultValue != null ? String(catalogDefaultValue) : '');
+      setScope('workspace');
       setError(null);
     }
   }, [open, customDefaultValue, catalogDefaultValue]);
@@ -62,11 +75,16 @@ export function CustomValuationDialog({
     setBusy(true);
     setError(null);
     try {
-      await upsertBenefitValueOverrideAction({
+      await changeBenefitValueAction({
         benefitName,
-        customValue: Math.round(numVal * 100) / 100,
+        value: Math.round(numVal * 100) / 100,
+        scope,
         benefitType,
         benefitProvider,
+        benefitId,
+        versionId,
+        optionId,
+        instanceId,
       });
       onSaved();
       onOpenChange(false);
@@ -101,7 +119,9 @@ export function CustomValuationDialog({
               Benefit Valuation
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Define your own valuation for this benefit across all cards in your workspace.
+              {isSystemAdmin
+                ? 'Update valuation for this workspace or across all workspaces as super admin.'
+                : 'Define your own valuation for this benefit across all cards in your workspace.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -127,7 +147,7 @@ export function CustomValuationDialog({
 
             <div className="space-y-1.5 pt-1">
               <Label htmlFor="custom-val-input" className="text-xs font-medium">
-                My Valuation (₹)
+                {scope === 'all_workspaces' ? 'Global Catalog Value (₹)' : 'Workspace Valuation (₹)'}
               </Label>
               <div className="relative">
                 <IndianRupee className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -145,6 +165,64 @@ export function CustomValuationDialog({
                 />
               </div>
             </div>
+
+            {isSystemAdmin ? (
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs font-medium">Application Scope</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    className={cn(
+                      'flex flex-col p-2.5 rounded-lg border text-left cursor-pointer transition-colors select-none',
+                      scope === 'workspace'
+                        ? 'border-primary bg-primary/5 text-foreground'
+                        : 'border-border/60 hover:bg-muted/40 text-muted-foreground',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="val-scope"
+                      value="workspace"
+                      checked={scope === 'workspace'}
+                      onChange={() => setScope('workspace')}
+                      className="sr-only"
+                    />
+                    <span className="text-xs font-semibold">This Workspace</span>
+                    <span className="text-[10px] mt-0.5 leading-tight opacity-80">
+                      Cards in this workspace only
+                    </span>
+                  </label>
+
+                  <label
+                    className={cn(
+                      'flex flex-col p-2.5 rounded-lg border text-left cursor-pointer transition-colors select-none',
+                      scope === 'all_workspaces'
+                        ? 'border-primary bg-primary/5 text-foreground'
+                        : 'border-border/60 hover:bg-muted/40 text-muted-foreground',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="val-scope"
+                      value="all_workspaces"
+                      checked={scope === 'all_workspaces'}
+                      onChange={() => setScope('all_workspaces')}
+                      className="sr-only"
+                    />
+                    <div className="flex items-center gap-1">
+                      <Globe className="h-3 w-3 text-amber-500" />
+                      <span className="text-xs font-semibold">All Workspaces</span>
+                    </div>
+                    <span className="text-[10px] mt-0.5 leading-tight opacity-80">
+                      Catalog default for everyone
+                    </span>
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground px-1">
+                Changes apply across all cards in your workspace.
+              </p>
+            )}
 
             {error && (
               <p role="alert" className="text-xs text-destructive">

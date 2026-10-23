@@ -11,6 +11,7 @@ import {
   previewFrequencyChangeAction,
   executeFrequencyChangeAction,
 } from '@/actions/catalog-admin';
+import { changeBenefitValueAction } from '@/actions/benefit-values';
 import type { OfferKind, FrequencyChangePreview, WorkspaceImpact } from '@/domain/catalog-admin';
 import { type Frequency } from '@/lib/periods';
 import { CurationBadge } from '@/components/cards/curation-badge';
@@ -324,6 +325,13 @@ function BenefitCatalogRow({
 }) {
   const editing = mode === 'edit';
   const { run, pending, error } = useRunAction();
+  const [cashVal, setCashVal] = React.useState<string>(
+    b.defaultCashValue ? String(Number(b.defaultCashValue)) : '',
+  );
+  React.useEffect(() => {
+    setCashVal(b.defaultCashValue ? String(Number(b.defaultCashValue)) : '');
+  }, [b.defaultCashValue]);
+
   const value =
     b.defaultCashValue != null && b.defaultCashValue !== '' ? formatINR(Number(b.defaultCashValue)) : null;
   const ended = b.effectiveTo !== null;
@@ -374,6 +382,37 @@ function BenefitCatalogRow({
             <Badge variant="secondary" title="This benefit has more than one catalog version">
               {b.versionCount} versions
             </Badge>
+          )}
+          {editing && (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground font-medium">₹</span>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={cashVal}
+                onChange={(e) => setCashVal(e.target.value)}
+                placeholder="Valuation"
+                disabled={pending}
+                className="h-8 w-24 text-xs font-medium"
+                onBlur={() => {
+                  const num = Number(cashVal.trim());
+                  if (!isNaN(num) && num >= 0 && num !== (b.defaultCashValue ? Number(b.defaultCashValue) : null)) {
+                    run(async () => {
+                      await changeBenefitValueAction({
+                        benefitName: b.exactBenefit,
+                        value: num,
+                        scope: 'all_workspaces',
+                        versionId: b.versionId,
+                        benefitId: b.benefitId,
+                      });
+                      b.defaultCashValue = String(num);
+                      return true;
+                    }, 'Could not update global benefit valuation.');
+                  }
+                }}
+              />
+            </div>
           )}
           {editing && (
             <FrequencyChangeTrigger benefit={b} />

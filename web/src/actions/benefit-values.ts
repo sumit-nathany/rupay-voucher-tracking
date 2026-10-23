@@ -1,8 +1,24 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getCtx } from '@/lib/session';
+import { getCtx, isSystemAdmin } from '@/lib/session';
 import * as d from '@/domain/benefit-values';
+
+export async function changeBenefitValueAction(input: d.ChangeBenefitValueInput) {
+  const ctx = await getCtx();
+  const res = await d.changeBenefitValue(ctx, input);
+  revalidatePath('/overrides');
+  revalidatePath('/benefits');
+  revalidatePath('/dashboard');
+  revalidatePath('/admin/catalog');
+  revalidatePath('/');
+  return res;
+}
+
+export async function checkIsSystemAdminAction(): Promise<boolean> {
+  const ctx = await getCtx();
+  return isSystemAdmin(ctx.db, ctx.userId);
+}
 
 export async function listBenefitValueOverridesAction() {
   const ctx = await getCtx();

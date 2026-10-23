@@ -5,6 +5,7 @@ import {
   listBenefitValueOverridesAction,
   listDistinctWorkspaceBenefitsAction,
 } from '@/actions/benefit-values';
+import { getCtxAndUser, isSystemAdmin } from '@/lib/session';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,6 +21,8 @@ import { formatCardLabel } from '@/domain/card-label';
 export const dynamic = 'force-dynamic';
 
 export default async function OverridesPage() {
+  const { ctx } = await getCtxAndUser();
+  const isSuperAdmin = await isSystemAdmin(ctx.db, ctx.userId);
   const [overrides, cards, holders, benefitValues, distinctBenefits] = await Promise.all([
     listOverrides(),
     listCards(),
@@ -77,7 +80,7 @@ export default async function OverridesPage() {
               Define your own valuation for benefits. This custom value will replace RuPay’s catalog nominal face value across all your cards in dashboard totals and queues.
             </p>
             <div className="shrink-0">
-              <BenefitValueFormSheet distinctBenefits={distinctBenefits} />
+              <BenefitValueFormSheet distinctBenefits={distinctBenefits} isSystemAdmin={isSuperAdmin} />
             </div>
           </div>
 
@@ -116,7 +119,7 @@ export default async function OverridesPage() {
                           </div>
                         </div>
                         <div className="flex items-center justify-end gap-2 pt-3 border-t border-border/40">
-                          <BenefitValueFormSheet override={v} distinctBenefits={distinctBenefits} />
+                          <BenefitValueFormSheet override={v} distinctBenefits={distinctBenefits} isSystemAdmin={isSuperAdmin} />
                           <DeleteBenefitValueButton id={v.id} name={v.benefitName} />
                         </div>
                       </CardContent>

@@ -1,21 +1,24 @@
 'use client';
 
 import * as React from 'react';
-import { IndianRupee, Pencil, Plus } from 'lucide-react';
-import { upsertBenefitValueOverrideAction } from '@/actions/benefit-values';
+import { Globe, IndianRupee, Pencil, Plus } from 'lucide-react';
+import { changeBenefitValueAction } from '@/actions/benefit-values';
 import type { BenefitValueOverrideView, WorkspaceDistinctBenefit } from '@/domain/benefit-values';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetFooter } from '@/components/ui/sheet';
 import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
+import { cn } from '@/lib/utils';
 
 function BenefitValueFormBody({
   override,
   distinctBenefits,
+  isSystemAdmin = false,
   close,
 }: {
   override?: BenefitValueOverrideView;
   distinctBenefits: WorkspaceDistinctBenefit[];
+  isSystemAdmin?: boolean;
   close: () => void;
 }) {
   const { run, pending, error, setError } = useRunAction();
@@ -26,6 +29,7 @@ function BenefitValueFormBody({
   const [customInputName, setCustomInputName] = React.useState('');
   const [isManualInput, setIsManualInput] = React.useState(false);
   const [customValue, setCustomValue] = React.useState(override ? String(override.customValue) : '');
+  const [scope, setScope] = React.useState<'workspace' | 'all_workspaces'>('workspace');
 
   // Find info about selected benefit
   const selectedInfo = React.useMemo(() => {
@@ -87,9 +91,10 @@ function BenefitValueFormBody({
 
     const ok = await run(
       () =>
-        upsertBenefitValueOverrideAction({
+        changeBenefitValueAction({
           benefitName: finalName,
-          customValue: Math.round(val * 100) / 100,
+          value: Math.round(val * 100) / 100,
+          scope,
           benefitType:
             selectedInfo?.benefitType ??
             (selectedCategory && selectedCategory !== '__all__' && selectedCategory !== 'Other'
@@ -98,6 +103,7 @@ function BenefitValueFormBody({
             override?.benefitType ??
             null,
           benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
+          benefitId: override?.benefitId ?? null,
         }),
       'Could not save custom valuation.',
     );
@@ -251,6 +257,59 @@ function BenefitValueFormBody({
         </div>
       </Field>
 
+      {isSystemAdmin && (
+        <Field id={`${uid}-scope`} label="Application Scope" hint="Super admin capability">
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <label
+              className={cn(
+                'flex flex-col p-2.5 rounded-lg border text-left cursor-pointer transition-colors select-none text-xs',
+                scope === 'workspace'
+                  ? 'border-primary bg-primary/5 text-foreground'
+                  : 'border-border/60 hover:bg-muted/40 text-muted-foreground',
+              )}
+            >
+              <input
+                type="radio"
+                name={`${uid}-val-scope`}
+                value="workspace"
+                checked={scope === 'workspace'}
+                onChange={() => setScope('workspace')}
+                className="sr-only"
+              />
+              <span className="font-semibold">This Workspace</span>
+              <span className="text-[10px] mt-0.5 leading-tight opacity-80">
+                Cards in this workspace only
+              </span>
+            </label>
+
+            <label
+              className={cn(
+                'flex flex-col p-2.5 rounded-lg border text-left cursor-pointer transition-colors select-none text-xs',
+                scope === 'all_workspaces'
+                  ? 'border-primary bg-primary/5 text-foreground'
+                  : 'border-border/60 hover:bg-muted/40 text-muted-foreground',
+              )}
+            >
+              <input
+                type="radio"
+                name={`${uid}-val-scope`}
+                value="all_workspaces"
+                checked={scope === 'all_workspaces'}
+                onChange={() => setScope('all_workspaces')}
+                className="sr-only"
+              />
+              <div className="flex items-center gap-1">
+                <Globe className="h-3 w-3 text-amber-500" />
+                <span className="font-semibold">All Workspaces</span>
+              </div>
+              <span className="text-[10px] mt-0.5 leading-tight opacity-80">
+                Catalog default for everyone
+              </span>
+            </label>
+          </div>
+        </Field>
+      )}
+
       <ErrorText>{error}</ErrorText>
 
       <SheetFooter className="mt-auto">
@@ -265,9 +324,11 @@ function BenefitValueFormBody({
 export function BenefitValueFormSheet({
   override,
   distinctBenefits = [],
+  isSystemAdmin = false,
 }: {
   override?: BenefitValueOverrideView;
   distinctBenefits?: WorkspaceDistinctBenefit[];
+  isSystemAdmin?: boolean;
 }) {
   if (override) {
     return (
@@ -281,6 +342,7 @@ export function BenefitValueFormSheet({
           <BenefitValueFormBody
             override={override}
             distinctBenefits={distinctBenefits}
+            isSystemAdmin={isSystemAdmin}
             close={close}
           />
         )}
@@ -298,6 +360,7 @@ export function BenefitValueFormSheet({
       {(close) => (
         <BenefitValueFormBody
           distinctBenefits={distinctBenefits}
+          isSystemAdmin={isSystemAdmin}
           close={close}
         />
       )}

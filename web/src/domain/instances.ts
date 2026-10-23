@@ -7,6 +7,7 @@ import {
   benefitValueOverrides,
   cardBenefitOverrides,
   portalAccounts,
+  systemAdmins,
 } from '@/db/schema';
 import { NotFoundError, type Ctx } from '@/lib/context';
 import { decryptCode, encryptCode } from '@/lib/crypto';
@@ -82,6 +83,7 @@ export type InstanceView = Omit<Row, 'codeEncrypted'> & {
   benefitType: string;
   benefitProvider: string | null;
   portalAccountLabel: string | null;
+  isSystemAdmin?: boolean;
   availablePortalAccounts?: Array<{
     id: string;
     label: string;
@@ -108,8 +110,11 @@ async function load(ctx: Ctx, instanceId: string): Promise<Row> {
   return row;
 }
 
+const isUuid = (s: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
-  const [rowResult, accounts] = await Promise.all([
+  const [rowResult, accounts, sysAdminRow] = await Promise.all([
     ctx.db
       .select({
         instance: benefitInstances,
@@ -172,6 +177,13 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
       .from(portalAccounts)
       .where(eq(portalAccounts.workspaceId, ctx.workspaceId))
       .orderBy(asc(portalAccounts.label)),
+    isUuid(ctx.userId)
+      ? ctx.db
+          .select({ id: systemAdmins.id })
+          .from(systemAdmins)
+          .where(eq(systemAdmins.userId, ctx.userId))
+          .limit(1)
+      : Promise.resolve([]),
   ]);
 
   const [row] = rowResult;
@@ -202,6 +214,7 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
     benefitType,
     benefitProvider,
     portalAccountLabel: row.portalAccountLabel ?? null,
+    isSystemAdmin: Boolean(sysAdminRow[0]),
     availablePortalAccounts: accounts,
   };
 }

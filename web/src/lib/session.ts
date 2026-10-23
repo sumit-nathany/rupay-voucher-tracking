@@ -55,7 +55,10 @@ export async function provisionWorkspace(db: Database, userId: string): Promise<
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function isSystemAdmin(db: Database, userId: string): Promise<boolean> {
+  if (!UUID_REGEX.test(userId)) return false;
   const [row] = await db.select({ id: systemAdmins.id }).from(systemAdmins).where(eq(systemAdmins.userId, userId));
   return !!row;
 }

@@ -17,6 +17,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { CustomValuationDialog } from './custom-valuation-dialog';
+import { changeBenefitValueAction } from '@/actions/benefit-values';
 import {
   chooseOptionAction,
   getInstanceAction,
@@ -427,6 +428,11 @@ function HeroCard({
         benefitProvider={inst.benefitProvider || subtitle}
         catalogDefaultValue={inst.catalogDefaultValue}
         customDefaultValue={inst.customDefaultValue}
+        isSystemAdmin={inst.isSystemAdmin}
+        benefitId={inst.benefitId}
+        versionId={inst.generatedFromVersion}
+        optionId={inst.chosenOptionId}
+        instanceId={inst.id}
         onSaved={() => void reload()}
       />
 
@@ -868,6 +874,7 @@ function DetailsSection({
   reload: () => Promise<void>;
 }) {
   const [editing, setEditing] = React.useState(false);
+  const [cashValueScope, setCashValueScope] = React.useState<'instance' | 'workspace' | 'all_workspaces'>('instance');
   const [form, setForm] = React.useState<DetailsForm>(() => toForm(inst));
   const [errors, setErrors] = React.useState<DetailsErrors>({});
   const [serverError, setServerError] = React.useState<string | null>(null);
@@ -915,6 +922,7 @@ function DetailsSection({
 
     setForm(toForm(inst));
     setEditing(false);
+    setCashValueScope('instance');
     setErrors({});
     setServerError(null);
 
@@ -941,10 +949,26 @@ function DetailsSection({
     const scrollPos = scrollParent ? scrollParent.scrollTop : null;
 
     try {
+      if (cashValueScope !== 'instance' && r.value.cashValue !== undefined && r.value.cashValue !== null) {
+        await changeBenefitValueAction({
+          benefitName: inst.benefitName,
+          value: r.value.cashValue,
+          scope: cashValueScope,
+          instanceId: inst.id,
+          benefitId: inst.benefitId,
+          versionId: inst.generatedFromVersion,
+          optionId: inst.chosenOptionId,
+          benefitType: inst.benefitType,
+          benefitProvider: inst.benefitProvider,
+        });
+        r.value.cashValue = null;
+      }
       const v = await updateDetailsAction({ instanceId: inst.id, ...r.value });
       setForm(toForm(v));
       setEditing(false);
+      setCashValueScope('instance');
       applied(v);
+      void reload();
       if (scrollParent && scrollPos != null) {
         requestAnimationFrame(() => {
           scrollParent.scrollTop = scrollPos;
@@ -1199,25 +1223,40 @@ function DetailsSection({
                   : ''}
               </span>
             ) : (
-              <div className="relative flex items-center w-48 sm:w-52">
-                <span className="absolute left-2.5 text-xs font-medium text-muted-foreground select-none pointer-events-none">
-                  ₹
-                </span>
-                <input
-                  inputMode="decimal"
-                  type="text"
-                  value={form.cashValue}
-                  onChange={set('cashValue')}
-                  placeholder={inst.defaultCashValue != null ? String(inst.defaultCashValue) : '500'}
-                  id={`${uid}-cashValue`}
+              <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                <div className="relative flex items-center w-28 sm:w-32">
+                  <span className="absolute left-2.5 text-xs font-medium text-muted-foreground select-none pointer-events-none">
+                    ₹
+                  </span>
+                  <input
+                    inputMode="decimal"
+                    type="text"
+                    value={form.cashValue}
+                    onChange={set('cashValue')}
+                    placeholder={inst.defaultCashValue != null ? String(inst.defaultCashValue) : '500'}
+                    id={`${uid}-cashValue`}
+                    disabled={!editable || busy}
+                    aria-invalid={errors.cashValue ? true : undefined}
+                    aria-describedby={errors.cashValue ? `${uid}-cashValue-err` : undefined}
+                    className={cn(
+                      'h-8 w-full rounded-lg border border-border/60 bg-muted/30 pl-6 pr-2.5 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-muted-foreground/50',
+                      errors.cashValue && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                    )}
+                  />
+                </div>
+                <select
+                  aria-label="Scope of value change"
+                  value={cashValueScope}
+                  onChange={(e) => setCashValueScope(e.target.value as 'instance' | 'workspace' | 'all_workspaces')}
                   disabled={!editable || busy}
-                  aria-invalid={errors.cashValue ? true : undefined}
-                  aria-describedby={errors.cashValue ? `${uid}-cashValue-err` : undefined}
-                  className={cn(
-                    'h-8 w-full rounded-lg border border-border/60 bg-muted/30 pl-6 pr-2.5 text-xs font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50 placeholder:text-muted-foreground/50',
-                    errors.cashValue && 'border-destructive focus:border-destructive focus:ring-destructive/20',
+                  className="h-8 rounded-lg border border-border/60 bg-muted/30 px-2 text-[11px] font-medium text-foreground outline-none transition-all hover:bg-muted/50 focus:border-primary/50 focus:bg-background focus:ring-1 focus:ring-primary/20 shrink-0"
+                >
+                  <option value="instance">This card only</option>
+                  <option value="workspace">Entire workspace</option>
+                  {inst.isSystemAdmin && (
+                    <option value="all_workspaces">All workspaces (Super Admin)</option>
                   )}
-                />
+                </select>
               </div>
             )}
           </div>
