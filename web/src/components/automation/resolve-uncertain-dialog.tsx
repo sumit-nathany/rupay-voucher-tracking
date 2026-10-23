@@ -57,7 +57,7 @@ export function ResolveUncertainDialog({
             <DialogTitle>Reconcile Uncertain Order</DialogTitle>
           </div>
           <DialogDescription>
-            An automated submission reached the portal for <strong>{attempt.benefitName}</strong> ({attempt.cardName}), but the connection timed out or closed before receiving a confirmation response.
+            An automated submission reached the portal for <strong>{attempt.benefitProvider ? `${attempt.benefitProvider} - ${attempt.exactBenefit}` : attempt.exactBenefit}</strong> ({attempt.cardName} ••••{attempt.cardLast4}), but the connection timed out or closed before receiving a confirmation response.
           </DialogDescription>
         </DialogHeader>
 

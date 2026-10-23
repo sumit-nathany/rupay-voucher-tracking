@@ -529,4 +529,68 @@ describe('ordering-queue domain', () => {
     expect(s3?.status).toBe('available_to_map');
     expect(s3?.isMapped).toBe(false);
   });
+
+  it('does not use a needs_attention account as primary even if explicitly chosen via queue', async () => {
+    // 1. Create a second portal account and mark it as needs_attention
+    const [accountNeedsAttention] = await db.insert(schema.portalAccounts).values({
+      workspaceId: W_A,
+      label: 'attention@example.com',
+      credentialsEncrypted: 'mock_encrypted_creds',
+      status: 'needs_attention',
+      statusDetailCode: 'credentials_expired',
+    }).returning();
+
+    // 2. Get the Cult.fit instance from the queue
+    const queue = await listOrderingQueue(ctxA);
+    const cultfitItem = queue.find((q) => q.benefitProvider === 'Cult.fit');
+    expect(cultfitItem).toBeDefined();
+
+    // 3. Map the needs_attention account to the same card
+    const [cardA] = await db
+      .select()
+      .from(schema.cards)
+      .where(eq(schema.cards.workspaceId, W_A))
+      .limit(1);
+
+    // Provide valid payment details on Card A so all accounts are eligible for mapping
+    await db
+      .update(schema.cards)
+      .set({
+        paymentDetailsEncrypted: encryptPaymentDetails(
+          { version: 1, mode: 'saved_card', cvv: '123' },
+          cardA.id,
+        ),
+      })
+      .where(eq(schema.cards.id, cardA.id));
+
+    // Map the needs_attention account to Card A
+    await db.insert(schema.portalCardMappings).values({
+      workspaceId: W_A,
+      portalAccountId: accountNeedsAttention.id,
+      cardId: cardA.id,
+      active: true,
+    });
+
+    // Explicitly set the queue item's portalAccountId to the needs_attention account
+    await db
+      .update(schema.orderingQueueItems)
+      .set({ portalAccountId: accountNeedsAttention.id })
+      .where(eq(schema.orderingQueueItems.instanceId, cultfitItem!.instanceId));
+
+    // Query the queue and verify the needs_attention account is NOT used as primary
+    const refreshed = await listOrderingQueue(ctxA);
+    const item = refreshed.find((q) => q.instanceId === cultfitItem!.instanceId);
+    expect(item).toBeDefined();
+
+    // The portalAccountId should NOT be the needs_attention account — it should fall back to a connected account
+    expect(item!.portalAccountId).not.toBe(accountNeedsAttention.id);
+    // chosenPortalAccountId should be null since the explicit selection was invalid
+    expect(item!.chosenPortalAccountId).toBeNull();
+    // The needs_attention account should appear in suggestions but NOT be marked as chosen
+    const attentionSuggestion = item!.suggestedAccounts.find((a) => a.accountId === accountNeedsAttention.id);
+    expect(attentionSuggestion).toBeDefined();
+    expect(attentionSuggestion!.isChosen).toBe(false);
+    expect(attentionSuggestion!.status).toBe('needs_attention');
+    expect(attentionSuggestion!.isEligible).toBe(false);
+  });
 });

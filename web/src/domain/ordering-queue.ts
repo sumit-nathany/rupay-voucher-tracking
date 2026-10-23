@@ -470,12 +470,20 @@ async function fetchRawQueueCandidates(
     }
 
     // Check if user explicitly chose a portalAccountId for this queue item
+    // Only honor the explicit selection if the account is still connected;
+    // otherwise fall through to the auto-selected eligible account.
     const explicitQueueAccount = row.queuePortalAccountId
       ? allWorkspaceAccounts.find((a) => a.id === row.queuePortalAccountId)
       : null;
+    const effectiveExplicitAccount =
+      explicitQueueAccount && explicitQueueAccount.status === 'connected'
+        ? explicitQueueAccount
+        : null;
 
     suggestedAccounts.forEach((acc) => {
-      acc.isChosen = Boolean(row.queuePortalAccountId && acc.accountId === row.queuePortalAccountId);
+      acc.isChosen = Boolean(
+        effectiveExplicitAccount && acc.accountId === row.queuePortalAccountId
+      );
     });
 
     // If filter specified a portalAccountId, ensure that account is picked as primary
@@ -485,7 +493,7 @@ async function fetchRawQueueCandidates(
     const recommendedMappedAccount = firstEligible?.isMapped
       ? mappedAccounts.find((a) => a.id === firstEligible.accountId)
       : null;
-    const primaryAccount = explicitQueueAccount ?? matchedAccount ?? recommendedMappedAccount ?? mappedAccounts[0];
+    const primaryAccount = effectiveExplicitAccount ?? matchedAccount ?? recommendedMappedAccount ?? mappedAccounts[0];
 
     candidates.push({
       hasStoredPosition: row.queuePosition !== null && row.queuePosition !== undefined,
@@ -498,9 +506,9 @@ async function fetchRawQueueCandidates(
         holderName: row.holderName,
         bankCardTypeId: row.bankCardTypeId,
         periodLabel: row.periodLabel,
-        portalAccountId: row.queuePortalAccountId ?? primaryAccount?.id ?? null,
-        portalAccountLabel: (explicitQueueAccount ?? primaryAccount)?.label ?? null,
-        chosenPortalAccountId: row.queuePortalAccountId ?? null,
+        portalAccountId: (effectiveExplicitAccount ? row.queuePortalAccountId : null) ?? primaryAccount?.id ?? null,
+        portalAccountLabel: (effectiveExplicitAccount ?? primaryAccount)?.label ?? null,
+        chosenPortalAccountId: effectiveExplicitAccount ? row.queuePortalAccountId : null,
         portalAccounts: mappedAccounts,
         suggestedAccounts,
         benefitType,

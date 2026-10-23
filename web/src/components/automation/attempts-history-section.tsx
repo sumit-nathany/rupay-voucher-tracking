@@ -68,9 +68,13 @@ export function AttemptsHistorySection({ attempts }: { attempts: AttemptView[] }
                         {dateStr}
                       </td>
                       <td className="py-4 sm:py-5 px-5 sm:px-6">
-                        <div className="font-semibold text-sm sm:text-base text-foreground">{att.benefitName}</div>
+                        <div className="font-semibold text-sm sm:text-base text-foreground">
+                          {att.benefitProvider
+                            ? `${att.benefitProvider} - ${att.exactBenefit}`
+                            : att.exactBenefit}
+                        </div>
                         <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                          {att.cardName} • {att.holderName}
+                          {att.cardName} ••••{att.cardLast4} • {att.holderName}
                         </div>
                       </td>
                       <td className="py-4 sm:py-5 px-5 sm:px-6 font-medium text-sm sm:text-base text-foreground">

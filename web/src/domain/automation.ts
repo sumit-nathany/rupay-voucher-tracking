@@ -103,8 +103,11 @@ export interface AttemptView {
   ruleId: string | null;
   ruleName: string | null;
   instanceId: string;
-  benefitName: string;
+  benefitType: string;
+  benefitProvider: string | null;
+  exactBenefit: string;
   cardName: string;
+  cardLast4: string;
   holderName: string;
   state: 'reserved' | 'submitting' | 'confirmed' | 'failed_pre_submit' | 'uncertain' | 'resolved_no_order' | 'cancelled';
   reservedAt: string;
@@ -1120,8 +1123,11 @@ export async function listAutomationAttempts(ctx: Ctx, limit = 50): Promise<Atte
       ruleId: portalOrderAttempts.ruleId,
       ruleName: orderingRules.name,
       instanceId: portalOrderAttempts.instanceId,
-      benefitName: benefitCatalogVersions.benefitType,
+      benefitType: benefitCatalogVersions.benefitType,
+      benefitProvider: benefitCatalogVersions.benefitProvider,
+      exactBenefit: benefitCatalogVersions.exactBenefit,
       cardName: bankCardTypes.displayName,
+      cardLast4: cards.lastDigits,
       holderName: cardHolders.name,
       state: portalOrderAttempts.state,
       reservedAt: portalOrderAttempts.reservedAt,
@@ -1149,9 +1155,12 @@ export async function listAutomationAttempts(ctx: Ctx, limit = 50): Promise<Atte
     portalAccountLabel: r.portalAccountLabel,
     ruleId: r.ruleId,
     ruleName: r.ruleName,
-    instanceId: r.instanceId,
-    benefitName: r.benefitName ?? 'Custom Benefit',
+     instanceId: r.instanceId,
+     benefitType: r.benefitType ?? 'Custom Benefit',
+    benefitProvider: r.benefitProvider,
+    exactBenefit: r.exactBenefit ?? r.benefitType ?? 'Custom Benefit',
     cardName: r.cardName,
+    cardLast4: r.cardLast4,
     holderName: r.holderName,
     state: r.state as AttemptView['state'],
     reservedAt: r.reservedAt.toISOString(),
