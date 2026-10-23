@@ -1,6 +1,7 @@
 'use server';
 // Thin wrappers. `getCtx` is provided by src/lib/session.ts (written by another
 // agent): assumed signature `getCtx(): Promise<Ctx>`. Never accepts workspace_id.
+import { revalidatePath } from 'next/cache';
 import { getCtx } from '@/lib/session';
 import * as d from '@/domain/instances';
 
@@ -23,7 +24,9 @@ export async function recordSaleAction(input: Parameters<typeof d.recordSale>[1]
   return d.recordSale(await getCtx(), input);
 }
 export async function updateDetailsAction(input: Parameters<typeof d.updateDetails>[1]) {
-  return d.updateDetails(await getCtx(), input);
+  const res = await d.updateDetails(await getCtx(), input);
+  revalidatePath('/', 'layout');
+  return res;
 }
 export async function dismissPortalRefusalAction(instanceId: string) {
   return d.dismissPortalRefusal(await getCtx(), instanceId);
