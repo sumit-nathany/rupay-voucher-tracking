@@ -482,12 +482,14 @@ export function OrderQueueSection({
             // Mapped accounts for this card
             const mappedAccounts = (item.suggestedAccounts || []).filter((a) => a.isMapped);
 
+            // Only show connected accounts in the dropdown (exclude needs_attention, paused, etc.)
+            const eligibleMappedAccounts = mappedAccounts.filter((a) => a.isEligible);
+
             // Active/selected redemption account
             const activeAccount = item.chosenPortalAccountId
-              ? item.suggestedAccounts?.find((a) => a.accountId === item.chosenPortalAccountId)
+              ? item.suggestedAccounts?.find((a) => a.accountId === item.chosenPortalAccountId && a.isEligible)
               : item.suggestedAccounts?.find((a) => a.isRecommended) ||
                 mappedAccounts.find((a) => a.isEligible) ||
-                mappedAccounts[0] ||
                 null;
 
             // Status badge for the active redemption account
@@ -535,6 +537,15 @@ export function OrderQueueSection({
                   className="border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400 gap-1 text-xs font-medium"
                 >
                   <AlertCircle className="h-3 w-3" /> Missing CVV
+                </Badge>
+              );
+            } else if (activeAccount.status === 'needs_attention') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400 gap-1 text-xs font-medium"
+                >
+                  <AlertTriangle className="h-3 w-3" /> Needs Attention
                 </Badge>
               );
             } else {
@@ -747,7 +758,7 @@ export function OrderQueueSection({
                       <option value="">
                         Auto-select ({activeAccount?.accountLabel || 'First eligible'})
                       </option>
-                      {mappedAccounts.map((acc) => {
+                      {eligibleMappedAccounts.map((acc) => {
                         const statusLabel =
                           acc.status === 'ready'
                             ? 'Ready'
