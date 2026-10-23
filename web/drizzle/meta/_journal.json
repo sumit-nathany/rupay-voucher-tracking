@@ -190,6 +190,13 @@
       "when": 1792578177286,
       "tag": "0026_first_mongu",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792580000000,
+      "tag": "0027_clear_stale_queue_account",
+      "breakpoints": true
     }
   ]
 }
