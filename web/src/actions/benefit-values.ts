@@ -10,6 +10,18 @@ export interface ActionResult<T = unknown> {
   error?: string;
 }
 
+function formatActionError(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    const cause = (err as { cause?: unknown }).cause;
+    const causeMsg = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : null;
+    if (causeMsg && !err.message.includes(causeMsg)) {
+      return `${err.message} (${causeMsg})`;
+    }
+    return err.message;
+  }
+  return fallback;
+}
+
 export async function changeBenefitValueAction(
   input: d.ChangeBenefitValueInput,
 ): Promise<ActionResult<d.ChangeBenefitValueResult>> {
@@ -22,7 +34,7 @@ export async function changeBenefitValueAction(
     console.error('[changeBenefitValueAction]', err);
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Could not save benefit valuation',
+      error: formatActionError(err, 'Could not save benefit valuation'),
     };
   }
 }
@@ -57,7 +69,7 @@ export async function upsertBenefitValueOverrideAction(input: {
     console.error('[upsertBenefitValueOverrideAction]', err);
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Could not save benefit valuation',
+      error: formatActionError(err, 'Could not save benefit valuation'),
     };
   }
 }
@@ -75,7 +87,7 @@ export async function deleteBenefitValueOverrideAction(input: {
     console.error('[deleteBenefitValueOverrideAction]', err);
     return {
       success: false,
-      error: err instanceof Error ? err.message : 'Could not delete benefit valuation override',
+      error: formatActionError(err, 'Could not delete benefit valuation override'),
     };
   }
 }
