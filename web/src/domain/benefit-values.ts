@@ -15,6 +15,10 @@ export class ValidationError extends Error {}
 const uuid = z.string().uuid();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (s: string) => UUID_REGEX.test(s);
+const optionalUuid = z.preprocess(
+  (val) => (typeof val === 'string' && (val.trim() === '' || val === 'null' || val === 'undefined') ? null : val),
+  uuid.nullable().optional(),
+);
 const money = z.number().finite().min(0).max(99_999_999.99);
 const toMoney = (n: number) => n.toFixed(2);
 const num = (s: string | number | null | undefined): number | null => (s == null ? null : Number(s));
@@ -24,11 +28,11 @@ const upsertInput = z.object({
   customValue: money,
   benefitType: z.string().trim().max(200).nullable().optional(),
   benefitProvider: z.string().trim().max(200).nullable().optional(),
-  benefitId: uuid.nullable().optional(),
+  benefitId: optionalUuid,
 });
 
 const deleteInput = z.object({
-  id: uuid.optional(),
+  id: optionalUuid,
   benefitName: z.string().trim().min(1).optional(),
 }).refine((data) => Boolean(data.id || data.benefitName), {
   message: 'Either id or benefitName must be provided',
@@ -122,6 +126,16 @@ export async function upsertBenefitValueOverride(
       benefitProvider: p.benefitProvider ?? null,
       benefitId: p.benefitId ?? null,
     })
+    .onConflictDoUpdate({
+      target: [benefitValueOverrides.workspaceId, benefitValueOverrides.benefitName],
+      set: {
+        customValue: toMoney(p.customValue),
+        benefitType: p.benefitType ?? null,
+        benefitProvider: p.benefitProvider ?? null,
+        benefitId: p.benefitId ?? null,
+        updatedAt: new Date(),
+      },
+    })
     .returning();
 
   return {
@@ -162,10 +176,10 @@ export const changeBenefitValueInput = z.object({
   benefitName: z.string().trim().min(1, 'Benefit name is required').max(500),
   value: money,
   scope: z.enum(['workspace', 'all_workspaces', 'instance']),
-  instanceId: uuid.nullable().optional(),
-  benefitId: uuid.nullable().optional(),
-  versionId: uuid.nullable().optional(),
-  optionId: uuid.nullable().optional(),
+  instanceId: optionalUuid,
+  benefitId: optionalUuid,
+  versionId: optionalUuid,
+  optionId: optionalUuid,
   benefitType: z.string().trim().max(200).nullable().optional(),
   benefitProvider: z.string().trim().max(200).nullable().optional(),
   clearInstanceOverrides: z.boolean().optional().default(true),
@@ -316,6 +330,13 @@ export async function changeBenefitValue(
         .where(sql`lower(trim(${benefitOptions.offerName})) = lower(trim(${normalizedName}))`)
         .returning({ id: benefitOptions.id });
       catalogUpdates += matchingOptions.length;
+
+      const matchingCardOverrides = await tx
+        .update(cardBenefitOverrides)
+        .set({ defaultCashValue: moneyValue })
+        .where(sql`lower(trim(${cardBenefitOverrides.exactBenefit})) = lower(trim(${normalizedName}))`)
+        .returning({ id: cardBenefitOverrides.id });
+      catalogUpdates += matchingCardOverrides.length;
 
       // Delete workspace overrides across all workspaces so everyone gets the new catalog value
       await tx

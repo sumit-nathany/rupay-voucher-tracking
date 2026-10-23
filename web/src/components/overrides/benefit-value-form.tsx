@@ -90,8 +90,8 @@ function BenefitValueFormBody({
     }
 
     const ok = await run(
-      () =>
-        changeBenefitValueAction({
+      async () => {
+        const res = await changeBenefitValueAction({
           benefitName: finalName,
           value: Math.round(val * 100) / 100,
           scope,
@@ -104,7 +104,12 @@ function BenefitValueFormBody({
             null,
           benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
           benefitId: override?.benefitId ?? null,
-        }),
+        });
+        if (!res.success) {
+          throw new Error(res.error);
+        }
+        return res.data;
+      },
       'Could not save custom valuation.',
     );
 

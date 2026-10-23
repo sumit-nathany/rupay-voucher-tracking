@@ -345,5 +345,24 @@ describe('benefit-values domain', () => {
         }),
       ).rejects.toBeInstanceOf(ValidationError);
     });
+
+    it('gracefully normalizes empty string UUIDs without throwing invalid uuid errors', async () => {
+      const { ctx1 } = await seed();
+
+      const res = await changeBenefitValue(ctx1, {
+        benefitName: 'BookMyShow ₹250 Voucher',
+        value: 199,
+        scope: 'workspace',
+        instanceId: '' as unknown as string,
+        benefitId: '' as unknown as string,
+        versionId: 'null' as unknown as string,
+        optionId: 'undefined' as unknown as string,
+      });
+
+      expect(res.value).toBe(199);
+      const overrides = await listBenefitValueOverrides(ctx1);
+      expect(overrides[0].customValue).toBe(199);
+      expect(overrides[0].benefitId).toBeNull();
+    });
   });
 });

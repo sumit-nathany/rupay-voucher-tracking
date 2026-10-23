@@ -950,7 +950,7 @@ function DetailsSection({
 
     try {
       if (cashValueScope !== 'instance' && r.value.cashValue !== undefined && r.value.cashValue !== null) {
-        await changeBenefitValueAction({
+        const valRes = await changeBenefitValueAction({
           benefitName: inst.benefitName,
           value: r.value.cashValue,
           scope: cashValueScope,
@@ -961,6 +961,9 @@ function DetailsSection({
           benefitType: inst.benefitType,
           benefitProvider: inst.benefitProvider,
         });
+        if (!valRes.success) {
+          throw new Error(valRes.error);
+        }
         r.value.cashValue = null;
       }
       const v = await updateDetailsAction({ instanceId: inst.id, ...r.value });

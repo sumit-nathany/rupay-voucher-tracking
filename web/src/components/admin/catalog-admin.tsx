@@ -399,13 +399,16 @@ function BenefitCatalogRow({
                   const num = Number(cashVal.trim());
                   if (!isNaN(num) && num >= 0 && num !== (b.defaultCashValue ? Number(b.defaultCashValue) : null)) {
                     run(async () => {
-                      await changeBenefitValueAction({
+                      const res = await changeBenefitValueAction({
                         benefitName: b.exactBenefit,
                         value: num,
                         scope: 'all_workspaces',
                         versionId: b.versionId,
                         benefitId: b.benefitId,
                       });
+                      if (!res.success) {
+                        throw new Error(res.error);
+                      }
                       b.defaultCashValue = String(num);
                       return true;
                     }, 'Could not update global benefit valuation.');

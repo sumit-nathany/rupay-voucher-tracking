@@ -75,7 +75,7 @@ export function CustomValuationDialog({
     setBusy(true);
     setError(null);
     try {
-      await changeBenefitValueAction({
+      const res = await changeBenefitValueAction({
         benefitName,
         value: Math.round(numVal * 100) / 100,
         scope,
@@ -86,6 +86,9 @@ export function CustomValuationDialog({
         optionId,
         instanceId,
       });
+      if (!res.success) {
+        throw new Error(res.error);
+      }
       onSaved();
       onOpenChange(false);
     } catch (err) {
@@ -99,7 +102,10 @@ export function CustomValuationDialog({
     setBusy(true);
     setError(null);
     try {
-      await deleteBenefitValueOverrideAction({ benefitName });
+      const res = await deleteBenefitValueOverrideAction({ benefitName });
+      if (!res.success) {
+        throw new Error(res.error);
+      }
       onSaved();
       onOpenChange(false);
     } catch (err) {
