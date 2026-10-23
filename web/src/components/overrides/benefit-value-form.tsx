@@ -1,13 +1,14 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { Globe, IndianRupee, Pencil, Plus } from 'lucide-react';
 import { changeBenefitValueAction } from '@/actions/benefit-values';
 import type { BenefitValueOverrideView, WorkspaceDistinctBenefit } from '@/domain/benefit-values';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SheetFooter } from '@/components/ui/sheet';
-import { ErrorText, Field, FormSheet, SubmitButton, useRunAction } from '@/components/holders/form-kit';
+import { ErrorText, Field, FormSheet, SubmitButton } from '@/components/holders/form-kit';
 import { cn } from '@/lib/utils';
 
 function BenefitValueFormBody({
@@ -21,7 +22,9 @@ function BenefitValueFormBody({
   isSystemAdmin?: boolean;
   close: () => void;
 }) {
-  const { run, pending, error, setError } = useRunAction();
+  const router = useRouter();
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const editing = Boolean(override);
 
   const uid = React.useId();
@@ -89,31 +92,38 @@ function BenefitValueFormBody({
       return;
     }
 
-    const ok = await run(
-      async () => {
-        const res = await changeBenefitValueAction({
-          benefitName: finalName,
-          value: Math.round(val * 100) / 100,
-          scope,
-          benefitType:
-            selectedInfo?.benefitType ??
-            (selectedCategory && selectedCategory !== '__all__' && selectedCategory !== 'Other'
-              ? selectedCategory
-              : null) ??
-            override?.benefitType ??
-            null,
-          benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
-          benefitId: override?.benefitId ?? null,
-        });
-        if (!res.success) {
-          throw new Error(res.error);
-        }
-        return res.data;
-      },
-      'Could not save custom valuation.',
-    );
+    setPending(true);
+    setError(null);
 
-    if (ok) close();
+    try {
+      const res = await changeBenefitValueAction({
+        benefitName: finalName,
+        value: Math.round(val * 100) / 100,
+        scope,
+        benefitType:
+          selectedInfo?.benefitType ??
+          (selectedCategory && selectedCategory !== '__all__' && selectedCategory !== 'Other'
+            ? selectedCategory
+            : null) ??
+          override?.benefitType ??
+          null,
+        benefitProvider: selectedInfo?.benefitProvider ?? override?.benefitProvider ?? null,
+        benefitId: override?.benefitId ?? null,
+      });
+
+      if (!res.success) {
+        setError(res.error || 'Could not save custom valuation.');
+        return;
+      }
+
+      router.refresh();
+      close();
+    } catch (err: unknown) {
+      console.error('[BenefitValueFormBody]', err);
+      setError(err instanceof Error ? err.message : 'Could not save custom valuation.');
+    } finally {
+      setPending(false);
+    }
   }
 
   return (

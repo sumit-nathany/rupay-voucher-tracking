@@ -110,6 +110,10 @@ export async function upsertBenefitValueOverride(
       )
       .returning();
 
+    if (!updated) {
+      throw new Error('Failed to update benefit value override');
+    }
+
     return {
       ...updated,
       customValue: Number(updated.customValue),
@@ -137,6 +141,10 @@ export async function upsertBenefitValueOverride(
       },
     })
     .returning();
+
+  if (!inserted) {
+    throw new Error('Failed to insert benefit value override');
+  }
 
   return {
     ...inserted,

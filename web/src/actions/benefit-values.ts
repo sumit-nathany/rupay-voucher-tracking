@@ -16,11 +16,7 @@ export async function changeBenefitValueAction(
   try {
     const ctx = await getCtx();
     const res = await d.changeBenefitValue(ctx, input);
-    revalidatePath('/overrides');
-    revalidatePath('/benefits');
-    revalidatePath('/dashboard');
-    revalidatePath('/admin/catalog');
-    revalidatePath('/');
+    revalidatePath('/', 'layout');
     return { success: true, data: res };
   } catch (err: unknown) {
     console.error('[changeBenefitValueAction]', err);
@@ -55,10 +51,7 @@ export async function upsertBenefitValueOverrideAction(input: {
   try {
     const ctx = await getCtx();
     const res = await d.upsertBenefitValueOverride(ctx, input);
-    revalidatePath('/overrides');
-    revalidatePath('/benefits');
-    revalidatePath('/dashboard');
-    revalidatePath('/');
+    revalidatePath('/', 'layout');
     return { success: true, data: res };
   } catch (err: unknown) {
     console.error('[upsertBenefitValueOverrideAction]', err);
@@ -76,10 +69,7 @@ export async function deleteBenefitValueOverrideAction(input: {
   try {
     const ctx = await getCtx();
     await d.deleteBenefitValueOverride(ctx, input);
-    revalidatePath('/overrides');
-    revalidatePath('/benefits');
-    revalidatePath('/dashboard');
-    revalidatePath('/');
+    revalidatePath('/', 'layout');
     return { success: true };
   } catch (err: unknown) {
     console.error('[deleteBenefitValueOverrideAction]', err);
