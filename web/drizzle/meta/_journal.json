@@ -211,6 +211,13 @@
       "when": 1792773000000,
       "tag": "0029_grant_benefit_value_overrides",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792774000000,
+      "tag": "0030_fix_pick_one_catalog_valuations",
+      "breakpoints": true
     }
   ]
 }

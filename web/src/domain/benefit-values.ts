@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   benefitCatalogVersions,
@@ -11,6 +11,10 @@ import {
 import { AuthzError, NotFoundError, type Ctx } from '@/lib/context';
 
 export class ValidationError extends Error {}
+
+export function isPickOnePlaceholder(name: string): boolean {
+  return /^any\s+one\s+of\s+\d+\s+offers?$/i.test(name.trim());
+}
 
 const uuid = z.string().uuid();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -79,6 +83,12 @@ export async function upsertBenefitValueOverride(
 ): Promise<BenefitValueOverrideView> {
   const p = upsertInput.parse(input);
   const normalizedName = p.benefitName.trim();
+
+  if (isPickOnePlaceholder(normalizedName)) {
+    throw new ValidationError(
+      'Cannot set valuation override on a placeholder option group. Please select an individual benefit offer.',
+    );
+  }
 
   // Look for existing row in this workspace (case-insensitive trim match)
   const [existing] = await ctx.db
@@ -249,6 +259,12 @@ export async function changeBenefitValue(
   }
 
   if (p.scope === 'workspace') {
+    if (isPickOnePlaceholder(normalizedName)) {
+      throw new ValidationError(
+        'Cannot set valuation override on a placeholder option group. Please select an individual benefit offer.',
+      );
+    }
+
     await upsertBenefitValueOverride(ctx, {
       benefitName: normalizedName,
       customValue: p.value,
@@ -325,26 +341,42 @@ export async function changeBenefitValue(
         catalogUpdates += benRes.length;
       }
 
-      const matchingVersions = await tx
-        .update(benefitCatalogVersions)
-        .set({ defaultCashValue: moneyValue })
-        .where(sql`lower(trim(${benefitCatalogVersions.exactBenefit})) = lower(trim(${normalizedName}))`)
-        .returning({ id: benefitCatalogVersions.id });
-      catalogUpdates += matchingVersions.length;
+      if (!isPickOnePlaceholder(normalizedName)) {
+        const versionWhere = p.benefitType
+          ? and(
+              sql`lower(trim(${benefitCatalogVersions.exactBenefit})) = lower(trim(${normalizedName}))`,
+              sql`lower(trim(${benefitCatalogVersions.benefitType})) = lower(trim(${p.benefitType}))`,
+            )
+          : sql`lower(trim(${benefitCatalogVersions.exactBenefit})) = lower(trim(${normalizedName}))`;
 
-      const matchingOptions = await tx
-        .update(benefitOptions)
-        .set({ cashValue: moneyValue })
-        .where(sql`lower(trim(${benefitOptions.offerName})) = lower(trim(${normalizedName}))`)
-        .returning({ id: benefitOptions.id });
-      catalogUpdates += matchingOptions.length;
+        const matchingVersions = await tx
+          .update(benefitCatalogVersions)
+          .set({ defaultCashValue: moneyValue })
+          .where(versionWhere)
+          .returning({ id: benefitCatalogVersions.id });
+        catalogUpdates += matchingVersions.length;
 
-      const matchingCardOverrides = await tx
-        .update(cardBenefitOverrides)
-        .set({ defaultCashValue: moneyValue })
-        .where(sql`lower(trim(${cardBenefitOverrides.exactBenefit})) = lower(trim(${normalizedName}))`)
-        .returning({ id: cardBenefitOverrides.id });
-      catalogUpdates += matchingCardOverrides.length;
+        const matchingOptions = await tx
+          .update(benefitOptions)
+          .set({ cashValue: moneyValue })
+          .where(sql`lower(trim(${benefitOptions.offerName})) = lower(trim(${normalizedName}))`)
+          .returning({ id: benefitOptions.id });
+        catalogUpdates += matchingOptions.length;
+
+        const cardOverrideWhere = p.benefitType
+          ? and(
+              sql`lower(trim(${cardBenefitOverrides.exactBenefit})) = lower(trim(${normalizedName}))`,
+              sql`lower(trim(${cardBenefitOverrides.benefitType})) = lower(trim(${p.benefitType}))`,
+            )
+          : sql`lower(trim(${cardBenefitOverrides.exactBenefit})) = lower(trim(${normalizedName}))`;
+
+        const matchingCardOverrides = await tx
+          .update(cardBenefitOverrides)
+          .set({ defaultCashValue: moneyValue })
+          .where(cardOverrideWhere)
+          .returning({ id: cardBenefitOverrides.id });
+        catalogUpdates += matchingCardOverrides.length;
+      }
 
       // Delete workspace overrides across all workspaces so everyone gets the new catalog value
       await tx
@@ -385,6 +417,7 @@ export async function listDistinctWorkspaceBenefits(ctx: Ctx): Promise<Workspace
         overrideType: cardBenefitOverrides.benefitType,
         overrideProvider: cardBenefitOverrides.benefitProvider,
         overrideValue: cardBenefitOverrides.defaultCashValue,
+        versionId: benefitCatalogVersions.id,
         versionName: benefitCatalogVersions.exactBenefit,
         versionType: benefitCatalogVersions.benefitType,
         versionProvider: benefitCatalogVersions.benefitProvider,
@@ -408,6 +441,35 @@ export async function listDistinctWorkspaceBenefits(ctx: Ctx): Promise<Workspace
     listBenefitValueOverrides(ctx),
   ]);
 
+  const versionIds = Array.from(
+    new Set(
+      instanceRows
+        .filter((r) => r.fromOverride == null && r.versionId != null)
+        .map((r) => r.versionId as string),
+    ),
+  );
+
+  const versionOptions =
+    versionIds.length > 0
+      ? await ctx.db
+          .select({
+            id: benefitOptions.id,
+            versionId: benefitOptions.versionId,
+            offerName: benefitOptions.offerName,
+            provider: benefitOptions.provider,
+            cashValue: benefitOptions.cashValue,
+          })
+          .from(benefitOptions)
+          .where(inArray(benefitOptions.versionId, versionIds))
+      : [];
+
+  const optionsByVersion = new Map<string, typeof versionOptions>();
+  for (const opt of versionOptions) {
+    const list = optionsByVersion.get(opt.versionId) ?? [];
+    list.push(opt);
+    optionsByVersion.set(opt.versionId, list);
+  }
+
   const overrideByName = new Map<string, BenefitValueOverrideView>();
   for (const o of overrides) {
     overrideByName.set(o.benefitName.toLowerCase().trim(), o);
@@ -417,10 +479,40 @@ export async function listDistinctWorkspaceBenefits(ctx: Ctx): Promise<Workspace
 
   for (const r of instanceRows) {
     const isOverride = r.fromOverride != null;
-    const hasChosen = !isOverride && r.chosenName != null;
 
+    if (!isOverride && r.versionId && optionsByVersion.has(r.versionId)) {
+      // Pick-one benefit: unpack all individual options from this catalog version
+      const opts = optionsByVersion.get(r.versionId)!;
+      for (const opt of opts) {
+        const name = opt.offerName?.trim();
+        if (!name || isPickOnePlaceholder(name)) continue;
+        const key = name.toLowerCase();
+        if (distinct.has(key)) continue;
+
+        const type = (r.versionType ?? 'Benefit').trim();
+        const provider = opt.provider?.trim() ?? null;
+        const catalogValue = opt.cashValue != null ? Number(opt.cashValue) : null;
+        const ov = overrideByName.get(key);
+        const customValue = ov ? ov.customValue : null;
+        const effectiveValue = customValue ?? catalogValue ?? 0;
+
+        distinct.set(key, {
+          benefitName: name,
+          benefitType: type,
+          benefitProvider: provider,
+          catalogValue,
+          customValue,
+          effectiveValue,
+          overrideId: ov ? ov.id : null,
+        });
+      }
+      continue;
+    }
+
+    // Regular benefit or override
+    const hasChosen = !isOverride && r.chosenName != null;
     const name = (hasChosen ? r.chosenName : isOverride ? r.overrideName : r.versionName)?.trim();
-    if (!name) continue;
+    if (!name || isPickOnePlaceholder(name)) continue;
 
     const key = name.toLowerCase();
     if (distinct.has(key)) continue;

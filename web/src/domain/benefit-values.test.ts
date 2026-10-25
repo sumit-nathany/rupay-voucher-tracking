@@ -3,6 +3,7 @@ import {
   bankCardTypes,
   benefitCatalogVersions,
   benefitInstances,
+  benefitOptions,
   benefits,
   cardHolders,
   cards,
@@ -129,7 +130,7 @@ describe('benefit-values domain', () => {
       today: '2026-10-11',
     };
 
-    return { db, ctx1, ctx2, superCtx, b1, v1, card1, card2, inst1, inst2 };
+    return { db, ctx1, ctx2, superCtx, cardType, b1, v1, card1, card2, inst1, inst2 };
   }
 
   it('upserts and lists custom benefit valuations per workspace with tenant isolation', async () => {
@@ -217,6 +218,103 @@ describe('benefit-values domain', () => {
       effectiveValue: 175,
     });
     expect(distinctAfter[0].overrideId).not.toBeNull();
+  });
+
+  it('unpacks individual options for pick-one benefits and excludes generic placeholder text', async () => {
+    const { db, ctx1, cardType, card1 } = await seed();
+
+    // Create a pick-one Health Check Up benefit with 2 options
+    const [healthBen] = await db.insert(benefits).values({ bankCardTypeId: cardType.id }).returning();
+    const [healthVer] = await db
+      .insert(benefitCatalogVersions)
+      .values({
+        benefitId: healthBen.id,
+        benefitType: 'Health Check Up',
+        benefitProvider: null,
+        exactBenefit: 'Any one of 2 offers',
+        frequency: 'Annual',
+        instanceCount: 1,
+        defaultCashValue: '899.00',
+        effectiveFrom: '2026-01-01',
+      })
+      .returning();
+
+    await db.insert(benefitOptions).values([
+      {
+        versionId: healthVer.id,
+        provider: 'Thyrocare',
+        offerName: 'Aarogyam Basic 2 Package',
+        cashValue: '899.00',
+        sortOrder: 0,
+      },
+      {
+        versionId: healthVer.id,
+        provider: 'SRL Diagnostics',
+        offerName: 'Healthcare Test Package',
+        cashValue: '999.00',
+        sortOrder: 1,
+      },
+    ]);
+
+    // Unordered instance with chosenOptionId = null
+    await db.insert(benefitInstances).values({
+      workspaceId: ctx1.workspaceId,
+      cardId: card1.id,
+      bankCardTypeId: cardType.id,
+      benefitId: healthBen.id,
+      generatedFromVersion: healthVer.id,
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      periodLabel: '2026',
+      instanceNumber: 1,
+      orderDeadline: '2026-12-31',
+      chosenOptionId: null,
+    });
+
+    const distinct = await listDistinctWorkspaceBenefits(ctx1);
+    const names = distinct.map((d) => d.benefitName);
+
+    // Placeholder string MUST NOT be present
+    expect(names).not.toContain('Any one of 2 offers');
+
+    // Both individual options MUST be present
+    expect(names).toContain('Aarogyam Basic 2 Package');
+    expect(names).toContain('Healthcare Test Package');
+
+    const thyrocare = distinct.find((d) => d.benefitName === 'Aarogyam Basic 2 Package');
+    expect(thyrocare).toMatchObject({
+      benefitType: 'Health Check Up',
+      benefitProvider: 'Thyrocare',
+      catalogValue: 899,
+      effectiveValue: 899,
+    });
+
+    const srl = distinct.find((d) => d.benefitName === 'Healthcare Test Package');
+    expect(srl).toMatchObject({
+      benefitType: 'Health Check Up',
+      benefitProvider: 'SRL Diagnostics',
+      catalogValue: 999,
+      effectiveValue: 999,
+    });
+  });
+
+  it('rejects setting custom valuation on placeholder option groups', async () => {
+    const { ctx1 } = await seed();
+
+    await expect(
+      upsertBenefitValueOverride(ctx1, {
+        benefitName: 'Any one of 2 offers',
+        customValue: 500,
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
+
+    await expect(
+      changeBenefitValue(ctx1, {
+        benefitName: 'Any one of 3 offers',
+        value: 500,
+        scope: 'workspace',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   describe('changeBenefitValue mechanism', () => {
