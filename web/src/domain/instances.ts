@@ -71,6 +71,13 @@ const codeInput = z
 
 // ── types ───────────────────────────────────────────────────────────────────
 
+export interface BenefitOptionView {
+  id: string;
+  provider: string;
+  offerName: string;
+  cashValue: number | null;
+}
+
 type Row = typeof benefitInstances.$inferSelect;
 /** Instance as returned to callers: ciphertext is never exposed, only whether a code exists. */
 export type InstanceView = Omit<Row, 'codeEncrypted'> & {
@@ -90,6 +97,7 @@ export type InstanceView = Omit<Row, 'codeEncrypted'> & {
     phoneNumber: string | null;
     status: string;
   }>;
+  options?: BenefitOptionView[];
 };
 
 export interface RevealedCode {
@@ -112,6 +120,26 @@ async function load(ctx: Ctx, instanceId: string): Promise<Row> {
 
 const isUuid = (s: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+const optionsByVersionCache = new Map<string, BenefitOptionView[]>();
+
+async function getCachedVersionOptions(ctx: Ctx, versionId: string): Promise<BenefitOptionView[]> {
+  const cached = optionsByVersionCache.get(versionId);
+  if (cached) return cached;
+  const opts = await ctx.db
+    .select()
+    .from(benefitOptions)
+    .where(eq(benefitOptions.versionId, versionId))
+    .orderBy(asc(benefitOptions.sortOrder), asc(benefitOptions.provider));
+  const mapped = opts.map((o) => ({
+    id: o.id,
+    provider: o.provider,
+    offerName: o.offerName,
+    cashValue: o.cashValue == null ? null : Number(o.cashValue),
+  }));
+  optionsByVersionCache.set(versionId, mapped);
+  return mapped;
+}
 
 async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
   const [rowResult, accounts, sysAdminRow] = await Promise.all([
@@ -203,6 +231,8 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
   const benefitType = (fromOverride ? row.oType : row.vType) ?? '';
   const benefitProvider = (chosen ? row.cProvider : fromOverride ? row.oProvider : row.vProvider) ?? null;
 
+  const options = rest.generatedFromVersion ? await getCachedVersionOptions(ctx, rest.generatedFromVersion) : [];
+
   return {
     ...rest,
     hasCode: codeEncrypted != null,
@@ -216,6 +246,7 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
     portalAccountLabel: row.portalAccountLabel ?? null,
     isSystemAdmin: Boolean(sysAdminRow[0]),
     availablePortalAccounts: accounts,
+    options,
   };
 }
 
@@ -450,29 +481,12 @@ export async function setCode(
 
 // ── "redeem any one" choice ─────────────────────────────────────────────────
 
-export interface BenefitOptionView {
-  id: string;
-  provider: string;
-  offerName: string;
-  cashValue: number | null;
-}
-
 /** The offers to choose from for this instance; empty for an ordinary benefit. */
 export async function getInstanceOptions(ctx: Ctx, instanceId: string): Promise<BenefitOptionView[]> {
   const { instanceId: id } = idInput.parse({ instanceId });
   const row = await load(ctx, id);
   if (!row.generatedFromVersion) return [];
-  const opts = await ctx.db
-    .select()
-    .from(benefitOptions)
-    .where(eq(benefitOptions.versionId, row.generatedFromVersion))
-    .orderBy(asc(benefitOptions.sortOrder), asc(benefitOptions.provider));
-  return opts.map((o) => ({
-    id: o.id,
-    provider: o.provider,
-    offerName: o.offerName,
-    cashValue: o.cashValue == null ? null : Number(o.cashValue),
-  }));
+  return getCachedVersionOptions(ctx, row.generatedFromVersion);
 }
 
 /**

@@ -35,7 +35,7 @@ import { ColumnPicker } from './column-picker';
 
 interface RowProps {
   it: InstanceListItem;
-  onOpen: (id: string, l?: { title: string; subtitle: string }) => void;
+  onOpen: (id: string, l?: { title: string; subtitle: string }, initial?: InstanceListItem) => void;
   activeColumns: ColumnDefinition[];
   gridTemplate: string;
   hasCol: (id: ColumnId) => boolean;
@@ -54,10 +54,14 @@ function Row({ it, onOpen, activeColumns, gridTemplate, hasCol }: RowProps) {
       <button
         type="button"
         onClick={() =>
-          onOpen(it.id, {
-            title: `${it.benefitType}: ${benefitLabel(it)}`,
-            subtitle: `${cardLabel}${it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}`,
-          })
+          onOpen(
+            it.id,
+            {
+              title: `${it.benefitType}: ${benefitLabel(it)}`,
+              subtitle: `${cardLabel}${it.rupayBookingId ? ` · Booking: ${it.rupayBookingId}` : ''}`,
+            },
+            it,
+          )
         }
         className={cn(
           'block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
@@ -281,8 +285,14 @@ function Row({ it, onOpen, activeColumns, gridTemplate, hasCol }: RowProps) {
   );
 }
 
-export function BenefitList({ items }: { items: InstanceListItem[] }) {
-  const { open, drawer } = useBenefitDrawer();
+export function BenefitList({
+  items,
+  portalAccounts,
+}: {
+  items: InstanceListItem[];
+  portalAccounts?: Array<{ id: string; label: string; phoneNumber?: string | null; status?: string }>;
+}) {
+  const { open, drawer } = useBenefitDrawer({ portalAccounts });
   const sp = useSearchParams();
   const sort = parseSort(sp.get('sort'));
   const lifetime = isLifetimeScope({ lifetime: sp.get('lifetime') ?? undefined });

@@ -28,12 +28,14 @@ export async function BenefitsContent({
   filtered,
   lifetime = false,
   searchScope = 'current',
+  portalAccounts,
 }: {
   view: ViewedPeriod;
   filters: BenefitFilters;
   filtered: boolean;
   lifetime?: boolean;
   searchScope?: 'current' | 'all';
+  portalAccounts?: Array<{ id: string; label: string; phoneNumber?: string | null; status?: string }>;
 }) {
   let items: InstanceListItem[];
   const isAll = (searchScope === 'all' || filters.searchScope === 'all') && Boolean(filters.search);
@@ -66,5 +68,5 @@ export async function BenefitsContent({
       />
     );
   }
-  return <BenefitList items={items} />;
+  return <BenefitList items={items} portalAccounts={portalAccounts} />;
 }

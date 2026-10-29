@@ -55,6 +55,8 @@ import {
   type DetailsForm,
 } from './helpers';
 
+const instanceCache = new Map<string, InstanceView>();
+
 // Props contract is relied on by the Benefits page. Do not change.
 export interface BenefitDrawerProps {
   instanceId: string | null;
@@ -65,10 +67,16 @@ export interface BenefitDrawerProps {
   /** Optional names from the list row; the instance row itself only carries ids. */
   title?: string;
   subtitle?: string;
+  /** Optional initial data to render instantly without waiting for network fetch */
+  initialData?: InstanceView | null;
 }
 
-export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title, subtitle }: BenefitDrawerProps) {
-  const [inst, setInst] = React.useState<InstanceView | null>(null);
+export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title, subtitle, initialData }: BenefitDrawerProps) {
+  const [inst, setInst] = React.useState<InstanceView | null>(() => {
+    if (initialData && initialData.id === instanceId) return initialData;
+    if (instanceId && instanceCache.has(instanceId)) return instanceCache.get(instanceId)!;
+    return null;
+  });
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const prevIdRef = React.useRef<string | null>(null);
 
@@ -76,7 +84,18 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
     setLoadError(null);
     try {
       const v = await getInstanceAction(id);
-      if (isCurrent()) setInst(v);
+      if (isCurrent()) {
+        instanceCache.set(id, v);
+        setInst((prev) => {
+          if (!prev || prev.id !== id) return v;
+          return {
+            ...prev,
+            ...v,
+            options: v.options ?? prev.options,
+            availablePortalAccounts: v.availablePortalAccounts ?? prev.availablePortalAccounts,
+          };
+        });
+      }
     } catch (e) {
       if (isCurrent()) setLoadError(errorMessage(e, 'Could not load this benefit.'));
     }
@@ -89,20 +108,28 @@ export function BenefitDrawer({ instanceId, open, onOpenChange, onChanged, title
     }
     let current = true;
     if (prevIdRef.current !== instanceId) {
-      if (inst?.id !== instanceId) {
-        setInst(null);
-      }
       prevIdRef.current = instanceId;
+      const seed =
+        (initialData && initialData.id === instanceId ? initialData : null) ||
+        instanceCache.get(instanceId) ||
+        null;
+      setInst((curr) => {
+        if (seed) return seed;
+        return curr?.id === instanceId ? curr : null;
+      });
       void load(instanceId, () => current);
+    } else if (initialData && initialData.id === instanceId) {
+      setInst((curr) => (curr?.id === instanceId ? curr : initialData));
     }
     return () => {
       current = false;
     };
-  }, [open, instanceId, load, inst?.id]);
+  }, [open, instanceId, initialData, load]);
 
   /** After a successful mutation: adopt the returned row and tell the parent. */
   const applied = React.useCallback(
     (v: InstanceView) => {
+      instanceCache.set(v.id, v);
       setInst(v);
       onChanged();
     },
@@ -481,20 +508,28 @@ function OptionSection({
   editable: boolean;
   applied: (v: InstanceView) => void;
 }) {
-  const [options, setOptions] = React.useState<BenefitOptionView[] | null>(null);
+  const [options, setOptions] = React.useState<BenefitOptionView[] | null>(inst.options ?? null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const id = React.useId();
 
   React.useEffect(() => {
     let current = true;
+    if (inst.options) {
+      setOptions(inst.options);
+      return;
+    }
+    if (!inst.generatedFromVersion) {
+      setOptions([]);
+      return;
+    }
     getInstanceOptionsAction(inst.id)
       .then((o) => current && setOptions(o))
       .catch(() => current && setOptions([]));
     return () => {
       current = false;
     };
-  }, [inst.id]);
+  }, [inst.id, inst.options, inst.generatedFromVersion]);
 
   if (!options || options.length === 0) return null;
 
@@ -885,8 +920,10 @@ function DetailsSection({
   const sectionRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    setForm(toForm(inst));
-  }, [inst]);
+    if (!editing) {
+      setForm(toForm(inst));
+    }
+  }, [inst, editing]);
 
   const accounts = inst.availablePortalAccounts ?? [];
 

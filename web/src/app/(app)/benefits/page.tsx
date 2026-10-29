@@ -133,6 +133,7 @@ export default async function BenefitsPage({ searchParams }: { searchParams: Pro
               filtered={filtered}
               lifetime={lifetime}
               searchScope={searchScope}
+              portalAccounts={options.portalAccounts}
             />
           </Suspense>
         </div>

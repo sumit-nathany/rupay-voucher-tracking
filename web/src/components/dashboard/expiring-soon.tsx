@@ -34,10 +34,14 @@ export function ExpiringSoon({ items, days, today }: { items: InstanceListItem[]
                   <button
                     type="button"
                     onClick={() =>
-                      open(it.id, {
-                        title: `${it.benefitType}: ${benefitLabel(it)}`,
-                        subtitle: formatCardLabel({ holderName: it.holderName, cardName: it.cardName, lastDigits: it.cardLastDigits }),
-                      })
+                      open(
+                        it.id,
+                        {
+                          title: `${it.benefitType}: ${benefitLabel(it)}`,
+                          subtitle: formatCardLabel({ holderName: it.holderName, cardName: it.cardName, lastDigits: it.cardLastDigits }),
+                        },
+                        it,
+                      )
                     }
                     className="benefit-card flex w-full flex-col gap-2 p-4 text-left transition-transform active:scale-[0.99]"
                   >

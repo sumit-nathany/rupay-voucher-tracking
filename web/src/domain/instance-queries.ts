@@ -122,6 +122,10 @@ export interface InstanceListItem {
   benefitId: string | null;
   /** Card-level add override id when `source === 'override'`. */
   overrideId: string | null;
+  /** Catalog version id when generated from shared catalog. */
+  generatedFromVersion?: string | null;
+  /** Chosen offer id for pick-one benefits. */
+  chosenOptionId?: string | null;
 }
 
 export type StatusCounts = Record<OrderStatus, number>;
@@ -254,6 +258,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const selection = {
   id: benefitInstances.id,
   benefitId: benefitInstances.benefitId,
+  overrideId: benefitInstances.overrideId,
+  generatedFromVersion: benefitInstances.generatedFromVersion,
+  chosenOptionId: benefitInstances.chosenOptionId,
   status: benefitInstances.orderStatus,
   periodStart: benefitInstances.periodStart,
   periodEnd: benefitInstances.periodEnd,
@@ -271,7 +278,6 @@ const selection = {
   pRefusalDetail: benefitInstances.portalRefusalDetail,
   pRefusalAt: benefitInstances.portalRefusalAt,
   hasCode: sql<boolean>`${benefitInstances.codeEncrypted} IS NOT NULL`,
-  overrideId: benefitInstances.overrideId,
   vType: benefitCatalogVersions.benefitType,
   vProvider: benefitCatalogVersions.benefitProvider,
   vName: benefitCatalogVersions.exactBenefit,
@@ -356,6 +362,8 @@ function toItem(r: SelRow, todayStr: string): InstanceListItem {
     holderName: r.holderName,
     benefitId: fromOverride ? null : r.benefitId,
     overrideId: fromOverride ? r.overrideId : null,
+    generatedFromVersion: r.generatedFromVersion ?? null,
+    chosenOptionId: r.chosenOptionId ?? null,
   };
 }
 

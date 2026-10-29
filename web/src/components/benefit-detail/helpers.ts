@@ -1,6 +1,9 @@
 // Pure helpers for the benefit drawer. No React, no server imports, no secrets.
 // Mirrors (does not replace) the rules in src/domain/instances.ts; the server stays authoritative.
 
+import type { InstanceListItem } from '@/domain/instance-queries';
+import type { InstanceView } from '@/domain/instances';
+
 export const WORKFLOW_STATUSES = [
   'Not Ordered',
   'Ordered but Coupon not received',
@@ -137,4 +140,59 @@ export function formatDate(s: string | null | undefined): string {
   if (!s || !isIsoDate(s)) return '—';
   const d = new Date(`${s}T00:00:00Z`);
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Converts an InstanceListItem from the parent list into an immediate InstanceView for instant drawer display. */
+export function listItemToView(
+  it: InstanceListItem,
+  portalAccounts?: Array<{ id: string; label: string; phoneNumber?: string | null; status?: string }>,
+): InstanceView {
+  return {
+    id: it.id,
+    workspaceId: '',
+    cardId: it.cardId,
+    bankCardTypeId: '',
+    benefitId: it.benefitId,
+    overrideId: it.overrideId,
+    generatedFromVersion: it.generatedFromVersion ?? null,
+    periodStart: it.periodStart,
+    periodEnd: it.periodEnd,
+    periodLabel: it.periodLabel,
+    instanceNumber: it.instanceNumber,
+    orderStatus: it.status,
+    soldFor: it.soldFor != null ? String(it.soldFor) : null,
+    cashValue: it.cashValue != null ? String(it.cashValue) : null,
+    orderDate: it.orderDate,
+    expiryDate: it.expiryDate,
+    orderDeadline: it.orderDeadline,
+    rupayBookingId: it.rupayBookingId,
+    portalAccountId: it.portalAccountId,
+    comments: it.comments,
+    portalRefusal: it.portalRefusal,
+    portalRefusalSource: it.portalRefusalSource,
+    portalRefusalDetail: it.portalRefusalDetail,
+    portalRefusalAt: it.portalRefusalAt,
+    chosenOptionId: it.chosenOptionId ?? null,
+    archived: false,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    createdAt: new Date(),
+    updatedAt: null,
+    hasCode: it.hasCode,
+    defaultCashValue: it.defaultCashValue,
+    customDefaultValue: it.customDefaultValue,
+    catalogDefaultValue: it.catalogDefaultValue,
+    value: it.value,
+    benefitName: it.benefitName,
+    benefitType: it.benefitType,
+    benefitProvider: it.benefitProvider,
+    portalAccountLabel: it.portalAccountLabel,
+    availablePortalAccounts: portalAccounts?.map((a) => ({
+      id: a.id,
+      label: a.label,
+      phoneNumber: a.phoneNumber ?? null,
+      status: a.status ?? 'connected',
+    })),
+  };
 }
