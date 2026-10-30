@@ -15,6 +15,7 @@ import {
   Loader2,
   ChevronDown,
   MoreHorizontal,
+  Cpu,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -47,6 +48,15 @@ export const adminLink: NavItem = {
   icon: Library,
   hint: 'Shared card data',
 };
+
+export const adminWorkerLink: NavItem = {
+  href: '/admin/worker',
+  label: 'Cloud Worker',
+  icon: Cpu,
+  hint: 'GCP worker & scheduler',
+};
+
+export const adminLinks: NavItem[] = [adminLink, adminWorkerLink];
 
 export const profileLink: NavItem = {
   href: '/profile',
@@ -176,7 +186,7 @@ export function NavLinks({
 
   // Topbar mode: primary links + sleek "More" dropdown
   if (variant === 'topbar') {
-    const moreItems = showAdmin ? [...secondaryLinks, adminLink] : secondaryLinks;
+    const moreItems = showAdmin ? [...secondaryLinks, ...adminLinks] : secondaryLinks;
 
     return (
       <div className="flex items-center gap-1">
@@ -237,7 +247,7 @@ export function NavLinks({
   const sidebarItems = [
     ...primaryLinks,
     ...secondaryLinks,
-    ...(showAdmin ? [adminLink] : []),
+    ...(showAdmin ? adminLinks : []),
   ];
 
   return (

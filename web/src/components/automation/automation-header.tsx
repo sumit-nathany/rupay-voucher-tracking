@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   PauseCircle,
   PlayCircle,
@@ -8,6 +9,7 @@ import {
   Loader2,
   CheckCircle2,
   Play,
+  Cpu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,10 +29,12 @@ export interface NextRunView {
 export function AutomationHeader({
   enabled,
   nextRun,
+  isSuperAdmin,
 }: {
   enabled: boolean;
   hasAttentionAccounts?: boolean;
   nextRun?: NextRunView;
+  isSuperAdmin?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +143,22 @@ export function AutomationHeader({
               >
                 <PlayCircle className="h-4 w-4" />
                 Enable Automation
+              </Button>
+            )}
+
+            {/* Super Admin Cloud Worker Link */}
+            {isSuperAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="h-10 px-4 text-sm font-medium gap-2 border-border/80 bg-muted/40 hover:bg-muted text-foreground rounded-xl"
+                title="Super Admin: Google Cloud Worker & Scheduler Controls"
+              >
+                <Link href="/admin/worker">
+                  <Cpu className="h-4 w-4 text-primary" />
+                  <span>Cloud Worker</span>
+                </Link>
               </Button>
             )}
           </div>

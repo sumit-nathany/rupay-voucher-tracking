@@ -29,6 +29,7 @@
     "drizzle-orm": "^0.45.4",
     "exceljs": "^4.4.0",
     "geist": "^1.7.2",
+    "google-auth-library": "^11.3.2",
     "lucide-react": "^1.54.0",
     "next": "15.5.20",
     "postgres": "^3.4.9",

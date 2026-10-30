@@ -2,17 +2,21 @@ import { ContentStage } from '@/components/layout/content-stage';
 import { getAutomationDashboardAction } from '@/actions/automation';
 import { listCards } from '@/actions/cards';
 import { listHolders } from '@/actions/holders';
+import { getCtx, isSystemAdmin } from '@/lib/session';
 import { AutomationHeader } from '@/components/automation/automation-header';
 import { AutomationDashboard } from '@/components/automation/automation-dashboard';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AutomationPage() {
-  const [dashboard, rawCards, holders] = await Promise.all([
+  const [ctx, dashboard, rawCards, holders] = await Promise.all([
+    getCtx(),
     getAutomationDashboardAction(),
     listCards(),
     listHolders(),
   ]);
+
+  const isAdmin = await isSystemAdmin(ctx.db, ctx.userId);
 
   const holderMap = new Map(holders.map((h) => [h.id, h.name]));
 
@@ -58,6 +62,7 @@ export default async function AutomationPage() {
         enabled={dashboard.settings.enabled}
         hasAttentionAccounts={hasAttentionAccounts}
         nextRun={dashboard.nextRun}
+        isSuperAdmin={isAdmin}
       />
 
       <AutomationDashboard
