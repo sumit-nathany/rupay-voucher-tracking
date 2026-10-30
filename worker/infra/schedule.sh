@@ -27,7 +27,7 @@ for arg in "$@"; do
   esac
 done
 
-SCHEDULER_URL="https://${GCP_REGION}-run.googleapis.com/v2/projects/${GCP_PROJECT_ID}/locations/${GCP_REGION}/jobs/${JOB_NAME}"
+SCHEDULER_URL="https://${GCP_REGION}-run.googleapis.com/v2/projects/${GCP_PROJECT_ID}/locations/${GCP_REGION}/jobs/${JOB_NAME}:run"
 
 case "$ACTION" in
   status)
@@ -54,7 +54,7 @@ if [[ "$DRY_RUN" == "0" ]]; then
   if gcloud scheduler jobs describe "$SCHEDULER_JOB_NAME" \
       --location="$GCP_REGION" --project="$GCP_PROJECT_ID" >/dev/null 2>&1; then
     echo "    updating existing schedule"
-    gcloud scheduler jobs update "$SCHEDULER_JOB_NAME" \
+    gcloud scheduler jobs update http "$SCHEDULER_JOB_NAME" \
       --location="$GCP_REGION" \
       --project="$GCP_PROJECT_ID" \
       --schedule="$SCHEDULE" \
@@ -78,9 +78,10 @@ if [[ "$DRY_RUN" == "0" ]]; then
 
   # The job's own service account must be allowed to invoke it.
   gcloud run jobs add-iam-policy-binding "$JOB_NAME" \
+    --region="$GCP_REGION" \
     --member="serviceAccount:${SCHEDULER_SA}@${GCP_PROJECT_ID}.iam.gserviceaccount.com" \
-    --role="roles/run.jobUser" \
-    --project="$GCP_PROJECT_ID" 2>/dev/null || true
+    --role="roles/run.invoker" \
+    --project="$GCP_PROJECT_ID"
 
   if [[ "$ACTION" == "enable" ]]; then
     gcloud scheduler jobs resume "$SCHEDULER_JOB_NAME" \
