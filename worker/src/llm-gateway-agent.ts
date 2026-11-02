@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { Page, Frame, Locator } from 'playwright';
+import type { Page, Frame, Locator, BrowserContext } from 'playwright';
 import { humanClick, humanType, humanDelay, humanHesitate } from './human-interaction';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,13 +47,33 @@ export async function isOtpScreenPresent(target: Page | Frame): Promise<boolean>
       const hasOtpPrompt = await t.evaluate(() => {
         const text = (document.body?.innerText || '').toLowerCase();
         const inputs = Array.from(document.querySelectorAll('input'));
-        const hasOtpText = text.includes('enter otp') || text.includes('one time password') || text.includes('resend otp') || text.includes('3d secure');
+        const hasOtpText =
+          text.includes('enter otp') ||
+          text.includes('one time password') ||
+          text.includes('resend otp') ||
+          text.includes('3d secure') ||
+          text.includes('3ds') ||
+          text.includes('bank verification') ||
+          text.includes('authenticate transaction');
         const hasOtpInput = inputs.some((inp) => {
           const p = (inp.placeholder || '').toLowerCase();
           const n = (inp.name || '').toLowerCase();
           const id = (inp.id || '').toLowerCase();
           const ac = (inp.getAttribute('autocomplete') || '').toLowerCase();
-          return p.includes('otp') || n.includes('otp') || id.includes('otp') || ac.includes('one-time-code');
+          const cls = (inp.className || '').toLowerCase();
+          const title = (inp.getAttribute('title') || '').toLowerCase();
+          return (
+            p.includes('otp') ||
+            n.includes('otp') ||
+            id.includes('otp') ||
+            ac.includes('one-time-code') ||
+            cls.includes('otp') ||
+            title.includes('otp') ||
+            id === 'txtotppassword' ||
+            id === 'txtpin' ||
+            id === 'txtotp' ||
+            id === 'otpbox'
+          );
         });
         return hasOtpText && (hasOtpInput || text.includes('enter otp to complete payment'));
       }).catch(() => false);
@@ -990,13 +1010,14 @@ export interface PageStateResolution {
     clickText?: string;
     selector?: string;
     actionDescription?: string;
+    targetCandidate?: CandidateElement;
   };
 }
 
 /**
  * Universal Autonomous Page State Analyzer.
  * Takes the complete text of the web page across all frames, all visible error/alert notices,
- * interactive candidates, and high-res screenshot, and asks Gemini to determine what is on screen
+ * interactive candidates, and low-res compressed screenshot, and asks Gemini to determine what is on screen
  * and how the automation should proceed.
  */
 export async function analyzeCurrentPageWithLLM(
@@ -1051,8 +1072,10 @@ export async function analyzeCurrentPageWithLLM(
     placeholder: c.placeholder || undefined,
   }));
 
-  // 4. Capture screenshot
-  const screenshotBuf = await page.screenshot({ timeout: 5000 }).catch(() => null);
+  // 4. Capture fast low-resolution JPEG screenshot to prevent timeouts and payload bloat
+  const screenshotBuf = await page
+    .screenshot({ type: 'jpeg', quality: 50, scale: 'css', timeout: 5000 })
+    .catch(() => null);
 
   const prompt = `You are an expert autonomous web automation agent overseeing a RuPay card benefits redemption.
 
@@ -1109,7 +1132,15 @@ Respond strictly in valid JSON matching this schema:
   } | null
 }`;
 
-  for (const model of ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-pro-latest']) {
+  const availableModels = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-flash-lite-latest',
+    'gemini-flash-latest',
+  ];
+
+  for (const model of availableModels) {
     try {
       console.log(`[autonomous-agent] 🧠 Consulting Gemini Vision (${model}) for page state analysis at ${context.stepName}...`);
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -1117,7 +1148,7 @@ Respond strictly in valid JSON matching this schema:
       if (screenshotBuf) {
         parts.push({
           inline_data: {
-            mime_type: 'image/png',
+            mime_type: 'image/jpeg',
             data: screenshotBuf.toString('base64'),
           },
         });
@@ -1126,7 +1157,7 @@ Respond strictly in valid JSON matching this schema:
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: { response_mime_type: 'application/json' },
@@ -1149,6 +1180,7 @@ Respond strictly in valid JSON matching this schema:
       ) {
         const c = candidates[parsed.recommendedAction.targetIndex];
         parsed.recommendedAction.selector = c?.selector;
+        parsed.recommendedAction.targetCandidate = c;
       }
 
       return parsed;
@@ -1160,47 +1192,145 @@ Respond strictly in valid JSON matching this schema:
   return { classification: 'UNKNOWN', explanation: 'All Gemini models failed or timed out' };
 }
 
+export interface TrajectoryStep {
+  step: number;
+  timestamp: string;
+  url: string;
+  title: string;
+  isPopup: boolean;
+  screenDescription: string;
+  classification: string;
+  actionTaken?: {
+    description: string;
+    selector?: string;
+    tag?: string;
+    text?: string;
+    frameUrl?: string;
+  };
+  outcome: string;
+  screenshotFile?: string;
+}
+
+export interface PostPaymentTransitionResult {
+  reachedOtp: boolean;
+  reachedSuccess: boolean;
+  reason?: string;
+  cardExhausted?: boolean;
+  activeOtpPage?: Page;
+  trajectory?: TrajectoryStep[];
+}
+
+function logTrajectoryStep(s: TrajectoryStep): void {
+  console.log(`\n[trajectory] ════════════════ STEP ${s.step} ════════════════`);
+  console.log(`[trajectory] URL: ${s.url} ${s.isPopup ? '(POPUP WINDOW)' : '(MAIN PAGE)'}`);
+  console.log(`[trajectory] State: [${s.classification}] ${s.screenDescription}`);
+  if (s.actionTaken) {
+    console.log(`[trajectory] Action: Clicked "${s.actionTaken.text || s.actionTaken.description}" (frame: ${s.actionTaken.frameUrl || 'page'})`);
+  }
+  console.log(`[trajectory] Outcome: ${s.outcome}`);
+  console.log(`[trajectory] ════════════════════════════════════════\n`);
+}
+
+function saveTrajectoryToDisk(trajectory: TrajectoryStep[], instanceId?: string): void {
+  try {
+    const filename = `/tmp/gateway-flow-trajectory-${instanceId || Date.now()}.json`;
+    fs.writeFileSync(filename, JSON.stringify(trajectory, null, 2));
+    console.log(`[trajectory] 💾 Saved full trajectory trace (${trajectory.length} steps) to ${filename}`);
+  } catch (err) {
+    console.warn('[trajectory] Could not save trajectory to disk:', err);
+  }
+}
+
 /**
- * Monitors the gateway transition after clicking "Proceed to Pay".
- * Handles RBI Tokenization modals, offers popups, and unknown pre-payment screens via Autonomous LLM Vision Agent,
- * and only resolves once the genuine Bank 3D-Secure OTP screen or confirmation screen is reached.
+ * Step-by-step visual exploration and trajectory recording engine.
+ * Takes low-res JPEG screenshots at every step, asks Gemini Vision for the exact button
+ * to advance toward the Bank 3D-Secure OTP screen, executes the click inside the proper frame/page,
+ * records the complete flow trajectory to logs and disk, and hands off the active OTP page.
  */
 export async function handlePostPaymentTransition(
-  page: Page,
+  initialPage: Page,
   options?: {
+    context?: BrowserContext;
+    popupTracker?: { page: Page | null };
     maxWaitSec?: number;
     apiKey?: string;
     phoneNumber?: string | null;
     email?: string | null;
+    instanceId?: string;
   },
-): Promise<{ reachedOtp: boolean; reachedSuccess: boolean; reason?: string; cardExhausted?: boolean }> {
+): Promise<PostPaymentTransitionResult> {
   const maxWaitSec = options?.maxWaitSec ?? 60;
-  const apiKey = options?.apiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const trajectory: TrajectoryStep[] = [];
+  let activePage: Page = initialPage;
+  const instanceId = options?.instanceId || `run_${Date.now()}`;
 
-  console.log('[gateway] Monitoring post-payment state and handling transitions with Autonomous LLM Vision Agent...');
+  console.log(`\n[trajectory] 🎬 Starting Visual Step-by-Step Gateway Navigation (Attempt ID: ${instanceId})...`);
 
-  for (let sec = 0; sec < maxWaitSec; sec += 3) {
-    await page.waitForTimeout(2500);
+  const maxSteps = Math.min(20, Math.ceil(maxWaitSec / 3));
 
-    const currUrl = page.url();
+  for (let step = 1; step <= maxSteps; step++) {
+    await activePage.waitForTimeout(1500);
 
-    // 1. Fast check: confirmed/success page text
-    if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking')) {
-      const pageText = await page.evaluate(() => document.body.innerText).catch(() => '');
-      if (/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i.test(pageText)) {
-        console.log('[gateway] ✓ Order confirmation already reached!');
-        return { reachedOtp: false, reachedSuccess: true };
+    // 1. Popup / Multi-tab detection
+    const popup = options?.popupTracker?.page || options?.context?.pages().find((p) => p !== initialPage && !p.isClosed());
+    if (popup) {
+      if (popup.url() === 'about:blank') {
+        console.log(`[trajectory] ⏳ Step ${step}: Popup detected at about:blank; awaiting navigation...`);
+        await popup.waitForURL((u) => u.href !== 'about:blank', { timeout: 8000 }).catch(() => {});
+      }
+      if (popup.url() !== 'about:blank' && activePage !== popup) {
+        console.log(`[trajectory] 🔀 Step ${step}: Switching active vision lens to popup tab: ${popup.url()}`);
+        activePage = popup;
       }
     }
 
-    // 1b. Fast check: Bank 3D-Secure OTP screen is already reached!
-    if (await isOtpScreenPresent(page)) {
-      console.log('[gateway] ✓ Bank 3D-Secure OTP screen detected via DOM indicators!');
-      return { reachedOtp: true, reachedSuccess: false };
+    const currUrl = activePage.url();
+    const currTitle = await activePage.title().catch(() => '');
+
+    // 2. Fast check: Bank 3D-Secure OTP screen is already reached!
+    const activeHasOtp = await isOtpScreenPresent(activePage);
+    const initialHasOtp = activePage !== initialPage ? await isOtpScreenPresent(initialPage) : false;
+    if (activeHasOtp || initialHasOtp) {
+      const otpPage = activeHasOtp ? activePage : initialPage;
+      const stepRecord: TrajectoryStep = {
+        step,
+        timestamp: new Date().toISOString(),
+        url: otpPage.url(),
+        title: await otpPage.title().catch(() => ''),
+        isPopup: otpPage !== initialPage,
+        screenDescription: 'Bank 3D-Secure OTP screen detected via DOM indicators',
+        classification: 'BANK_OTP_SCREEN',
+        outcome: 'OTP input detected; handing off to user OTP challenge prompt',
+      };
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
+      return { reachedOtp: true, reachedSuccess: false, activeOtpPage: otpPage, trajectory };
     }
 
-    // 1c. Fast check: Card redemption limit or offer exhaustion on gateway!
-    const exhaustedError = await page.evaluate(() => {
+    // 3. Fast check: Order confirmation already reached
+    if (currUrl.includes('success') || currUrl.includes('confirm') || currUrl.includes('booking') || currUrl.includes('truztee.com/#/myaccount')) {
+      const pageText = await activePage.evaluate(() => document.body.innerText).catch(() => '');
+      if (/(?:booking|reference|order|transaction)\s*(?:id|no|#)?\s*[:\-]?\s*([A-Za-z0-9\-_]{6,30})/i.test(pageText)) {
+        const stepRecord: TrajectoryStep = {
+          step,
+          timestamp: new Date().toISOString(),
+          url: currUrl,
+          title: currTitle,
+          isPopup: activePage !== initialPage,
+          screenDescription: 'Order confirmation with booking reference detected',
+          classification: 'ORDER_CONFIRMED',
+          outcome: 'Order confirmed successfully',
+        };
+        trajectory.push(stepRecord);
+        logTrajectoryStep(stepRecord);
+        saveTrajectoryToDisk(trajectory, instanceId);
+        return { reachedOtp: false, reachedSuccess: true, activeOtpPage: activePage, trajectory };
+      }
+    }
+
+    // 4. Fast check: Card redemption limit or offer exhaustion on gateway
+    const exhaustedError = await activePage.evaluate(() => {
       const texts = Array.from(document.querySelectorAll('div, p, span, .error, .text-danger, [class*="error"], [class*="alert"]'));
       for (const el of texts) {
         const t = (el.textContent || '').trim().toLowerCase();
@@ -1219,124 +1349,203 @@ export async function handlePostPaymentTransition(
 
     if (exhaustedError) {
       console.warn(`[gateway] ❌ Card redemption limit reached: "${exhaustedError}".`);
-      return { reachedOtp: false, reachedSuccess: false, cardExhausted: true, reason: exhaustedError };
+      const stepRecord: TrajectoryStep = {
+        step,
+        timestamp: new Date().toISOString(),
+        url: currUrl,
+        title: currTitle,
+        isPopup: activePage !== initialPage,
+        screenDescription: `Card redemption limit exhausted: ${exhaustedError}`,
+        classification: 'BLOCKED_ERROR',
+        outcome: 'Aborting attempt due to card limit exhaustion',
+      };
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
+      return { reachedOtp: false, reachedSuccess: false, cardExhausted: true, reason: exhaustedError, activeOtpPage: activePage, trajectory };
     }
 
-    // 2. Comprehensive Autonomous LLM Page State Analysis
-    // Takes the complete page text, alerts, screenshot, and candidate elements to LLM!
-    const resolution = await analyzeCurrentPageWithLLM(page, {
-      stepName: 'Post-Payment Gateway Transition',
+    // 5. Fast check: Contact details popup (mobile number / email)
+    const contactHandled = await handleContactDetailsIfPresent(activePage, {
+      phoneNumber: options?.phoneNumber,
+      email: options?.email,
+    });
+    if (contactHandled) {
+      const stepRecord: TrajectoryStep = {
+        step,
+        timestamp: new Date().toISOString(),
+        url: currUrl,
+        title: currTitle,
+        isPopup: activePage !== initialPage,
+        screenDescription: 'Gateway contact details input (mobile number / email)',
+        classification: 'ACTION_NEEDED',
+        actionTaken: {
+          description: 'Populated contact phone and clicked Continue',
+        },
+        outcome: 'Contact details submitted',
+      };
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      await activePage.waitForTimeout(1500);
+      continue;
+    }
+
+    // 6. Visual Step-by-Step Navigation with Gemini Vision (Low-Res JPEG)
+    const screenshotPath = `/tmp/trajectory_${instanceId}_step${step}.jpg`;
+    await activePage.screenshot({ path: screenshotPath, type: 'jpeg', quality: 50, scale: 'css' }).catch(() => {});
+
+    console.log(`[trajectory] 📸 Step ${step}: Low-res screenshot saved to ${screenshotPath}`);
+
+    const resolution = await analyzeCurrentPageWithLLM(activePage, {
+      stepName: `Gateway Navigation Step ${step}`,
       goal: 'Advance to Bank 3D-Secure OTP screen or confirm order',
       accountLabel: options?.email ?? undefined,
     });
 
+    const stepRecord: TrajectoryStep = {
+      step,
+      timestamp: new Date().toISOString(),
+      url: activePage.url(),
+      title: await activePage.title().catch(() => ''),
+      isPopup: activePage !== initialPage,
+      screenDescription: resolution.explanation,
+      classification: resolution.classification,
+      outcome: '',
+      screenshotFile: screenshotPath,
+    };
+
+    if (resolution.classification === 'BANK_OTP_SCREEN') {
+      stepRecord.outcome = 'Bank 3D-Secure OTP screen confirmed by Gemini Vision';
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
+      return { reachedOtp: true, reachedSuccess: false, activeOtpPage: activePage, trajectory };
+    }
+
+    if (resolution.classification === 'ORDER_CONFIRMED') {
+      stepRecord.outcome = `Order confirmed: ${resolution.bookingRef || 'Success'}`;
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
+      return { reachedOtp: false, reachedSuccess: true, activeOtpPage: activePage, trajectory };
+    }
+
+    if (resolution.classification === 'COOLDOWN_LIMIT') {
+      stepRecord.outcome = `Cooldown active: ${resolution.explanation}`;
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
+      return { reachedOtp: false, reachedSuccess: false, cardExhausted: false, reason: resolution.explanation, activeOtpPage: activePage, trajectory };
+    }
+
     if (resolution.classification === 'BLOCKED_ERROR') {
-      console.warn(`[gateway] 🛑 Autonomous LLM identified blocking error: "${resolution.explanation}"`);
+      // Guard: If we are on the initial parent page, but a popup is open, check the popup first before failing!
+      const activePopup = options?.context?.pages().find((p) => p !== initialPage && !p.isClosed());
+      if (activePage === initialPage && activePopup) {
+        console.warn(`[trajectory] ⚠️ Parent page indicates error, but popup tab ${activePopup.url()} is active. Switching to popup instead of aborting.`);
+        activePage = activePopup;
+        continue;
+      }
+
+      stepRecord.outcome = `Blocked error: ${resolution.explanation}`;
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+      saveTrajectoryToDisk(trajectory, instanceId);
       return {
         reachedOtp: false,
         reachedSuccess: false,
         cardExhausted: resolution.isCardExhausted,
         reason: resolution.explanation,
+        activeOtpPage: activePage,
+        trajectory,
       };
     }
 
-    if (resolution.classification === 'COOLDOWN_LIMIT') {
-      console.warn(`[gateway] ⏱️ Autonomous LLM identified cooldown: "${resolution.explanation}"`);
-      return {
-        reachedOtp: false,
-        reachedSuccess: false,
-        cardExhausted: false,
-        reason: resolution.explanation,
+    if (resolution.classification === 'ACTION_NEEDED' && resolution.recommendedAction?.targetCandidate) {
+      const candidate = resolution.recommendedAction.targetCandidate;
+      const targetFrame = [activePage, ...activePage.frames()][candidate.frameIndex] || activePage;
+      const loc = targetFrame.locator(candidate.selector).first();
+      const actionDesc = resolution.recommendedAction.actionDescription || candidate.text || candidate.selector;
+
+      stepRecord.actionTaken = {
+        description: actionDesc,
+        selector: candidate.selector,
+        tag: candidate.tag,
+        text: candidate.text,
+        frameUrl: candidate.frameUrl,
       };
-    }
 
-    if (resolution.classification === 'BANK_OTP_SCREEN') {
-      console.log(`[gateway] ✓ Autonomous LLM verified Bank 3D-Secure OTP screen: "${resolution.explanation}"`);
-      return { reachedOtp: true, reachedSuccess: false };
-    }
+      console.log(`[trajectory] 👉 Step ${step} Decision: Clicking "${actionDesc}" in frame "${candidate.frameUrl}" (tag: <${candidate.tag}>, text: "${candidate.text || ''}")`);
 
-    if (resolution.classification === 'ORDER_CONFIRMED') {
-      console.log(`[gateway] ✓ Autonomous LLM confirmed order success: "${resolution.explanation}"`);
-      return { reachedOtp: false, reachedSuccess: true };
-    }
+      try {
+        await loc.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+        await humanHesitate(activePage, 200, 500);
 
-    if (resolution.classification === 'ACTION_NEEDED' && resolution.recommendedAction) {
-      if (
-        typeof resolution.recommendedAction.targetIndex === 'number' &&
-        resolution.recommendedAction.targetIndex >= 0
-      ) {
-        const candidates = await scanCandidates(page, 'advance_payment').catch(() => []);
-        const target = candidates[resolution.recommendedAction.targetIndex];
-        if (target) {
-          const targetFrame = [page, ...page.frames()][target.frameIndex] || page;
-          const loc = targetFrame.locator(target.selector).first();
-          console.log(
-            `[gateway] 🎯 LLM advancing via candidate: "${resolution.recommendedAction.actionDescription || target.text || target.selector}"`,
-          );
-          await humanClick(loc, { hesitateBeforeMs: 400, pauseAfterMs: 1500 });
-          continue;
+        // Dispatches DOM click directly on the element within its frame AND Playwright click
+        // This avoids missing the element and prevents clicking on parent page backdrop!
+        await loc.evaluate((el: HTMLElement) => el.click()).catch(() => loc.click({ timeout: 3000 }));
+        stepRecord.outcome = `Clicked "${actionDesc}" successfully`;
+      } catch (clickErr) {
+        console.warn(`[trajectory] Warning clicking element "${actionDesc}":`, clickErr);
+        stepRecord.outcome = `Click failed: ${clickErr instanceof Error ? clickErr.message : String(clickErr)}`;
+      }
+
+      trajectory.push(stepRecord);
+      logTrajectoryStep(stepRecord);
+
+      await activePage.waitForTimeout(2000);
+
+      // Check if this click opened a popup window
+      if (options?.context) {
+        const pages = options.context.pages();
+        const newPopup = pages.find((p) => p !== initialPage && !p.isClosed());
+        if (newPopup) {
+          console.log(`[trajectory] 🚀 Click triggered new popup tab: ${newPopup.url()}`);
+          if (newPopup.url() === 'about:blank') {
+            await newPopup.waitForURL((u) => u.href !== 'about:blank', { timeout: 8000 }).catch(() => {});
+          }
+          activePage = newPopup;
         }
       }
+      continue;
     }
 
-    // 2b. Heuristic fallback ONLY if Gemini API key is not configured or LLM returned nothing
-    let modalHandled = false;
-    for (const t of [page, ...page.frames()]) {
+    // Heuristic fallback for RBI Tokenization Modal if LLM did not pick an action
+    let tokenModalHandled = false;
+    for (const t of [activePage, ...activePage.frames()]) {
       const secureAndPayBtn = t.locator(':is(button, [role="button"], a):has-text("Secure & Pay")').first();
       const optOutBtn = t.locator(':is(button, [role="button"], a):has-text("Opt out for now")').first();
 
-      const isModalVisible =
-        (await secureAndPayBtn.isVisible().catch(() => false)) ||
-        (await optOutBtn.isVisible().catch(() => false));
-
-      if (isModalVisible) {
-        console.log('[gateway] 🛡️ Detected RBI Tokenization Modal fallback.');
-        if (await secureAndPayBtn.isVisible().catch(() => false)) {
-          await humanClick(secureAndPayBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-        } else if (await optOutBtn.isVisible().catch(() => false)) {
-          await humanClick(optOutBtn, { hesitateBeforeMs: 400, pauseAfterMs: 2000 });
-        }
-        modalHandled = true;
+      if (await secureAndPayBtn.isVisible().catch(() => false)) {
+        console.log('[trajectory] 🛡️ Fallback: Clicking "Secure & Pay" on Tokenization Modal');
+        await humanClick(secureAndPayBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+        tokenModalHandled = true;
+        break;
+      } else if (await optOutBtn.isVisible().catch(() => false)) {
+        console.log('[trajectory] 🛡️ Fallback: Clicking "Opt out for now" on Tokenization Modal');
+        await humanClick(optOutBtn, { hesitateBeforeMs: 300, pauseAfterMs: 1500 });
+        tokenModalHandled = true;
         break;
       }
     }
-    if (modalHandled) continue;
-
-    // Fast check: Contact Details popup fallback
-    const contactHandled = await handleContactDetailsIfPresent(page, {
-      phoneNumber: options?.phoneNumber,
-      email: options?.email,
-    });
-    if (contactHandled) continue;
-
-    // Fallback only if no Gemini API key configured: external bank ACS domain + OTP field
-    if (!apiKey) {
-      const isExternalAcs = !currUrl.includes('juspay.in') && (
-        currUrl.includes('acs') ||
-        currUrl.includes('bank') ||
-        currUrl.includes('cardsecurity') ||
-        currUrl.includes('enstage') ||
-        currUrl.includes('wibmo')
-      );
-      const hasOtpField = await page.evaluate(() => {
-        const inputs = Array.from(document.querySelectorAll('input'));
-        return inputs.some((inp) => {
-          const name = (inp.name || '').toLowerCase();
-          const id = (inp.id || '').toLowerCase();
-          const ph = (inp.placeholder || '').toLowerCase();
-          return name.includes('otp') || id.includes('otp') || ph.includes('otp');
-        });
-      }).catch(() => false);
-
-      if (isExternalAcs && hasOtpField) {
-        console.log(`[gateway] ✓ External bank ACS OTP page reached (URL: ${currUrl})`);
-        return { reachedOtp: true, reachedSuccess: false };
-      }
+    if (tokenModalHandled) {
+      continue;
     }
+
+    stepRecord.outcome = 'Waiting for transition';
+    trajectory.push(stepRecord);
+    logTrajectoryStep(stepRecord);
   }
 
-  console.log('[gateway] Timed out waiting for bank OTP screen.');
-  return { reachedOtp: false, reachedSuccess: false, reason: 'Bank OTP screen was not detected within timeout' };
+  saveTrajectoryToDisk(trajectory, instanceId);
+  console.log('[trajectory] ⌛ Step limit reached waiting for Bank OTP screen.');
+  return {
+    reachedOtp: false,
+    reachedSuccess: false,
+    reason: 'Bank OTP screen was not detected within step limit',
+    activeOtpPage: activePage,
+    trajectory,
+  };
 }
 
 /**

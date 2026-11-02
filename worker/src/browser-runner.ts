@@ -384,7 +384,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
   context.on('page', async (newPage) => {
     console.log(`[Popup/New Tab detected]: ${newPage.url()}`);
     popupTracker.page = newPage;
-    await installVisualMouseCursor(newPage);
+    newPage.on('console', (msg) => console.log(`[popup console ${msg.type()}]`, msg.text()));
+    newPage.waitForLoadState('domcontentloaded').then(() => installVisualMouseCursor(newPage)).catch(() => {});
   });
 
   page.on('close', () => console.log('[runner] >>> Main page was closed.'));
@@ -1388,11 +1389,17 @@ async function addCardToPortalAccount(
   // Step 8b: Handle RBI Tokenization Modal & Post-Payment Gateway Transition with LLM
   console.log('\n--- Step 8b: Monitoring Post-Payment Gateway Transition with LLM ---');
   const transitionResult = await handlePostPaymentTransition(activePaymentPage, {
-    maxWaitSec: 40,
+    context,
+    popupTracker,
+    maxWaitSec: 60,
     phoneNumber: targetPhoneNumber,
     email: account.label,
+    instanceId: candidate.instanceId,
   });
   const cardLast4 = cardRecord?.lastDigits ?? '1746';
+  const pageToInspect = (transitionResult.activeOtpPage && !transitionResult.activeOtpPage.isClosed())
+    ? transitionResult.activeOtpPage
+    : activePaymentPage;
 
   let otpCompleted = false;
 
@@ -1468,7 +1475,7 @@ async function addCardToPortalAccount(
     // Notify failure via Telegram (with screenshot if available)
     if (telegramChatId) {
       const tg = getTelegramClient();
-      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      const screenshot = await (pageToInspect && !pageToInspect.isClosed() ? pageToInspect : page).screenshot({ timeout: 5000 }).catch(() => null);
       if (screenshot) {
         await tg.sendOrderFailureWithScreenshot({
           chatId: telegramChatId,
@@ -1509,6 +1516,10 @@ async function addCardToPortalAccount(
     };
   }
 
+  const targetPaymentPage = (transitionResult.activeOtpPage && !transitionResult.activeOtpPage.isClosed())
+    ? transitionResult.activeOtpPage
+    : activePaymentPage;
+
   if (transitionResult.reachedSuccess) {
     console.log('✓ Order confirmation screen reached directly!');
     otpCompleted = true;
@@ -1523,7 +1534,7 @@ async function addCardToPortalAccount(
     }
 
     otpCompleted = await promptForOtpAndSubmit(
-      activePaymentPage,
+      targetPaymentPage,
       {
         db,
         portalAccountId: account.id,
@@ -1555,9 +1566,10 @@ async function addCardToPortalAccount(
   if (otpCompleted) {
     console.log('Monitoring transaction completion & booking reference...');
     let bookingRef: string | null = null;
+    const monitorPage = targetPaymentPage && !targetPaymentPage.isClosed() ? targetPaymentPage : activePaymentPage;
     for (let sec = 0; sec < 120; sec++) {
-      await activePaymentPage.waitForTimeout(1000);
-      const currUrl = activePaymentPage.url();
+      await page.waitForTimeout(1000);
+      const currUrl = monitorPage && !monitorPage.isClosed() ? monitorPage.url() : page.url();
       if (sec % 10 === 0) {
         console.log(`[monitor] Waiting for transaction completion (${sec}s / 120s) - URL: ${currUrl}`);
       }
@@ -1817,11 +1829,12 @@ async function addCardToPortalAccount(
     }
 
     // If loop finished without finding a booking reference, evaluate failure and notify user
-    const finalUrl = activePaymentPage.url();
+    const pageToInspect = targetPaymentPage && !targetPaymentPage.isClosed() ? targetPaymentPage : activePaymentPage;
+    const finalUrl = pageToInspect.url();
     const allPageTexts = [
-      await activePaymentPage.evaluate(() => document.body?.innerText || '').catch(() => ''),
+      await pageToInspect.evaluate(() => document.body?.innerText || '').catch(() => ''),
       ...(await Promise.all(
-        activePaymentPage.frames().map((f) => f.evaluate(() => document.body?.innerText || '').catch(() => ''))
+        pageToInspect.frames().map((f) => f.evaluate(() => document.body?.innerText || '').catch(() => ''))
       )),
     ].join(' ');
 
@@ -1922,7 +1935,7 @@ async function addCardToPortalAccount(
     // Notify failure via Telegram (with screenshot if available)
     if (telegramChatId) {
       const tg = getTelegramClient();
-      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      const screenshot = await (pageToInspect && !pageToInspect.isClosed() ? pageToInspect : page).screenshot({ timeout: 5000 }).catch(() => null);
       if (screenshot) {
         await tg.sendOrderFailureWithScreenshot({
           chatId: telegramChatId,
