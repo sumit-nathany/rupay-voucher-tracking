@@ -432,8 +432,9 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
     // Wait loop (up to 45 seconds initial, extendable if user interacts):
     let deadline = Date.now() + 45000;
-    const hardMaxDeadline = Date.now() + 180000; // 3 min safety ceiling
+    const hardMaxDeadline = Date.now() + 240000; // 4 min safety ceiling
     let finalStatus: string = 'pending';
+    let wasBrowsing = false;
     let selectedOptionId: string | null = null;
     let selectedInstanceId: string | null = null;
 
@@ -451,6 +452,8 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
       // Extend local deadline if user is actively browsing or selecting on Telegram
       if (updatedSession.status === 'browsing' || updatedSession.status === 'selecting') {
+        wasBrowsing = true;
+        finalStatus = updatedSession.status;
         const sessionExpiryMs = new Date(updatedSession.expiresAt).getTime();
         if (sessionExpiryMs > deadline) {
           deadline = Math.min(sessionExpiryMs, hardMaxDeadline);
@@ -478,13 +481,23 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       }
     }
 
-    if (finalStatus === 'skipped') {
+    if (finalStatus === 'skipped' || finalStatus === 'browsing' || wasBrowsing) {
+      if (finalStatus === 'browsing' || wasBrowsing) {
+        console.log(`[preorder] Selection window elapsed while browsing. Skipping this card to prevent ordering unwanted default.`);
+        if (sentMessageId) {
+          await tg.editMessageText(
+            telegramChatId,
+            sentMessageId,
+            `⏰ Selection window expired without a choice. Order was cancelled/skipped.`
+          ).catch(() => {});
+        }
+      }
       await client.end();
       return {
         attempted: false,
         accountLabel: account.label,
         instanceId: candidate.instanceId,
-        reason: 'user_skipped',
+        reason: (finalStatus === 'browsing' || wasBrowsing) ? 'selection_timeout' : 'user_skipped',
       };
     }
 

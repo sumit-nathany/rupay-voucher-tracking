@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
 
       // Show Main Benefit Category Menu (Level 1)
       if (data.startsWith('preorder:bmenu:')) {
+        await telegram.answerCallbackQuery(callbackQueryId);
         const sessionId = data.slice('preorder:bmenu:'.length);
         const [session] = await db
           .select()
@@ -72,12 +73,11 @@ export async function POST(req: NextRequest) {
           .where(eq(portalOrderPreorderSessions.id, sessionId));
 
         if (!session) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Session not found.');
           return NextResponse.json({ status: 'session_not_found' });
         }
 
-        // Extend countdown timer by 90s while user is browsing
-        const extendedExpiry = new Date(Date.now() + 90000);
+        // Extend countdown timer by 180s (3 mins) while user is browsing
+        const extendedExpiry = new Date(Date.now() + 180000);
         await db
           .update(portalOrderPreorderSessions)
           .set({ status: 'browsing', expiresAt: extendedExpiry, updatedAt: new Date() })
@@ -94,7 +94,13 @@ export async function POST(req: NextRequest) {
         }> = meta?.availableBenefits ?? [];
 
         if (availableBenefits.length === 0) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'No alternative benefits available.');
+          if (chatId && messageId) {
+            await telegram.editMessageText(
+              chatId,
+              messageId,
+              '⚠️ No alternative benefits available for this card in this period.'
+            );
+          }
           return NextResponse.json({ status: 'no_benefits' });
         }
 
@@ -124,16 +130,16 @@ export async function POST(req: NextRequest) {
           await telegram.editMessageText(
             chatId,
             messageId,
-            '📋 *Choose a Benefit Category for this Card:*\n\nTap a benefit below to select (timer extended by 90s):',
+            '📋 *Choose a Benefit Category for this Card:*\n\nTap a benefit below to select (timer extended to 3 mins):',
             inlineKeyboard
           );
         }
-        await telegram.answerCallbackQuery(callbackQueryId);
         return NextResponse.json({ status: 'bmenu_shown', count: availableBenefits.length });
       }
 
       // User picked a Main Benefit Category
       if (data.startsWith('preorder:bpick:')) {
+        await telegram.answerCallbackQuery(callbackQueryId);
         const rest = data.slice('preorder:bpick:'.length);
         const [sessionId, idxStr] = rest.split(':');
         const benefitIdx = parseInt(idxStr, 10);
@@ -144,7 +150,6 @@ export async function POST(req: NextRequest) {
           .where(eq(portalOrderPreorderSessions.id, sessionId));
 
         if (!session) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Session not found.');
           return NextResponse.json({ status: 'session_not_found' });
         }
 
@@ -153,7 +158,6 @@ export async function POST(req: NextRequest) {
         const chosen = availableBenefits[benefitIdx];
 
         if (!chosen) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Benefit not found.');
           return NextResponse.json({ status: 'benefit_not_found' });
         }
 
@@ -180,7 +184,7 @@ export async function POST(req: NextRequest) {
 
         if (options.length > 1) {
           // Show Offer Variations (Level 2)
-          const extendedExpiry = new Date(Date.now() + 90000);
+          const extendedExpiry = new Date(Date.now() + 180000);
           await db
             .update(portalOrderPreorderSessions)
             .set({
@@ -219,7 +223,6 @@ export async function POST(req: NextRequest) {
               inlineKeyboard
             );
           }
-          await telegram.answerCallbackQuery(callbackQueryId);
           return NextResponse.json({ status: 'options_shown', instanceId: chosen.instanceId });
         } else {
           // Single option or standard voucher -> finalize immediately!
@@ -249,13 +252,13 @@ export async function POST(req: NextRequest) {
               `✅ *Benefit Swapped:* *${chosen.exactBenefit}* (${chosen.benefitType})\n\nProceeding with browser order now...`
             );
           }
-          await telegram.answerCallbackQuery(callbackQueryId, 'Benefit selected!');
           return NextResponse.json({ status: 'benefit_selected', instanceId: chosen.instanceId });
         }
       }
 
       // User picked an option variation from Level 2
       if (data.startsWith('preorder:optpick:')) {
+        await telegram.answerCallbackQuery(callbackQueryId, 'Option confirmed!');
         const rest = data.slice('preorder:optpick:'.length);
         const [sessionId, optIdxStr] = rest.split(':');
         const optIdx = parseInt(optIdxStr, 10);
@@ -266,7 +269,6 @@ export async function POST(req: NextRequest) {
           .where(eq(portalOrderPreorderSessions.id, sessionId));
 
         if (!session) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Session not found.');
           return NextResponse.json({ status: 'session_not_found' });
         }
 
@@ -275,7 +277,6 @@ export async function POST(req: NextRequest) {
         const targetInstanceId = meta?.pendingInstanceId || session.instanceId;
 
         if (!optionId) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Option not found.');
           return NextResponse.json({ status: 'option_not_found' });
         }
 
@@ -285,7 +286,6 @@ export async function POST(req: NextRequest) {
           .where(eq(benefitOptions.id, optionId));
 
         if (!opt) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Option not found.');
           return NextResponse.json({ status: 'option_not_found' });
         }
 
@@ -312,12 +312,12 @@ export async function POST(req: NextRequest) {
             `✅ *Option Selected:* *${opt.offerName}* (${opt.provider})\n\nProceeding with browser order now...`
           );
         }
-        await telegram.answerCallbackQuery(callbackQueryId, 'Option confirmed!');
         return NextResponse.json({ status: 'option_selected', sessionId, optionId });
       }
 
       // Return to main pre-order interactive view
       if (data.startsWith('preorder:return:')) {
+        await telegram.answerCallbackQuery(callbackQueryId);
         const sessionId = data.slice('preorder:return:'.length);
         const [session] = await db
           .select()
@@ -325,7 +325,6 @@ export async function POST(req: NextRequest) {
           .where(eq(portalOrderPreorderSessions.id, sessionId));
 
         if (!session) {
-          await telegram.answerCallbackQuery(callbackQueryId, 'Session not found.');
           return NextResponse.json({ status: 'session_not_found' });
         }
 
@@ -362,7 +361,6 @@ export async function POST(req: NextRequest) {
             inlineKeyboard
           );
         }
-        await telegram.answerCallbackQuery(callbackQueryId, 'Returned to main view.');
         return NextResponse.json({ status: 'returned_to_main' });
       }
 
