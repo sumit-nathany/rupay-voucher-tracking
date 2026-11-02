@@ -15,6 +15,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/layout/page-header';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   saveAutomationSettingsAction,
   triggerManualOrderAction,
 } from '@/actions/automation';
@@ -23,6 +29,7 @@ export interface NextRunView {
   eligibleNow: boolean;
   nextRunAt: string | null;
   accountLabel: string | null;
+  eligibleAccounts?: Array<{ id: string; label: string }>;
   reason: 'ready_now' | 'waiting_for_cooldown' | 'no_accounts' | 'automation_paused';
 }
 
@@ -95,6 +102,14 @@ export function AutomationHeader({
     const dayPrefix = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : dateStr;
     formattedUnlockLabel = `${dayPrefix} at ${timeStr} IST`;
   }
+
+  const eligibleAccounts =
+    nextRun?.eligibleAccounts && nextRun.eligibleAccounts.length > 0
+      ? nextRun.eligibleAccounts
+      : nextRun?.accountLabel
+        ? [{ id: '', label: nextRun.accountLabel }]
+        : [];
+  const eligibleCount = eligibleAccounts.length;
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -208,11 +223,56 @@ export function AutomationHeader({
               Automation active
             </span>
             <span className="text-muted-foreground text-xs sm:text-sm">•</span>
-            <span className="text-xs sm:text-sm text-muted-foreground">
-              {nextRun?.reason === 'ready_now'
-                ? `Ready to order (${nextRun.accountLabel} eligible)`
-                : 'Scheduled daily at 02:00 AM IST'}
-            </span>
+            {nextRun?.reason === 'ready_now' ? (
+              eligibleCount > 1 ? (
+                <span className="text-xs sm:text-sm text-muted-foreground inline-flex items-center gap-1 flex-wrap">
+                  <span>Ready to order (</span>
+                  <TooltipProvider delayDuration={150}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="inline text-primary font-medium underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer p-0 bg-transparent border-0"
+                        >
+                          {eligibleCount} Accounts
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="top"
+                        className="p-3 max-w-xs shadow-lg bg-popover text-popover-foreground border border-border"
+                      >
+                        <div className="space-y-1.5 text-xs">
+                          <p className="font-semibold text-foreground flex items-center gap-1.5 border-b border-border/50 pb-1">
+                            <span className="flex h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                            Eligible Accounts ({eligibleCount})
+                          </p>
+                          <ul className="space-y-1 text-muted-foreground pt-0.5">
+                            {eligibleAccounts.map((acc, idx) => (
+                              <li
+                                key={acc.id || `${acc.label}-${idx}`}
+                                className="font-medium text-foreground flex items-center gap-1.5"
+                              >
+                                <span className="text-muted-foreground">•</span>
+                                <span>{acc.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <span>are eligible)</span>
+                </span>
+              ) : (
+                <span className="text-xs sm:text-sm text-muted-foreground">
+                  Ready to order ({eligibleAccounts[0]?.label || nextRun.accountLabel || 'Account'} is eligible)
+                </span>
+              )
+            ) : (
+              <span className="text-xs sm:text-sm text-muted-foreground">
+                Scheduled daily at 02:00 AM IST
+              </span>
+            )}
           </div>
           <span className="text-xs sm:text-sm text-muted-foreground">Max 1 order / account / 24h</span>
         </div>

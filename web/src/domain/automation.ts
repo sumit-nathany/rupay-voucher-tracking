@@ -1223,6 +1223,7 @@ export interface GlobalCandidateNomination {
     label: string;
     credentialsEncrypted: string;
   };
+  eligibleAccounts?: Array<{ id: string; label: string }>;
 }
 
 /**
@@ -1476,6 +1477,8 @@ export async function findCandidateFromGlobalQueue(
         );
       const blockedSet = new Set(blockingAttempts.map((b) => b.instanceId));
       const instMap = new Map(instances.map((i) => [i.id, i]));
+      const eligibleAccountMap = new Map<string, { id: string; label: string }>();
+      let firstNomination: GlobalCandidateNomination | null = null;
 
       for (const qItem of queueItems) {
         if (blockedSet.has(qItem.instanceId)) continue;
@@ -1487,86 +1490,117 @@ export async function findCandidateFromGlobalQueue(
 
         // Find an eligible mapping whose portal account has NOT already redeemed this (card_type, benefit, period)
         const instKey = (accId: string) => `${accId}:${inst.bankCardTypeId}:${inst.benefitId || inst.overrideId}:${inst.periodStart}`;
-        
-        let mapping: typeof eligibleCardMappings[0] | undefined;
-        if (qItem.portalAccountId) {
-          const explicit = eligibleCardMappings.find(
-            (m) => m.portalAccountId === qItem.portalAccountId && !accountRedemptionSet.has(instKey(m.portalAccountId))
-          );
-          if (explicit) {
-            mapping = explicit;
-          } else {
-            console.warn(
-              `[queue] User-selected portal account "${qItem.portalAccountId}" is currently in cooldown or already redeemed for this benefit. Falling back to next eligible.`
+
+        // Track every account eligible to redeem this queue benefit
+        for (const m of eligibleCardMappings) {
+          if (!accountRedemptionSet.has(instKey(m.portalAccountId))) {
+            const acc = eligibleAccountsMap.get(m.portalAccountId);
+            if (acc) {
+              eligibleAccountMap.set(acc.id, { id: acc.id, label: acc.label });
+            }
+          }
+        }
+
+        if (!firstNomination) {
+          let mapping: typeof eligibleCardMappings[0] | undefined;
+          if (qItem.portalAccountId) {
+            const explicit = eligibleCardMappings.find(
+              (m) => m.portalAccountId === qItem.portalAccountId && !accountRedemptionSet.has(instKey(m.portalAccountId))
             );
+            if (explicit) {
+              mapping = explicit;
+            } else {
+              console.warn(
+                `[queue] User-selected portal account "${qItem.portalAccountId}" is currently in cooldown or already redeemed for this benefit. Falling back to next eligible.`
+              );
+            }
+          }
+
+          if (!mapping) {
+            // Sort eligible mappings by account label ascending (matching UI recommendation order)
+            const sortedMappings = [...eligibleCardMappings].sort((a, b) => {
+              const labelA = eligibleAccountsMap.get(a.portalAccountId)?.label || '';
+              const labelB = eligibleAccountsMap.get(b.portalAccountId)?.label || '';
+              return labelA.localeCompare(labelB);
+            });
+            mapping = sortedMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
+          }
+          if (mapping) {
+            const account = eligibleAccountsMap.get(mapping.portalAccountId);
+            if (account) {
+              let chosenOpt = qItem.chosenOptionId ?? inst.chosenOptionId ?? null;
+
+              if (inst.generatedFromVersion) {
+                const opts = await db
+                  .select({ id: benefitOptions.id })
+                  .from(benefitOptions)
+                  .where(eq(benefitOptions.versionId, inst.generatedFromVersion))
+                  .orderBy(asc(benefitOptions.sortOrder));
+                if (opts.length > 1 && !chosenOpt) {
+                  chosenOpt = opts[0].id;
+                }
+              }
+
+              firstNomination = {
+                candidate: {
+                  instanceId: inst.id,
+                  cardId: inst.cardId,
+                  benefitId: inst.benefitId,
+                  orderDeadline: inst.orderDeadline,
+                  chosenOptionId: chosenOpt,
+                  portalCardId: mapping.portalCardId,
+                  portalCardbinId: mapping.portalCardbinId,
+                  ruleId: null,
+                  rulePriority: qItem.position,
+                  portalAccountId: account.id,
+                },
+                account: {
+                  id: account.id,
+                  workspaceId: account.workspaceId,
+                  label: account.label,
+                  credentialsEncrypted: account.credentialsEncrypted,
+                },
+              };
+            }
           }
         }
+      }
 
-        if (!mapping) {
-          // Sort eligible mappings by account label ascending (matching UI recommendation order)
-          const sortedMappings = [...eligibleCardMappings].sort((a, b) => {
-            const labelA = eligibleAccountsMap.get(a.portalAccountId)?.label || '';
-            const labelB = eligibleAccountsMap.get(b.portalAccountId)?.label || '';
-            return labelA.localeCompare(labelB);
-          });
-          mapping = sortedMappings.find((m) => !accountRedemptionSet.has(instKey(m.portalAccountId)));
-        }
-        if (!mapping) continue;
-
-        const account = eligibleAccountsMap.get(mapping.portalAccountId);
-        if (!account) continue;
-
-        let chosenOpt = qItem.chosenOptionId ?? inst.chosenOptionId ?? null;
-
-        if (inst.generatedFromVersion) {
-          const opts = await db
-            .select({ id: benefitOptions.id })
-            .from(benefitOptions)
-            .where(eq(benefitOptions.versionId, inst.generatedFromVersion))
-            .orderBy(asc(benefitOptions.sortOrder));
-          if (opts.length > 1 && !chosenOpt) {
-            chosenOpt = opts[0].id;
-          }
-        }
-
+      if (firstNomination) {
         return {
-          candidate: {
-            instanceId: inst.id,
-            cardId: inst.cardId,
-            benefitId: inst.benefitId,
-            orderDeadline: inst.orderDeadline,
-            chosenOptionId: chosenOpt,
-            portalCardId: mapping.portalCardId,
-            portalCardbinId: mapping.portalCardbinId,
-            ruleId: null,
-            rulePriority: qItem.position,
-            portalAccountId: account.id,
-          },
-          account: {
-            id: account.id,
-            workspaceId: account.workspaceId,
-            label: account.label,
-            credentialsEncrypted: account.credentialsEncrypted,
-          },
+          ...firstNomination,
+          eligibleAccounts: Array.from(eligibleAccountMap.values()).sort((a, b) => a.label.localeCompare(b.label)),
         };
       }
     }
   }
 
   // 7. Fallback: Check legacy ordering rules for eligible accounts
+  const ruleEligibleAccountsMap = new Map<string, { id: string; label: string }>();
+  let firstRuleNomination: GlobalCandidateNomination | null = null;
   for (const acc of eligibleAccountsMap.values()) {
     const cand = await findCandidatesForAccount(db, acc.id, today, options);
     if (cand) {
-      return {
-        candidate: cand,
-        account: {
-          id: acc.id,
-          workspaceId: acc.workspaceId,
-          label: acc.label,
-          credentialsEncrypted: acc.credentialsEncrypted,
-        },
-      };
+      ruleEligibleAccountsMap.set(acc.id, { id: acc.id, label: acc.label });
+      if (!firstRuleNomination) {
+        firstRuleNomination = {
+          candidate: cand,
+          account: {
+            id: acc.id,
+            workspaceId: acc.workspaceId,
+            label: acc.label,
+            credentialsEncrypted: acc.credentialsEncrypted,
+          },
+        };
+      }
     }
+  }
+
+  if (firstRuleNomination) {
+    return {
+      ...firstRuleNomination,
+      eligibleAccounts: Array.from(ruleEligibleAccountsMap.values()).sort((a, b) => a.label.localeCompare(b.label)),
+    };
   }
 
   return null;
@@ -2038,6 +2072,7 @@ export interface NextEligibleRunInfo {
   eligibleNow: boolean;
   nextRunAt: Date | null;
   accountLabel: string | null;
+  eligibleAccounts?: Array<{ id: string; label: string }>;
   reason: 'ready_now' | 'waiting_for_cooldown' | 'no_accounts' | 'automation_paused';
 }
 
@@ -2061,11 +2096,16 @@ export async function getNextEligibleRunTime(
     const today = todayInIST(now);
     const globalNomination = await findCandidateFromGlobalQueue(db, workspaceId, today, { skipSync: true });
     if (globalNomination) {
+      const eligibleAccounts =
+        globalNomination.eligibleAccounts && globalNomination.eligibleAccounts.length > 0
+          ? globalNomination.eligibleAccounts
+          : [{ id: globalNomination.account.id, label: globalNomination.account.label }];
       if (isPaused) {
         return {
           eligibleNow: false,
           nextRunAt: null,
           accountLabel: globalNomination.account.label,
+          eligibleAccounts,
           reason: 'automation_paused',
         };
       }
@@ -2073,6 +2113,7 @@ export async function getNextEligibleRunTime(
         eligibleNow: true,
         nextRunAt: now,
         accountLabel: globalNomination.account.label,
+        eligibleAccounts,
         reason: 'ready_now',
       };
     }
@@ -2092,7 +2133,7 @@ export async function getNextEligibleRunTime(
 
   const accounts = await query;
   if (accounts.length === 0) {
-    return { eligibleNow: false, nextRunAt: null, accountLabel: null, reason: 'no_accounts' };
+    return { eligibleNow: false, nextRunAt: null, accountLabel: null, eligibleAccounts: [], reason: 'no_accounts' };
   }
 
   // Filter to actionable accounts with active card mappings
@@ -2116,11 +2157,15 @@ export async function getNextEligibleRunTime(
   );
 
   if (readyAccounts.length > 0) {
+    const eligibleAccounts = readyAccounts
+      .map((a) => ({ id: a.id, label: a.label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
     if (isPaused) {
       return {
         eligibleNow: false,
         nextRunAt: null,
         accountLabel: readyAccounts[0].label,
+        eligibleAccounts,
         reason: 'automation_paused',
       };
     }
@@ -2128,6 +2173,7 @@ export async function getNextEligibleRunTime(
       eligibleNow: true,
       nextRunAt: now,
       accountLabel: readyAccounts[0].label,
+      eligibleAccounts,
       reason: 'ready_now',
     };
   }
@@ -2144,6 +2190,7 @@ export async function getNextEligibleRunTime(
     eligibleNow: false,
     nextRunAt: earliest.cooldownUntil ? new Date(earliest.cooldownUntil) : null,
     accountLabel: earliest.label,
+    eligibleAccounts: [],
     reason: isPaused ? 'automation_paused' : 'waiting_for_cooldown',
   };
 }

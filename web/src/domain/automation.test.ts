@@ -36,6 +36,7 @@ import {
   createOrderingRule,
   findCandidatesForAccount,
   findCandidateFromGlobalQueue,
+  getNextEligibleRunTime,
   getPortalStatusExplanation,
   getPortalStatusResolution,
 } from './automation';
@@ -1172,6 +1173,155 @@ describe('automation domain', () => {
     nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
     expect(nomination).not.toBeNull();
     expect(nomination?.candidate.instanceId).toBe(inst.id);
+  });
+
+  it('returns all eligible accounts in candidate nomination and getNextEligibleRunTime when multiple accounts are eligible', async () => {
+    const workspaceId = crypto.randomUUID();
+    const testCtx: Ctx = {
+      userId: 'test-user',
+      workspaceId,
+      role: 'admin',
+      db,
+      today: '2026-11-02',
+    };
+
+    await db.insert(workspaces).values({ id: workspaceId, name: 'Multiple Eligible WS' });
+    await saveAutomationSettings(testCtx, { enabled: true });
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Holder Multi' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({
+      bankName: 'BOI',
+      cardType: 'Select',
+      displayName: 'BOI Select',
+    }).returning();
+
+    // Account Alpha & Account Beta
+    const [accAlpha] = await db.insert(portalAccounts).values({
+      workspaceId,
+      label: 'Account Alpha',
+      status: 'connected',
+      credentialsEncrypted: 'mock-enc-alpha',
+    }).returning();
+
+    const [accBeta] = await db.insert(portalAccounts).values({
+      workspaceId,
+      label: 'Account Beta',
+      status: 'connected',
+      credentialsEncrypted: 'mock-enc-beta',
+    }).returning();
+
+    const cardId1 = crypto.randomUUID();
+    const [card1] = await db.insert(cards).values({
+      id: cardId1,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 1',
+      lastDigits: '1111',
+      automationEnabled: true,
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '111' }, cardId1),
+    }).returning();
+
+    const cardId2 = crypto.randomUUID();
+    const [card2] = await db.insert(cards).values({
+      id: cardId2,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'Card 2',
+      lastDigits: '2222',
+      automationEnabled: true,
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '222' }, cardId2),
+    }).returning();
+
+    // Map Card 1 -> Alpha, Card 2 -> Beta
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: accAlpha.id,
+      cardId: card1.id,
+      portalCardId: 'alpha-1',
+      portalCardbinId: 'alpha-bin-1',
+    });
+
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: accBeta.id,
+      cardId: card2.id,
+      portalCardId: 'beta-1',
+      portalCardbinId: 'beta-bin-1',
+    });
+
+    const [ben] = await db.insert(benefits).values({ bankCardTypeId: cardType.id, benefitType: 'Cab Services' }).returning();
+    const [ver] = await db.insert(benefitCatalogVersions).values({
+      benefitId: ben.id,
+      benefitType: 'Cab Services',
+      benefitProvider: 'Uber',
+      exactBenefit: 'Uber 250',
+      defaultCashValue: '250.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-10-01',
+      frequency: 'Quarterly',
+    }).returning();
+
+    const [inst1] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card1.id,
+      bankCardTypeId: cardType.id,
+      benefitId: ben.id,
+      generatedFromVersion: ver.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '250.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    const [inst2] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card2.id,
+      bankCardTypeId: cardType.id,
+      benefitId: ben.id,
+      generatedFromVersion: ver.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '250.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    await db.insert(orderingQueueItems).values([
+      { workspaceId, instanceId: inst1.id, position: 1, enabled: true },
+      { workspaceId, instanceId: inst2.id, position: 2, enabled: true },
+    ]);
+
+    // 1. Both accounts are eligible
+    const nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).not.toBeNull();
+    expect(nomination?.account.label).toBe('Account Alpha');
+    expect(nomination?.eligibleAccounts).toHaveLength(2);
+    expect(nomination?.eligibleAccounts?.map((a) => a.label)).toEqual(['Account Alpha', 'Account Beta']);
+
+    const nextRun = await getNextEligibleRunTime(db, workspaceId);
+    expect(nextRun.eligibleNow).toBe(true);
+    expect(nextRun.reason).toBe('ready_now');
+    expect(nextRun.eligibleAccounts).toHaveLength(2);
+    expect(nextRun.eligibleAccounts?.map((a) => a.label)).toEqual(['Account Alpha', 'Account Beta']);
+
+    // 2. Put Account Alpha in cooldown -> only Account Beta remains eligible
+    const future = new Date(Date.now() + 60 * 60 * 1000);
+    await db.update(portalAccounts).set({ cooldownUntil: future }).where(eq(portalAccounts.id, accAlpha.id));
+
+    const nominationAfterCooldown = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nominationAfterCooldown).not.toBeNull();
+    expect(nominationAfterCooldown?.account.label).toBe('Account Beta');
+    expect(nominationAfterCooldown?.eligibleAccounts).toHaveLength(1);
+    expect(nominationAfterCooldown?.eligibleAccounts?.[0].label).toBe('Account Beta');
+
+    const nextRunAfterCooldown = await getNextEligibleRunTime(db, workspaceId);
+    expect(nextRunAfterCooldown.eligibleNow).toBe(true);
+    expect(nextRunAfterCooldown.reason).toBe('ready_now');
+    expect(nextRunAfterCooldown.eligibleAccounts).toHaveLength(1);
+    expect(nextRunAfterCooldown.eligibleAccounts?.[0].label).toBe('Account Beta');
   });
 });
 

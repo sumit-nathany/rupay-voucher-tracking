@@ -33,6 +33,9 @@ export async function getAutomationDashboardAction() {
       eligibleNow: nextRunInfo.eligibleNow,
       nextRunAt: nextRunInfo.nextRunAt ? nextRunInfo.nextRunAt.toISOString() : null,
       accountLabel: nextRunInfo.accountLabel,
+      eligibleAccounts:
+        nextRunInfo.eligibleAccounts ??
+        (nextRunInfo.accountLabel ? [{ id: '', label: nextRunInfo.accountLabel }] : []),
       reason: nextRunInfo.reason,
     },
     queue,
