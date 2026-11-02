@@ -240,6 +240,7 @@ export const cards = app.table(
       .notNull()
       .default(sql`CURRENT_DATE`),
     active: boolean("active").default(true),
+    automationEnabled: boolean("automation_enabled").notNull().default(true),
     inactiveFrom: date("inactive_from", { mode: "string" }),
     paymentDetailsEncrypted: text("payment_details_encrypted"),
     createdAt: createdAt(),

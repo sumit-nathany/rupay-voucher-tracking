@@ -1298,6 +1298,7 @@ export async function findCandidateFromGlobalQueue(
         inArray(portalCardMappings.portalAccountId, eligibleAccountIds),
         eq(portalCardMappings.active, true),
         eq(cards.active, true),
+        eq(cards.automationEnabled, true),
         or(isNull(cards.inactiveFrom), gte(cards.inactiveFrom, today)),
       ),
     );
@@ -1587,6 +1588,8 @@ export async function findCandidatesForAccount(
       and(
         eq(portalCardMappings.portalAccountId, portalAccountId),
         eq(portalCardMappings.active, true),
+        eq(cards.active, true),
+        eq(cards.automationEnabled, true),
         or(isNull(cards.inactiveFrom), gte(cards.inactiveFrom, today)),
       ),
     );

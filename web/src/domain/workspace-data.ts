@@ -220,6 +220,7 @@ const cardCreate = z.strictObject({
   displayName: cardNickname,
   lastDigits: cardDigits.optional(),
   trackingFrom: dateStr.optional(),
+  automationEnabled: z.boolean().optional(),
   paymentDetails: paymentDetailsInput,
 });
 const cardUpdate = z.strictObject({
@@ -231,6 +232,7 @@ const cardUpdate = z.strictObject({
   lastDigits: cardDigits.optional(),
   trackingFrom: dateStr.optional(),
   active: z.boolean().optional(),
+  automationEnabled: z.boolean().optional(),
   inactiveFrom: dateStr.nullable().optional(),
   paymentDetails: paymentDetailsInput,
 });
@@ -340,6 +342,7 @@ export async function createCard(ctx: Ctx, input: unknown) {
       displayName,
       lastDigits,
       trackingFrom: v.trackingFrom ?? ctx.today, // Asia/Kolkata today; backdating allowed
+      automationEnabled: v.automationEnabled ?? true,
       paymentDetailsEncrypted,
     })
     .returning();
@@ -360,6 +363,7 @@ export async function updateCard(ctx: Ctx, input: unknown) {
   }
   if (patch.lastDigits !== undefined) set.lastDigits = patch.lastDigits;
   if (patch.trackingFrom !== undefined) set.trackingFrom = patch.trackingFrom;
+  if (patch.automationEnabled !== undefined) set.automationEnabled = patch.automationEnabled;
 
   if (patch.paymentDetails !== undefined) {
     if (patch.paymentDetails) {

@@ -1,0 +1,1 @@
+ALTER TABLE "app"."cards" ADD COLUMN "automation_enabled" boolean DEFAULT true NOT NULL;

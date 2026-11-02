@@ -29,6 +29,7 @@ export interface QueueItemView {
   cardName: string;
   cardLast4: string;
   holderName: string;
+  cardAutomationEnabled?: boolean;
   bankCardTypeId?: string | null;
   periodLabel?: string | null;
   portalAccountId: string | null;
@@ -253,6 +254,7 @@ async function fetchRawQueueCandidates(
       chosenOptionId: schema.benefitInstances.chosenOptionId,
       cardDisplayName: schema.cards.displayName,
       cardLastDigits: schema.cards.lastDigits,
+      cardAutomationEnabled: schema.cards.automationEnabled,
       holderName: schema.cardHolders.name,
       // Catalog version metadata
       catBenefitType: schema.benefitCatalogVersions.benefitType,
@@ -505,6 +507,7 @@ async function fetchRawQueueCandidates(
         cardId: row.cardId,
         cardName: row.cardDisplayName,
         cardLast4: row.cardLastDigits,
+        cardAutomationEnabled: row.cardAutomationEnabled ?? true,
         holderName: row.holderName,
         bankCardTypeId: row.bankCardTypeId,
         periodLabel: row.periodLabel,

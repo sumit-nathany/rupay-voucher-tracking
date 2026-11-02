@@ -18,6 +18,7 @@ import {
   AlertCircle,
   X,
   ArrowUpDown,
+  Pause,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -494,7 +495,16 @@ export function OrderQueueSection({
 
             // Status badge for the active redemption account
             let activeStatusBadge = null;
-            if (!activeAccount) {
+            if (item.cardAutomationEnabled === false) {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 gap-1 text-xs font-medium"
+                >
+                  <Pause className="h-3 w-3" /> Card Paused
+                </Badge>
+              );
+            } else if (!activeAccount) {
               activeStatusBadge = (
                 <Badge
                   variant="outline"

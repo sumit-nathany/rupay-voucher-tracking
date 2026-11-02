@@ -263,10 +263,10 @@ export function AccountDetailSheet({
                     ) : isPaused ? (
                       <Badge
                         variant="outline"
-                        className="border-muted-foreground/30 bg-muted/50 text-muted-foreground text-[11px] font-medium gap-1 shrink-0 py-0"
+                        className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[11px] font-medium gap-1 shrink-0 py-0"
                       >
                         <Pause className="h-2 w-2" />
-                        Inactive
+                        Paused from Automation
                       </Badge>
                     ) : (
                       <Badge
@@ -614,24 +614,24 @@ export function AccountDetailSheet({
                     <div className="space-y-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-bold text-foreground">
-                          {account.status === 'paused' ? 'Account Inactive (Paused)' : 'Account Active'}
+                          {account.status === 'paused' ? 'Paused from Automation' : 'Active for Automation'}
                         </p>
                         <Badge
                           variant="outline"
                           className={cn(
                             'text-[10px] py-0 px-1.5 font-semibold',
                             account.status === 'paused'
-                              ? 'border-muted-foreground/30 bg-muted text-muted-foreground'
+                              ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
                               : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
                           )}
                         >
-                          {account.status === 'paused' ? 'Inactive' : 'Active'}
+                          {account.status === 'paused' ? 'Paused' : 'Active'}
                         </Badge>
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-relaxed">
                         {account.status === 'paused'
-                          ? 'Automated ordering skips this account. Stored credentials and card mappings are preserved.'
-                          : 'Included in automated ordering runs. Toggle to inactive anytime to pause without deleting.'}
+                          ? 'Automated sweeps skip this account. Stored credentials and card mappings are preserved.'
+                          : 'Included in automated ordering sweeps. Toggle off anytime to pause this account.'}
                       </p>
                     </div>
 

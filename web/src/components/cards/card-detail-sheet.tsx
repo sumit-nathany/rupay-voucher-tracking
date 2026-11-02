@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
-import { AlertTriangle, Calendar, ChevronRight, CreditCard, Hash, Loader2, Pencil, Trash2, User, Lock, ShieldCheck } from 'lucide-react';
-import { deleteCard, updateCard } from '@/actions/cards';
+import { AlertTriangle, Calendar, ChevronRight, CreditCard, Hash, Loader2, Pencil, Trash2, User, Lock, ShieldCheck, Pause, Play, Bot } from 'lucide-react';
+import { deleteCard, updateCard, toggleCardAutomationAction } from '@/actions/cards';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/sheet';
 import { ErrorText, Field, SubmitButton, useRunAction } from '@/components/holders/form-kit';
 import { formatCardLabel } from '@/domain/card-label';
+import { cn } from '@/lib/utils';
 import type { CardRow, HolderOption, VariantOption } from './card-form';
 import type { CardTypeOption } from './card-type-combobox';
 import { CurationBadge } from './curation-badge';
@@ -50,6 +51,7 @@ export function CardDetailSheet({
   const [lastDigits, setLastDigits] = React.useState(card.lastDigits || '0000');
   const [trackingFrom, setTrackingFrom] = React.useState(card.trackingFrom);
   const [active, setActive] = React.useState(card.active);
+  const [automationEnabled, setAutomationEnabled] = React.useState(card.automationEnabled ?? true);
   const [inactiveFrom, setInactiveFrom] = React.useState(
     card.inactiveFrom ?? (card.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)),
   );
@@ -78,6 +80,7 @@ export function CardDetailSheet({
       setLastDigits(card.lastDigits || '0000');
       setTrackingFrom(card.trackingFrom);
       setActive(card.active);
+      setAutomationEnabled(card.automationEnabled ?? true);
       setInactiveFrom(card.inactiveFrom ?? (card.active === false ? card.trackingFrom : new Date().toISOString().slice(0, 10)));
       setCardNumber('');
       setExpiryMonth('');
@@ -126,6 +129,7 @@ export function CardDetailSheet({
           lastDigits: cleanDigits,
           trackingFrom: trackingFrom || undefined,
           active,
+          automationEnabled,
           inactiveFrom: active ? null : (inactiveFrom || undefined),
           paymentDetails,
         }),
@@ -133,6 +137,17 @@ export function CardDetailSheet({
     );
     if (ok) {
       setMode('view');
+    }
+  }
+
+  async function handleToggleAutomation(enable: boolean) {
+    setError(null);
+    const ok = await run(
+      () => toggleCardAutomationAction({ cardId: card.id, enabled: enable }),
+      `Failed to ${enable ? 'resume' : 'pause'} automation for this card`,
+    );
+    if (ok) {
+      setAutomationEnabled(enable);
     }
   }
 
@@ -175,6 +190,12 @@ export function CardDetailSheet({
                     ) : (
                       <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-normal text-xs leading-none">
                         Active
+                      </Badge>
+                    )}
+                    {card.automationEnabled === false && (
+                      <Badge variant="outline" className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 font-normal text-xs leading-none flex items-center gap-1">
+                        <Pause className="h-2.5 w-2.5" />
+                        Automation Paused
                       </Badge>
                     )}
                     {card.paymentDetailsCorrupted && (
@@ -379,6 +400,56 @@ export function CardDetailSheet({
                       </p>
                     </div>
                   )}
+                </div>
+
+                {/* Automated Ordering Control */}
+                <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Bot className="h-3.5 w-3.5 text-primary" /> Automated Ordering
+                        </h4>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[10px] py-0 px-1.5 font-medium',
+                            automationEnabled
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                              : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+                          )}
+                        >
+                          {automationEnabled ? 'Active' : 'Paused'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {automationEnabled
+                          ? 'This card is included in automated voucher sweeps.'
+                          : 'Excluded from automated sweeps. Manual tracking continues normally.'}
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => handleToggleAutomation(!automationEnabled)}
+                      className="h-8 px-3 text-xs font-medium rounded-xl shrink-0"
+                    >
+                      {automationEnabled ? (
+                        <>
+                          <Pause className="h-3.5 w-3.5 mr-1 text-amber-600 dark:text-amber-400" />
+                          Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-3.5 w-3.5 mr-1 text-emerald-600 dark:text-emerald-400" />
+                          Resume
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -595,6 +666,22 @@ export function CardDetailSheet({
                     </label>
                     <p id="card-active-hint" className="text-xs text-muted-foreground">
                       A card with benefit history cannot be deleted; mark it inactive instead.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5 pt-2 border-t border-border/40">
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                        checked={automationEnabled}
+                        onChange={(e) => setAutomationEnabled(e.target.checked)}
+                        aria-describedby="card-auto-hint"
+                      />
+                      Include in Automated Ordering
+                    </label>
+                    <p id="card-auto-hint" className="text-xs text-muted-foreground">
+                      Uncheck to pause automated ordering for this card without retiring the card.
                     </p>
                   </div>
 

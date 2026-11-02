@@ -20,6 +20,7 @@ export interface CardRow {
   lastDigits: string | null;
   trackingFrom: string;
   active: boolean;
+  automationEnabled?: boolean;
   inactiveFrom?: string | null;
   paymentSummary?: {
     mode: 'full' | 'saved_card';

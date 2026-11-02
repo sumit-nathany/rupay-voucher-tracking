@@ -44,12 +44,12 @@ export function AccountsView({
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="inactive" className="text-xs sm:text-sm font-medium gap-1.5 px-3 py-1.5">
-            Inactive
+            Paused
             <Badge
               variant="outline"
               className={`px-1.5 py-0 text-[11px] font-normal ${
                 inactiveAccounts.length > 0
-                  ? 'border-muted-foreground/40 text-muted-foreground'
+                  ? 'border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10'
                   : 'text-muted-foreground/60'
               }`}
             >

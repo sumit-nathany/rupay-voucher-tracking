@@ -30,3 +30,12 @@ export async function deleteCard(input: unknown) {
   revalidatePath('/', 'layout');
   return res;
 }
+
+export async function toggleCardAutomationAction(input: { cardId: string; enabled: boolean }) {
+  const ctx = await getCtx();
+  const res = await d.updateCard(ctx, { id: input.cardId, automationEnabled: input.enabled });
+  revalidatePath('/', 'layout');
+  revalidatePath('/cards');
+  revalidatePath('/automation');
+  return res;
+}

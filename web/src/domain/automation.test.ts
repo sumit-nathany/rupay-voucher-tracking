@@ -1047,5 +1047,111 @@ describe('automation domain', () => {
     expect(globalNom?.candidate.instanceId).toBe(inst2.id);
     expect(globalNom?.account.id).toBe(acc2.id); // Routed to Account 2, bypassing Account 1!
   });
+
+  it('respects per-card and per-account automation pause toggles in candidate nomination', async () => {
+    const workspaceId = crypto.randomUUID();
+    const testCtx: Ctx = {
+      userId: 'test-user',
+      workspaceId,
+      role: 'admin',
+      db,
+      today: '2026-11-02',
+    };
+
+    await db.insert(workspaces).values({ id: workspaceId, name: 'Pause Test WS' });
+    await saveAutomationSettings(testCtx, { enabled: true });
+
+    const [holder] = await db.insert(cardHolders).values({ workspaceId, name: 'Hold A' }).returning();
+    const [cardType] = await db.insert(bankCardTypes).values({
+      bankName: 'PNB',
+      cardType: 'Select',
+      displayName: 'PNB Select',
+    }).returning();
+
+    const [acc] = await db.insert(portalAccounts).values({
+      workspaceId,
+      label: 'test@example.com',
+      status: 'connected',
+      credentialsEncrypted: 'mock-enc',
+    }).returning();
+
+    const cardId = crypto.randomUUID();
+    const [card] = await db.insert(cards).values({
+      id: cardId,
+      workspaceId,
+      holderId: holder.id,
+      bankCardTypeId: cardType.id,
+      displayName: 'PNB Card',
+      lastDigits: '4444',
+      automationEnabled: true,
+      paymentDetailsEncrypted: encryptPaymentDetails({ version: 1, mode: 'saved_card', cvv: '123' }, cardId),
+    }).returning();
+
+    await savePortalCardMapping(testCtx, {
+      portalAccountId: acc.id,
+      cardId: card.id,
+      portalCardId: '101',
+      portalCardbinId: '201',
+    });
+
+    const [benefit] = await db.insert(benefits).values({ bankCardTypeId: cardType.id, benefitType: 'Spa Services' }).returning();
+    const [ver] = await db.insert(benefitCatalogVersions).values({
+      benefitId: benefit.id,
+      benefitType: 'Spa Services',
+      benefitProvider: 'O2',
+      exactBenefit: 'Spa 1000',
+      defaultCashValue: '1000.00',
+      offerKind: 'voucher',
+      effectiveFrom: '2026-10-01',
+      frequency: 'Quarterly',
+    }).returning();
+
+    const [inst] = await db.insert(benefitInstances).values({
+      workspaceId,
+      cardId: card.id,
+      bankCardTypeId: cardType.id,
+      benefitId: benefit.id,
+      generatedFromVersion: ver.id,
+      periodStart: '2026-10-01',
+      periodEnd: '2026-12-31',
+      periodLabel: 'Q4 2026',
+      orderDeadline: '2026-12-31',
+      cashValue: '1000.00',
+      orderStatus: 'Not Ordered',
+    }).returning();
+
+    await db.insert(orderingQueueItems).values({
+      workspaceId,
+      instanceId: inst.id,
+      position: 1,
+      enabled: true,
+    });
+
+    // 1. With card and account enabled, nomination succeeds
+    let nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).not.toBeNull();
+    expect(nomination?.candidate.instanceId).toBe(inst.id);
+
+    // 2. Pause the CARD from automation -> nomination must skip it and return null
+    await db.update(cards).set({ automationEnabled: false }).where(eq(cards.id, card.id));
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).toBeNull();
+
+    // 3. Re-enable the CARD from automation -> nomination succeeds again
+    await db.update(cards).set({ automationEnabled: true }).where(eq(cards.id, card.id));
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).not.toBeNull();
+
+    // 4. Pause the ACCOUNT from automation (status = 'paused') -> nomination must skip it
+    await pausePortalAccount(testCtx, acc.id);
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).toBeNull();
+
+    // 5. Resume the ACCOUNT from automation (status = 'connected') -> nomination succeeds again
+    await resumePortalAccount(testCtx, acc.id);
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).not.toBeNull();
+    expect(nomination?.candidate.instanceId).toBe(inst.id);
+  });
 });
 
