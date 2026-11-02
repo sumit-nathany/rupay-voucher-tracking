@@ -325,6 +325,25 @@ describe('sale and details', () => {
     expect(view.portalAccountId).toBe(accA.id);
     expect(view.portalAccountLabel).toBe('account-a@example.com');
 
+    // Inactive account in workspace A:
+    const [accInactive] = await db.insert(portalAccounts).values({
+      workspaceId: A.workspaceId,
+      label: 'inactive@example.com',
+      credentialsEncrypted: 'enc',
+      active: false,
+      status: 'connected',
+    }).returning();
+
+    // Inactive account must NOT be listed in availablePortalAccounts
+    const viewWithAccounts = await inst.getInstance(A, id);
+    expect(viewWithAccounts.availablePortalAccounts?.some((a) => a.id === accInactive.id)).toBe(false);
+    expect(viewWithAccounts.availablePortalAccounts?.some((a) => a.id === accA.id)).toBe(true);
+
+    // Updating with an inactive account should fail
+    await expect(
+      inst.updateDetails(A, { instanceId: id, portalAccountId: accInactive.id }),
+    ).rejects.toThrow('Cannot assign an inactive RuPay account to a voucher');
+
     // Clearing portalAccountId
     const cleared = await inst.updateDetails(A, { instanceId: id, portalAccountId: null });
     expect(cleared.portalAccountId).toBeNull();

@@ -46,6 +46,8 @@ export function AssignAccountsDialog({
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
 
+  const selectableAccounts = accounts.filter((a) => a.active);
+
   // Initialize or update selected account and card selections when dialog opens or defaults change
   useEffect(() => {
     if (open) {
@@ -55,7 +57,7 @@ export function AssignAccountsDialog({
         (defaultCardId
           ? mappings.find((m) => m.cardId === defaultCardId)?.portalAccountId
           : undefined) ??
-        accounts[0]?.id ??
+        selectableAccounts[0]?.id ??
         '';
 
       setSelectedAccount(activeAccountId);
@@ -74,7 +76,7 @@ export function AssignAccountsDialog({
       setSelectedCards(mappedCardIds);
       setError(null);
     }
-  }, [open, existing, defaultAccountId, defaultCardId, accounts, mappings]);
+  }, [open, existing, defaultAccountId, defaultCardId, accounts, mappings, selectableAccounts]);
 
   function handleAccountChange(accountId: string) {
     setSelectedAccount(accountId);
@@ -160,7 +162,7 @@ export function AssignAccountsDialog({
                 <SelectValue placeholder="Select portal account" />
               </SelectTrigger>
               <SelectContent>
-                {accounts.map((a) => (
+                {selectableAccounts.map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.label} {a.phoneNumber ? `(${a.phoneNumber})` : ''}
                   </SelectItem>

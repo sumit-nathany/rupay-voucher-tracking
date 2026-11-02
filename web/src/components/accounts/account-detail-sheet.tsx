@@ -22,8 +22,9 @@ import {
 import {
   deletePortalAccountAction,
   deletePortalCardMappingAction,
-  pausePortalAccountAction,
   resumePortalAccountAction,
+  togglePortalAccountActiveAction,
+  togglePortalAccountAutomationAction,
   updatePortalAccountAction,
 } from '@/actions/automation';
 import { Badge } from '@/components/ui/badge';
@@ -101,10 +102,11 @@ export function AccountDetailSheet({
   }, [mappings]);
 
   const isCooldown =
-    account.status === 'connected' &&
-    Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
+  account.status === 'connected' &&
+  Boolean(account.cooldownUntil && new Date(account.cooldownUntil) > new Date());
 
-  const isPaused = account.status === 'paused';
+  const isInactive = !account.active;
+  const isAutomationPaused = account.active && !account.automationEnabled;
 
   const formattedCooldownTime = formatCooldown(account.cooldownUntil);
   const accountMappings = localMappings.filter((m) => m.portalAccountId === account.id);
@@ -134,18 +136,27 @@ export function AccountDetailSheet({
     }
   }
 
-  async function handleTogglePause() {
-    const isCurrentlyPaused = account.status === 'paused';
+  async function handleToggleActive() {
+    const nextActive = !account.active;
     setFeedback(null);
     const ok = await run(
-      () =>
-        isCurrentlyPaused
-          ? resumePortalAccountAction({ id: account.id })
-          : pausePortalAccountAction({ id: account.id }),
-      `Failed to ${isCurrentlyPaused ? 'activate' : 'mark inactive'} account`,
+      () => togglePortalAccountActiveAction({ id: account.id, active: nextActive }),
+      `Failed to ${nextActive ? 'reactivate' : 'deactivate'} account`,
     );
     if (ok) {
-      setFeedback(`Account ${isCurrentlyPaused ? 'activated' : 'marked as inactive'} successfully.`);
+      setFeedback(`Account ${nextActive ? 'reactivated' : 'marked as inactive'} across the workspace.`);
+    }
+  }
+
+  async function handleToggleAutomation() {
+    const nextEnabled = !account.automationEnabled;
+    setFeedback(null);
+    const ok = await run(
+      () => togglePortalAccountAutomationAction({ id: account.id, enabled: nextEnabled }),
+      `Failed to ${nextEnabled ? 'resume' : 'pause'} automated ordering`,
+    );
+    if (ok) {
+      setFeedback(`Automated ordering ${nextEnabled ? 'resumed' : 'paused'} for this account.`);
     }
   }
 
@@ -205,7 +216,7 @@ export function AccountDetailSheet({
             <Card
               className={cn(
                 'h-full overflow-hidden rounded-2xl transition-all cursor-pointer',
-                isPaused
+                isInactive
                   ? 'opacity-80 bg-muted/20 border border-dashed border-border/80 hover:opacity-100 hover:border-border hover:shadow-xs'
                   : 'border border-border/70 hover:border-foreground/25 hover:shadow-xs group-hover:bg-accent/15',
               )}
@@ -217,7 +228,7 @@ export function AccountDetailSheet({
                     aria-hidden
                     className={cn(
                       'grid h-9 w-9 shrink-0 place-items-center rounded-xl shadow-xs transition-transform group-hover:scale-105',
-                      isPaused
+                      isInactive
                         ? 'bg-muted/60 border border-border/60 text-muted-foreground'
                         : 'bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/20 text-primary',
                     )}
@@ -228,7 +239,7 @@ export function AccountDetailSheet({
                     <p
                       className={cn(
                         'font-semibold text-sm sm:text-base leading-tight truncate transition-colors',
-                        isPaused
+                        isInactive
                           ? 'text-muted-foreground group-hover:text-foreground'
                           : 'text-foreground group-hover:text-primary',
                       )}
@@ -252,29 +263,41 @@ export function AccountDetailSheet({
                 {/* Bottom Row: Status Badge & Metadata + Details Link */}
                 <div className="pt-2.5 border-t border-border/40 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
-                    {isCooldown ? (
+                    {isInactive ? (
                       <Badge
                         variant="outline"
-                        className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-semibold gap-1 shrink-0 py-0"
+                        className="border-muted-foreground/40 bg-muted/30 text-muted-foreground text-[11px] font-medium gap-1 shrink-0 py-0"
                       >
-                        <Clock className="h-2.5 w-2.5" />
-                        Cooldown
-                      </Badge>
-                    ) : isPaused ? (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[11px] font-medium gap-1 shrink-0 py-0"
-                      >
-                        <Pause className="h-2 w-2" />
-                        Paused from Automation
+                        Inactive
                       </Badge>
                     ) : (
-                      <Badge
-                        variant="outline"
-                        className={`text-[11px] font-medium tracking-wide capitalize shrink-0 py-0 ${getStatusTone(account.status)}`}
-                      >
-                        {account.status.replace(/_/g, ' ')}
-                      </Badge>
+                      <>
+                        {isCooldown ? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] font-semibold gap-1 shrink-0 py-0"
+                          >
+                            <Clock className="h-2.5 w-2.5" />
+                            Cooldown
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={`text-[11px] font-medium tracking-wide capitalize shrink-0 py-0 ${getStatusTone(account.status)}`}
+                          >
+                            {account.status.replace(/_/g, ' ')}
+                          </Badge>
+                        )}
+                        {isAutomationPaused && (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[11px] font-medium gap-1 shrink-0 py-0"
+                          >
+                            <Pause className="h-2 w-2" />
+                            Automation Paused
+                          </Badge>
+                        )}
+                      </>
                     )}
 
                     <span className="truncate">
@@ -610,72 +633,126 @@ export function AccountDetailSheet({
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/60 p-4 gap-3">
-                    <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs font-bold text-foreground">
-                          {account.status === 'paused' ? 'Paused from Automation' : 'Active for Automation'}
+                  <div className="space-y-3">
+                    {/* 1. Ecosystem Lifecycle Status (Active vs Inactive) */}
+                    <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/60 p-4 gap-3">
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-foreground">
+                            Workspace Status
+                          </p>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              'text-[10px] py-0 px-1.5 font-semibold',
+                              account.active
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'border-muted-foreground/40 bg-muted/30 text-muted-foreground',
+                            )}
+                          >
+                            {account.active ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          {account.active
+                            ? 'Active across the ecosystem. Appears in voucher selection dropdowns, card mappings, and filters.'
+                            : 'Inactive across the entire ecosystem. Hidden from voucher dropdowns, card mappings, and automated sweeps.'}
                         </p>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            'text-[10px] py-0 px-1.5 font-semibold',
-                            account.status === 'paused'
-                              ? 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400'
-                              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-                          )}
-                        >
-                          {account.status === 'paused' ? 'Paused' : 'Active'}
-                        </Badge>
                       </div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed">
-                        {account.status === 'paused'
-                          ? 'Automated sweeps skip this account. Stored credentials and card mappings are preserved.'
-                          : 'Included in automated ordering sweeps. Toggle off anytime to pause this account.'}
-                      </p>
-                    </div>
 
-                    {/* Active / Inactive Toggle Switch */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
+                      <Button
                         type="button"
-                        role="switch"
-                        aria-checked={account.status !== 'paused'}
-                        aria-label={
-                          account.status === 'paused'
-                            ? `Activate account ${account.label}`
-                            : `Mark account ${account.label} as inactive`
-                        }
-                        title={
-                          account.status === 'paused'
-                            ? 'Click to activate this account for automated ordering'
-                            : 'Click to mark as inactive (pause automated ordering)'
-                        }
+                        variant={account.active ? 'outline' : 'default'}
+                        size="sm"
                         disabled={pending}
-                        onClick={handleTogglePause}
+                        onClick={handleToggleActive}
                         className={cn(
-                          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-                          account.status === 'paused'
-                            ? 'bg-muted-foreground/30 hover:bg-muted-foreground/45'
-                            : 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600',
+                          'h-8 text-xs font-semibold gap-1.5 shrink-0 cursor-pointer',
+                          account.active
+                            ? 'text-muted-foreground hover:text-foreground'
+                            : 'bg-primary text-primary-foreground',
                         )}
                       >
-                        <span
-                          className={cn(
-                            'pointer-events-none flex h-5 w-5 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
-                            account.status === 'paused' ? 'translate-x-0' : 'translate-x-5',
-                          )}
-                        >
-                          {pending ? (
-                            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                          ) : account.status === 'paused' ? (
-                            <Pause className="h-2.5 w-2.5 text-muted-foreground" />
-                          ) : (
-                            <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
-                          )}
-                        </span>
-                      </button>
+                        {pending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : account.active ? (
+                          'Deactivate'
+                        ) : (
+                          'Reactivate'
+                        )}
+                      </Button>
                     </div>
+
+                    {/* 2. Automated Ordering Pause / Resume (Available when account is Active) */}
+                    {account.active && (
+                      <div className="flex items-center justify-between rounded-xl border border-border/70 bg-card/60 p-4 gap-3">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-bold text-foreground">
+                              Automated Ordering
+                            </p>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-[10px] py-0 px-1.5 font-semibold',
+                                account.automationEnabled
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                  : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+                              )}
+                            >
+                              {account.automationEnabled ? 'Active' : 'Paused'}
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            {account.automationEnabled
+                              ? 'Included in automated ordering sweeps. Toggle off to skip bot sweeps while keeping the account active.'
+                              : 'Automated sweeps skip this account. Stored credentials and card mappings remain intact.'}
+                          </p>
+                        </div>
+
+                        {/* Automation Pause / Resume Toggle Switch */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={account.automationEnabled}
+                            aria-label={
+                              account.automationEnabled
+                                ? `Pause automated ordering for ${account.label}`
+                                : `Resume automated ordering for ${account.label}`
+                            }
+                            title={
+                              account.automationEnabled
+                                ? 'Click to pause automated sweeps for this account'
+                                : 'Click to resume automated sweeps for this account'
+                            }
+                            disabled={pending}
+                            onClick={handleToggleAutomation}
+                            className={cn(
+                              'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                              account.automationEnabled
+                                ? 'bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600'
+                                : 'bg-muted-foreground/30 hover:bg-muted-foreground/45',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'pointer-events-none flex h-5 w-5 items-center justify-center rounded-full bg-background shadow-xs transition-transform duration-200 ease-in-out',
+                                account.automationEnabled ? 'translate-x-5' : 'translate-x-0',
+                              )}
+                            >
+                              {pending ? (
+                                <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                              ) : account.automationEnabled ? (
+                                <span className="h-2 w-2 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                              ) : (
+                                <Pause className="h-2.5 w-2.5 text-muted-foreground" />
+                              )}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

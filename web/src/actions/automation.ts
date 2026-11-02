@@ -86,6 +86,8 @@ const updateAccountSchema = z.object({
   id: z.string().uuid(),
   label: z.string().min(1).optional(),
   phoneNumber: z.string().optional().nullable(),
+  active: z.boolean().optional(),
+  automationEnabled: z.boolean().optional(),
   credentials: z
     .object({
       loginId: z.string().min(1),
@@ -101,7 +103,25 @@ export async function updatePortalAccountAction(input: z.infer<typeof updateAcco
   const result = await auto.updatePortalAccount(ctx, parsed);
   revalidatePath('/automation');
   revalidatePath('/accounts');
+  revalidatePath('/benefits');
+  revalidatePath('/', 'layout');
   return result;
+}
+
+export async function togglePortalAccountActiveAction(input: { id: string; active: boolean }) {
+  const ctx = await getCtx();
+  await auto.setPortalAccountActive(ctx, input.id, input.active);
+  revalidatePath('/automation');
+  revalidatePath('/accounts');
+  revalidatePath('/benefits');
+  revalidatePath('/', 'layout');
+}
+
+export async function togglePortalAccountAutomationAction(input: { id: string; enabled: boolean }) {
+  const ctx = await getCtx();
+  await auto.togglePortalAccountAutomation(ctx, input.id, input.enabled);
+  revalidatePath('/automation');
+  revalidatePath('/accounts');
 }
 
 export async function pausePortalAccountAction(input: { id: string }) {

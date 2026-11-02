@@ -12,6 +12,7 @@ export interface AccountSuggestion {
   isRecommended: boolean;
   status:
     | 'ready'
+    | 'paused'
     | 'cooldown'
     | 'conflict'
     | 'available_to_map'
@@ -97,18 +98,24 @@ async function fetchRawQueueCandidates(
 
   if (activeCards.length === 0) return [];
 
-  // 2. Fetch all portal accounts for workspace
+  // 2. Fetch all active portal accounts for workspace
   const allWorkspaceAccounts = await ctx.db
     .select({
       id: schema.portalAccounts.id,
       label: schema.portalAccounts.label,
       status: schema.portalAccounts.status,
+      automationEnabled: schema.portalAccounts.automationEnabled,
       cooldownUntil: schema.portalAccounts.cooldownUntil,
     })
     .from(schema.portalAccounts)
-    .where(eq(schema.portalAccounts.workspaceId, ctx.workspaceId));
+    .where(
+      and(
+        eq(schema.portalAccounts.workspaceId, ctx.workspaceId),
+        eq(schema.portalAccounts.active, true),
+      ),
+    );
 
-  // 3. Fetch all active portal card mappings for workspace
+  // 3. Fetch all active portal card mappings for active accounts in workspace
   const rawMappings = await ctx.db
     .select({
       id: schema.portalCardMappings.id,
@@ -132,6 +139,7 @@ async function fetchRawQueueCandidates(
       and(
         eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
         eq(schema.portalCardMappings.active, true),
+        eq(schema.portalAccounts.active, true),
       ),
     );
 
@@ -407,7 +415,10 @@ async function fetchRawQueueCandidates(
       let isEligible = false;
 
       if (isMapped) {
-        if (!hasValidPayment) {
+        if (!acc.automationEnabled) {
+          status = 'paused';
+          reason = 'Account paused from automation';
+        } else if (!hasValidPayment) {
           status = 'missing_details';
           reason = 'Card lacks payment details';
         } else if (!isConnected) {
@@ -456,7 +467,8 @@ async function fetchRawQueueCandidates(
       available_to_map: 3,
       conflict: 4,
       missing_details: 5,
-      needs_attention: 6,
+      paused: 6,
+      needs_attention: 7,
     };
 
     suggestedAccounts.sort((a, b) => {

@@ -19,11 +19,11 @@ export function AccountsView({
   availableCards,
 }: AccountsViewProps) {
   const activeAccounts = React.useMemo(
-    () => accounts.filter((a) => a.status !== 'paused'),
+    () => accounts.filter((a) => a.active),
     [accounts],
   );
   const inactiveAccounts = React.useMemo(
-    () => accounts.filter((a) => a.status === 'paused'),
+    () => accounts.filter((a) => !a.active),
     [accounts],
   );
 
@@ -44,12 +44,12 @@ export function AccountsView({
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="inactive" className="text-xs sm:text-sm font-medium gap-1.5 px-3 py-1.5">
-            Paused
+            Inactive
             <Badge
               variant="outline"
               className={`px-1.5 py-0 text-[11px] font-normal ${
                 inactiveAccounts.length > 0
-                  ? 'border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/10'
+                  ? 'border-muted-foreground/40 text-muted-foreground bg-muted/30'
                   : 'text-muted-foreground/60'
               }`}
             >
@@ -74,14 +74,14 @@ export function AccountsView({
                   </Badge>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  Included in automated ordering runs
+                  Active across workspace and voucher tracking
                 </span>
               </div>
 
               {activeAccounts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border/80 p-6 text-center bg-muted/10">
                   <p className="text-sm text-muted-foreground">
-                    No active accounts. Resume an inactive account below to include it in automated ordering.
+                    No active accounts. Reactivate an inactive account below to restore it.
                   </p>
                 </div>
               ) : (
@@ -104,7 +104,7 @@ export function AccountsView({
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
-                    Inactive / Paused Accounts
+                    Inactive Accounts
                   </h2>
                   <Badge
                     variant="outline"
@@ -114,7 +114,7 @@ export function AccountsView({
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  These accounts are skipped during automated ordering runs.
+                  Excluded from voucher selection, card assignments, and automated sweeps.
                 </p>
               </div>
 
@@ -160,14 +160,14 @@ export function AccountsView({
             </Badge>
           </div>
           <span className="text-xs text-muted-foreground">
-            Included in automated ordering runs
+            Available across the ecosystem for voucher assignments and card mappings
           </span>
         </div>
 
         {activeAccounts.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
             <p className="text-sm text-muted-foreground">
-              No active accounts. Resume a paused account to include it in automated ordering.
+              No active accounts. Reactivate an inactive account to restore it to the ecosystem.
             </p>
           </div>
         ) : (
@@ -191,7 +191,7 @@ export function AccountsView({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold tracking-wide text-foreground">
-              Inactive / Paused Accounts
+              Inactive Accounts
             </h2>
             <Badge
               variant="outline"
@@ -201,14 +201,14 @@ export function AccountsView({
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            These accounts are skipped during automated ordering runs.
+            Retired across the entire ecosystem. Hidden from voucher dropdowns, card assignments, and sweeps.
           </p>
         </div>
 
         {inactiveAccounts.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-muted/10">
             <p className="text-sm text-muted-foreground">
-              No inactive accounts. All accounts are currently active.
+              No inactive accounts. All accounts in this workspace are active.
             </p>
           </div>
         ) : (

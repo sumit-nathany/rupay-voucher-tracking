@@ -203,7 +203,7 @@ async function loadView(ctx: Ctx, instanceId: string): Promise<InstanceView> {
         status: portalAccounts.status,
       })
       .from(portalAccounts)
-      .where(eq(portalAccounts.workspaceId, ctx.workspaceId))
+      .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.active, true)))
       .orderBy(asc(portalAccounts.label)),
     isUuid(ctx.userId)
       ? ctx.db
@@ -423,7 +423,7 @@ export async function updateDetails(
   if (p.portalAccountId !== undefined) {
     if (p.portalAccountId != null) {
       const [acc] = await ctx.db
-        .select({ id: portalAccounts.id })
+        .select({ id: portalAccounts.id, active: portalAccounts.active })
         .from(portalAccounts)
         .where(
           and(
@@ -432,6 +432,7 @@ export async function updateDetails(
           ),
         );
       if (!acc) throw new NotFoundError('Portal account not found');
+      if (!acc.active) throw new InstanceStateError('Cannot assign an inactive RuPay account to a voucher');
     }
     patch.portalAccountId = p.portalAccountId;
   }

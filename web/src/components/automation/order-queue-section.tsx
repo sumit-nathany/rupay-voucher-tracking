@@ -513,6 +513,15 @@ export function OrderQueueSection({
                   <AlertTriangle className="h-3 w-3" /> No account mapped
                 </Badge>
               );
+            } else if (activeAccount.status === 'paused') {
+              activeStatusBadge = (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 gap-1 text-xs font-medium"
+                >
+                  <Pause className="h-3 w-3" /> Account Paused
+                </Badge>
+              );
             } else if (activeAccount.status === 'ready') {
               activeStatusBadge = (
                 <Badge

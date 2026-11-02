@@ -28,6 +28,7 @@ import {
   pausePortalAccount,
   resumePortalAccount,
   deletePortalAccount,
+  setPortalAccountActive,
   savePortalCardMapping,
   listPortalCardMappings,
   setCardPortalAccounts,
@@ -1142,13 +1143,32 @@ describe('automation domain', () => {
     nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
     expect(nomination).not.toBeNull();
 
-    // 4. Pause the ACCOUNT from automation (status = 'paused') -> nomination must skip it
+    // 4. Pause the ACCOUNT from automation -> nomination must skip it
     await pausePortalAccount(testCtx, acc.id);
     nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
     expect(nomination).toBeNull();
 
-    // 5. Resume the ACCOUNT from automation (status = 'connected') -> nomination succeeds again
+    // 5. Resume the ACCOUNT from automation -> nomination succeeds again
     await resumePortalAccount(testCtx, acc.id);
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).not.toBeNull();
+    expect(nomination?.candidate.instanceId).toBe(inst.id);
+
+    // 6. Deactivate the ACCOUNT (make it Inactive across the ecosystem)
+    await setPortalAccountActive(testCtx, acc.id, false);
+    nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
+    expect(nomination).toBeNull();
+
+    // Inactive account cannot have new cards mapped to it
+    await expect(
+      savePortalCardMapping(testCtx, {
+        portalAccountId: acc.id,
+        cardId: card.id,
+      }),
+    ).rejects.toThrow('Cannot map cards to an inactive RuPay account');
+
+    // 7. Reactivate the ACCOUNT -> nomination succeeds again
+    await setPortalAccountActive(testCtx, acc.id, true);
     nomination = await findCandidateFromGlobalQueue(db, workspaceId, '2026-11-02');
     expect(nomination).not.toBeNull();
     expect(nomination?.candidate.instanceId).toBe(inst.id);

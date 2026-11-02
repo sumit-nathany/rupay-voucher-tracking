@@ -33,9 +33,11 @@ export function PortalAccountsSection({
     }
   }
 
-  const activeCount = accounts.filter((a) => a.status === 'connected').length;
-  const pausedCount = accounts.filter((a) => a.status === 'paused').length;
-  const cooldownCount = accounts.filter(
+  const activeEcosystemAccounts = accounts.filter((a) => a.active);
+  const inactiveCount = accounts.filter((a) => !a.active).length;
+  const activeCount = activeEcosystemAccounts.filter((a) => a.automationEnabled && a.status === 'connected').length;
+  const pausedCount = activeEcosystemAccounts.filter((a) => !a.automationEnabled).length;
+  const cooldownCount = activeEcosystemAccounts.filter(
     (a) => a.status === 'connected' && Boolean(a.cooldownUntil && new Date(a.cooldownUntil) > new Date()),
   ).length;
 
@@ -56,7 +58,7 @@ export function PortalAccountsSection({
               </p>
             </div>
           </div>
-          {accounts.length > 0 && (
+          {activeEcosystemAccounts.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary text-xs font-medium">
                 {activeCount} active
@@ -71,8 +73,8 @@ export function PortalAccountsSection({
         </div>
 
         <p className="text-xs text-muted-foreground leading-relaxed">
-          {accounts.length > 0
-            ? `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'} configured. Pause or resume individual accounts for automated sweeps below:`
+          {activeEcosystemAccounts.length > 0
+            ? `${activeEcosystemAccounts.length} active ${activeEcosystemAccounts.length === 1 ? 'account' : 'accounts'} in workspace. Pause or resume individual accounts for automated sweeps below:`
             : 'Connect your RuPay portal logins to enable automated voucher ordering for your cards.'}
         </p>
 
@@ -85,10 +87,10 @@ export function PortalAccountsSection({
         )}
 
         {/* Accounts List with Quick Pause/Resume Toggle */}
-        {accounts.length > 0 && (
+        {activeEcosystemAccounts.length > 0 && (
           <div className="space-y-2 pt-1 max-h-60 overflow-y-auto pr-1">
-            {accounts.map((acc) => {
-              const isPaused = acc.status === 'paused';
+            {activeEcosystemAccounts.map((acc) => {
+              const isPaused = !acc.automationEnabled;
               const isNeedsAttention = acc.status === 'needs_attention';
               return (
                 <div
@@ -144,6 +146,16 @@ export function PortalAccountsSection({
               );
             })}
           </div>
+        )}
+
+        {inactiveCount > 0 && (
+          <p className="text-[11px] text-muted-foreground pt-1">
+            {inactiveCount} account{inactiveCount === 1 ? ' is' : 's are'} marked{' '}
+            <span className="font-semibold text-foreground">Inactive</span> across the workspace and excluded from automation entirely.{' '}
+            <Link href="/accounts" className="text-primary hover:underline font-medium">
+              Manage on Accounts
+            </Link>
+          </p>
         )}
       </div>
 

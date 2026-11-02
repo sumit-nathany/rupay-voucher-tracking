@@ -38,6 +38,8 @@ export interface PortalAccountView {
   workspaceId: string;
   label: string;
   phoneNumber: string | null;
+  active: boolean;
+  automationEnabled: boolean;
   status: 'connected' | 'paused' | 'credentials_expired' | 'challenge_required' | 'portal_changed' | 'needs_attention';
   hasCredentials: boolean;
   lastConfirmedOrderAt: string | null;
@@ -241,6 +243,8 @@ export async function listPortalAccounts(ctx: Ctx): Promise<PortalAccountView[]>
     workspaceId: a.workspaceId,
     label: a.label,
     phoneNumber: a.phoneNumber ?? null,
+    active: a.active,
+    automationEnabled: a.automationEnabled,
     status: a.status as PortalAccountView['status'],
     hasCredentials: Boolean(a.credentialsEncrypted),
     lastConfirmedOrderAt: a.lastConfirmedOrderAt ? a.lastConfirmedOrderAt.toISOString() : null,
@@ -311,6 +315,8 @@ export async function createPortalAccount(
       label,
       phoneNumber: input.phoneNumber?.trim() || null,
       credentialsEncrypted,
+      active: true,
+      automationEnabled: true,
       status: 'connected',
     })
     .returning();
@@ -320,6 +326,8 @@ export async function createPortalAccount(
     workspaceId: row.workspaceId,
     label: row.label,
     phoneNumber: row.phoneNumber,
+    active: row.active,
+    automationEnabled: row.automationEnabled,
     status: row.status as PortalAccountView['status'],
     hasCredentials: true,
     lastConfirmedOrderAt: null,
@@ -335,7 +343,14 @@ export async function createPortalAccount(
 
 export async function updatePortalAccount(
   ctx: Ctx,
-  input: { id: string; label?: string; phoneNumber?: string | null; credentials?: { loginId: string; password: string; extra?: Record<string, string> } },
+  input: {
+    id: string;
+    label?: string;
+    phoneNumber?: string | null;
+    active?: boolean;
+    automationEnabled?: boolean;
+    credentials?: { loginId: string; password: string; extra?: Record<string, string> };
+  },
 ): Promise<PortalAccountView> {
   const [existing] = await ctx.db
     .select()
@@ -350,6 +365,9 @@ export async function updatePortalAccount(
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), ne(portalAccounts.id, input.id)));
 
   const patch: Partial<typeof portalAccounts.$inferInsert> = { updatedAt: new Date() };
+
+  if (input.active !== undefined) patch.active = input.active;
+  if (input.automationEnabled !== undefined) patch.automationEnabled = input.automationEnabled;
 
   if (input.label !== undefined) {
     const l = input.label.trim();
@@ -414,6 +432,8 @@ export async function updatePortalAccount(
     workspaceId: row.workspaceId,
     label: row.label,
     phoneNumber: row.phoneNumber,
+    active: row.active,
+    automationEnabled: row.automationEnabled,
     status: row.status as PortalAccountView['status'],
     hasCredentials: true,
     lastConfirmedOrderAt: row.lastConfirmedOrderAt ? row.lastConfirmedOrderAt.toISOString() : null,
@@ -427,18 +447,34 @@ export async function updatePortalAccount(
   };
 }
 
-export async function pausePortalAccount(ctx: Ctx, id: string): Promise<void> {
+export async function setPortalAccountActive(ctx: Ctx, id: string, active: boolean): Promise<void> {
   await ctx.db
     .update(portalAccounts)
-    .set({ status: 'paused', updatedAt: new Date() })
+    .set({ active, updatedAt: new Date() })
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, id)));
 }
 
-export async function resumePortalAccount(ctx: Ctx, id: string): Promise<void> {
+export async function togglePortalAccountAutomation(ctx: Ctx, id: string, enabled: boolean): Promise<void> {
+  const patch: Partial<typeof portalAccounts.$inferInsert> = {
+    automationEnabled: enabled,
+    status: enabled ? 'connected' : 'paused',
+    updatedAt: new Date(),
+  };
+  if (enabled) {
+    patch.statusDetailCode = null;
+  }
   await ctx.db
     .update(portalAccounts)
-    .set({ status: 'connected', statusDetailCode: null, updatedAt: new Date() })
+    .set(patch)
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, id)));
+}
+
+export async function pausePortalAccount(ctx: Ctx, id: string): Promise<void> {
+  await togglePortalAccountAutomation(ctx, id, false);
+}
+
+export async function resumePortalAccount(ctx: Ctx, id: string): Promise<void> {
+  await togglePortalAccountAutomation(ctx, id, true);
 }
 
 export async function deletePortalAccount(ctx: Ctx, id: string): Promise<void> {
@@ -544,6 +580,7 @@ export async function savePortalCardMapping(
     .from(portalAccounts)
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, input.portalAccountId)));
   if (!acc) throw new NotFoundError('Portal account not found');
+  if (!acc.active) throw new ValidationError('Cannot map cards to an inactive RuPay account');
 
   if (input.id) {
     const patch: Partial<typeof portalCardMappings.$inferInsert> = {
@@ -708,7 +745,7 @@ export async function setCardPortalAccounts(
   // Verify all portal accounts belong to workspace
   if (portalAccountIds.length > 0) {
     const accs = await ctx.db
-      .select({ id: portalAccounts.id })
+      .select({ id: portalAccounts.id, active: portalAccounts.active })
       .from(portalAccounts)
       .where(
         and(
@@ -718,6 +755,9 @@ export async function setCardPortalAccounts(
       );
     if (accs.length !== portalAccountIds.length) {
       throw new NotFoundError('One or more portal accounts not found in workspace');
+    }
+    if (accs.some((a) => !a.active)) {
+      throw new ValidationError('Cannot assign card to an inactive RuPay account');
     }
 
     // Strict Guardrail: Validate card has valid payment details configured
@@ -806,10 +846,11 @@ export async function setPortalAccountCards(
 
   // Verify portal account belongs to workspace
   const [acc] = await ctx.db
-    .select({ id: portalAccounts.id })
+    .select({ id: portalAccounts.id, active: portalAccounts.active })
     .from(portalAccounts)
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, portalAccountId)));
   if (!acc) throw new NotFoundError('Portal account not found in workspace');
+  if (!acc.active) throw new ValidationError('Cannot map cards to an inactive RuPay account');
 
   if (cardIds.length > 0) {
     // Verify all cards belong to workspace
@@ -1000,6 +1041,7 @@ export async function createOrderingRule(
     .from(portalAccounts)
     .where(and(eq(portalAccounts.workspaceId, ctx.workspaceId), eq(portalAccounts.id, input.portalAccountId)));
   if (!acc) throw new NotFoundError('Portal account not found');
+  if (!acc.active) throw new ValidationError('Cannot map cards to an inactive RuPay account');
 
   const [rule] = await ctx.db
     .insert(orderingRules)
@@ -1225,13 +1267,15 @@ export async function findCandidateFromGlobalQueue(
     console.warn('[automation] syncGlobalOrderingQueue warning:', err instanceof Error ? err.message : err);
   }
 
-  // 3. Fetch connected portal accounts
+  // 3. Fetch connected portal accounts that are active in the ecosystem and have automation enabled
   const accounts = await db
     .select()
     .from(portalAccounts)
     .where(
       and(
         eq(portalAccounts.workspaceId, workspaceId),
+        eq(portalAccounts.active, true),
+        eq(portalAccounts.automationEnabled, true),
         eq(portalAccounts.status, 'connected'),
         options?.portalAccountId ? eq(portalAccounts.id, options.portalAccountId) : undefined,
       ),
@@ -1519,13 +1563,13 @@ export async function findCandidatesForAccount(
   today: string,
   options?: { ignoreCooldown?: boolean },
 ): Promise<CandidateNomination['candidate'] | null> {
-  // 1. Verify account is connected and not paused
+  // 1. Verify account is connected, active in ecosystem, and has automation enabled
   const [account] = await db
     .select()
     .from(portalAccounts)
     .where(eq(portalAccounts.id, portalAccountId));
 
-  if (!account || account.status !== 'connected') return null;
+  if (!account || !account.active || !account.automationEnabled || account.status !== 'connected') return null;
 
   // 1b. Check if account is in a portal 24-hour rate limit cooldown
   if (!options?.ignoreCooldown && account.cooldownUntil && new Date(account.cooldownUntil) > new Date()) {
@@ -2020,6 +2064,8 @@ export async function getNextEligibleRunTime(
     .from(portalAccounts)
     .where(
       and(
+        eq(portalAccounts.active, true),
+        eq(portalAccounts.automationEnabled, true),
         eq(portalAccounts.status, 'connected'),
         workspaceId ? eq(portalAccounts.workspaceId, workspaceId) : undefined,
       ),

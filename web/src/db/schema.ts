@@ -367,6 +367,8 @@ export const portalAccounts = app.table(
     label: text("label").notNull(),
     credentialsEncrypted: text("credentials_encrypted").notNull(),
     phoneNumber: text("phone_number"),
+    active: boolean("active").notNull().default(true),
+    automationEnabled: boolean("automation_enabled").notNull().default(true),
     status: text("status").notNull().default("connected"),
     lastConfirmedOrderAt: timestamp("last_confirmed_order_at", { withTimezone: true }),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),

@@ -46,7 +46,7 @@ async function loadOptions(holderId?: string, cardId?: string): Promise<{
         holderId: x.holderId,
       })),
       categories,
-      portalAccounts: accounts.map((a) => ({ id: a.id, label: a.label })),
+      portalAccounts: accounts.filter((a) => a.active).map((a) => ({ id: a.id, label: a.label })),
     };
   } catch (e) {
     unstable_rethrow(e);
