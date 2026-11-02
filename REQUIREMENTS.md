@@ -35,10 +35,11 @@ Replace the Excel-based RuPay benefit tracker with a web app that:
 - A shared **reference catalog** of bank + card type → benefits (type, provider, frequency), maintained centrally, not per user.
 - Manual entry/correction of a user's own benefits is allowed where the shared catalog is wrong or incomplete — both adding a missing benefit and suppressing one the catalog wrongly claims applies (see §5).
 - Quarter-aware status tracking per benefit instance, with correct carry-forward logic for half-yearly/annual benefits.
+- RuPay portal accounts and their card mappings may be configured for the optional ordering-automation subsystem; its detailed requirements live in [docs/automated-rupay-ordering-requirements.md](docs/automated-rupay-ordering-requirements.md).
 
 ### Deferred (not v1)
 - Reminders (expiry, order-lapse, stale order).
-- Browser automation of the ordering process itself.
+- Voucher-delivery email ingestion. The approved design direction and its account/email-verification requirements are in [docs/voucher-email-ingestion-requirements.md](docs/voucher-email-ingestion-requirements.md); it is not yet implemented.
 - Multi-user accounts per family (see §4 — a user manages their whole family's cards under one login via labels, not via separate sign-ins).
 - Turning public signup fully open (currently invite-only — see above).
 - Privacy notice, account-deletion flow, and other pre-public-launch legal/compliance groundwork. Required before opening signup publicly, not before v1's invite-only build.
@@ -53,6 +54,7 @@ Replace the Excel-based RuPay benefit tracker with a web app that:
 
 - A **workspace** is the tenant boundary: one signed-up user's holders, cards, and benefit data, isolated from every other workspace.
 - Access requires authentication **and** workspace membership.
+- A workspace is provisioned only for a user whose Supabase login email is confirmed. The stable tenant identity remains the Supabase user ID, not the email address.
 - A **card holder** is a free-form label within a workspace (e.g. Papa, Mummy, Sumit) — not a separate login. One person manages all their family's cards under their own account.
 - The architecture is multi-tenant and intended to eventually work for other RuPay cardholders, not just the one user who built it — but **signup itself is invite-only for v1**. The multi-tenant design (workspaces, shared catalog, tenant isolation) is built in full now; only the "anyone can sign up" door is closed until the shared catalog is populated enough that a new stranger isn't met with an empty catalog and no way to add their own card (see §5, §10).
 
@@ -73,6 +75,7 @@ Replace the Excel-based RuPay benefit tracker with a web app that:
 
 ### Per-workspace data
 - **Holders** → **Cards** (each card is an instance of a bank card type, owned by a holder) → **Benefit instances** (per entitlement period, generated from the shared catalog for that card's bank card type).
+- **Portal accounts** are separate from holders and cards: one portal account can be mapped to several cards and a card can be mapped to several portal accounts. They hold encrypted portal credentials for optional ordering automation. A holder's optional email is only contact metadata; it is not a verified forwarding address or portal login identity.
 - A user may correct their own card's benefits where the shared catalog is incomplete or wrong, without affecting other users, in two ways: **adding** a benefit the catalog is missing, or **suppressing** a benefit the catalog wrongly claims applies to their card. Both are **simple on/off**: active from whenever the user adds them until they remove them — no effective-dating on the user's side, unlike the shared catalog. **For v1, an override persists indefinitely (across years and quarters) until the user turns it off themselves.** Year/quarter-scoped overrides (e.g. "only for 2026") are a possible future refinement, not built now and not reserved for in the schema.
 
 ### Entitlement periods
@@ -119,6 +122,7 @@ The app must let a user answer, at a glance:
 ## 8. Security non-negotiables
 
 - Voucher codes encrypted at rest; never appear in logs, errors, or UI by default.
+- Login-email confirmation is enforced before workspace provisioning and access. Any later inbound-email receiver verifies provider signatures, uses opaque revocable per-portal-account mailbox addresses, and never logs raw mail or extracted secrets.
 - All data access server-side — the browser never queries the database directly.
 - One workspace's data must never be visible to another workspace.
 - The source Excel file (live card codes/PINs) must never be committed or uploaded anywhere.
@@ -128,7 +132,7 @@ The app must let a user answer, at a glance:
 ## 9. Later phases (explicitly deferred, not forgotten)
 
 - Reminders: coupon-expiry warning (use it before it expires), order-lapse warning (order it before the deadline), stale-order warning (RH#11). — **Tracked and scheduled in [docs/backlog.md](docs/backlog.md) (items A-01 … A-06); the `notification_preferences` / `reminder_log` schema already exists in `web/src/db/schema.ts` but is unwired.**
-- Browser automation of the ordering step on the RuPay Benefits website.
+- Voucher-delivery email ingestion after the dedicated requirements and implementation plan are approved.
 - Anything related to the 24-hours-per-account ordering limit (e.g. suggestions on sequencing orders across holders) — not required; users handle this themselves today.
 
 ---

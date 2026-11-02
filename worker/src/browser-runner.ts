@@ -60,6 +60,8 @@ export interface BrowserRunResult {
     | 'card_limit_exhausted'
     | 'gateway_redirect_failed'
     | 'payment_failed'
+    | 'otp_timeout'
+    | 'timeout_unconfirmed'
     | 'portal_refused';
   /** The instance the run acted on, when one was selected. */
   instanceId?: string;
@@ -1608,15 +1610,83 @@ async function addCardToPortalAccount(
           if (bookingRef) break;
         }
       }
+
+      // 3. Early detection of definitive gateway failure inside any frame
+      if (sec >= 5 && sec % 5 === 0) {
+        const frameTexts = [
+          await activePaymentPage.evaluate(() => document.body?.innerText || '').catch(() => ''),
+          ...(await Promise.all(
+            activePaymentPage.frames().map((f) => f.evaluate(() => document.body?.innerText || '').catch(() => ''))
+          )),
+        ].join(' ');
+
+        const midFailure =
+          frameTexts.includes('Transaction Failed') ||
+          frameTexts.includes('Payment Failed') ||
+          frameTexts.includes('Transaction Cancelled') ||
+          frameTexts.includes('Payment Cancelled') ||
+          frameTexts.includes('cancelled by user') ||
+          frameTexts.includes('Payment declined') ||
+          frameTexts.includes('Declined by bank') ||
+          currUrl.includes('failure') ||
+          currUrl.includes('cancel');
+
+        if (midFailure) {
+          console.log(`[monitor] ❌ Payment failure detected in gateway frames during monitor loop.`);
+          break;
+        }
+      }
+
+      // 4. Check Truztee backend transactions API periodically if still on payment page
+      if (sec === 15 || sec === 40 || sec === 80) {
+        const checkPage = page;
+        const apiConfirmedRef = await checkPage.evaluate(async (targetOrderId) => {
+          try {
+            const raw = localStorage.getItem('UserDetails');
+            const user = raw ? JSON.parse(raw) : null;
+            if (!user) return null;
+            const token = user.token || user.jwt;
+            const res = await fetch('https://apirupayselect.truztee.com/api/Select/getUserTransactions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              },
+              body: JSON.stringify({ userid: user.id || user.userid })
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : (data.payload || data.response || []);
+            if (Array.isArray(list)) {
+              for (const item of list) {
+                const oid = item.orderid || item.orderId;
+                const status = (item.order_status || item.status || '').toLowerCase();
+                const isSuccess = status.includes('success') || status.includes('completed');
+                if (targetOrderId && oid === targetOrderId && isSuccess) {
+                  return oid;
+                }
+              }
+            }
+          } catch {}
+          return null;
+        }, initiatedOrderId).catch(() => null);
+
+        if (apiConfirmedRef) {
+          bookingRef = apiConfirmedRef;
+          console.log(`[monitor] ✓ Confirmed order ID from Truztee transactions API: ${bookingRef}`);
+          break;
+        }
+      }
     }
 
-    // Fallback: If not found in page text, check Truztee My Account table directly
+    // Fallback: If not found in page text or API, check Truztee My Account table directly
     if (!bookingRef) {
       console.log('[monitor] Direct booking reference not found in post-payment page. Checking Truztee My Account page...');
       try {
-        const checkPage = popupTracker.page && !popupTracker.page.isClosed() ? popupTracker.page : page;
+        const checkPage = page;
         await checkPage.goto('https://rupayselect.truztee.com/#/myaccount').catch(() => {});
         await checkPage.waitForTimeout(4000);
+        await checkPage.waitForSelector('tr', { timeout: 6000 }).catch(() => {});
 
         const latestOrder = await checkPage.evaluate((targetOrderId) => {
           const rows = Array.from(document.querySelectorAll('tr'));
@@ -1738,7 +1808,6 @@ async function addCardToPortalAccount(
       await context.close().catch(() => {});
       await client.end().catch(() => {});
       console.log('✓ Automation finished cleanly.');
-      // Return, do not exit: a batch run must continue with the next account.
       return {
         attempted: true,
         accountLabel: account.label,
@@ -1747,75 +1816,108 @@ async function addCardToPortalAccount(
       };
     }
 
-    // If loop finished without finding a booking reference, check if order is still pending or failed
+    // If loop finished without finding a booking reference, evaluate failure and notify user
     const finalUrl = activePaymentPage.url();
-    const finalPageText = await activePaymentPage.evaluate(() => document.body.innerText).catch(() => '');
+    const allPageTexts = [
+      await activePaymentPage.evaluate(() => document.body?.innerText || '').catch(() => ''),
+      ...(await Promise.all(
+        activePaymentPage.frames().map((f) => f.evaluate(() => document.body?.innerText || '').catch(() => ''))
+      )),
+    ].join(' ');
+
     const isDefinitiveFailure =
-      finalPageText.includes('Transaction Failed') ||
-      finalPageText.includes('Payment Failed') ||
-      finalPageText.includes('Transaction Cancelled') ||
+      allPageTexts.includes('Transaction Failed') ||
+      allPageTexts.includes('Payment Failed') ||
+      allPageTexts.includes('Transaction Cancelled') ||
+      allPageTexts.includes('Payment Cancelled') ||
+      allPageTexts.includes('cancelled by user') ||
+      allPageTexts.includes('Payment declined') ||
+      allPageTexts.includes('Declined by bank') ||
       finalUrl.includes('failure') ||
       finalUrl.includes('cancel');
 
-    if (isDefinitiveFailure) {
-      console.log(`\n❌ Payment definitive failure detected in browser.`);
-      await db
-        .update(schema.portalOrderAttempts)
-        .set({ state: 'uncertain', failureCode: 'gateway_declined', finishedAt: new Date() })
-        .where(eq(schema.portalOrderAttempts.id, attempt.id));
-      await activePaymentPage.waitForTimeout(2000).catch(() => {});
+    const failureState = isDefinitiveFailure ? 'uncertain' : 'failed_pre_submit';
+    const failureCode = isDefinitiveFailure ? 'gateway_declined' : 'unconfirmed_timeout';
+    const failureReason = isDefinitiveFailure
+      ? 'Payment gateway declined or cancelled the transaction'
+      : 'Transaction confirmation timed out after OTP submission (booking reference not received from portal within 2 minutes)';
 
-      // Notify failure via Telegram (with screenshot)
-      if (telegramChatId) {
-        const tg = getTelegramClient();
-        const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
-        if (screenshot) {
-          await tg.sendOrderFailureWithScreenshot({
-            chatId: telegramChatId,
-            cardName: cardRow?.cardName ?? 'RuPay Card',
-            cardLast4: cardRecord?.lastDigits ?? undefined,
-            portalAccountLabel: account.label,
-            benefitName: benefitDetails.exactBenefit,
-            provider: benefitDetails.benefitProvider || undefined,
-            category: benefitDetails.benefitType || undefined,
-            voucherValue: benefitDetails.cashValue || undefined,
-            reason: 'Payment gateway declined the transaction',
-            errorDetail: `Page text indicates: ${finalPageText.slice(0, 100)}`,
-            screenshotBuffer: screenshot,
-          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
-        } else {
-          await tg.sendOrderFailure({
-            chatId: telegramChatId,
-            cardName: cardRow?.cardName ?? 'RuPay Card',
-            cardLast4: cardRecord?.lastDigits ?? undefined,
-            portalAccountLabel: account.label,
-            benefitName: benefitDetails.exactBenefit,
-            provider: benefitDetails.benefitProvider || undefined,
-            category: benefitDetails.benefitType || undefined,
-            voucherValue: benefitDetails.cashValue || undefined,
-            reason: 'Payment gateway declined the transaction',
-            errorDetail: `Page text indicates: ${finalPageText.slice(0, 100)}`,
-          }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
-        }
+    console.log(`\n❌ Order was not confirmed (${failureCode}). Updating database and notifying...`);
+    await db
+      .update(schema.portalOrderAttempts)
+      .set({
+        state: failureState,
+        failureCode,
+        finishedAt: new Date(),
+      })
+      .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+    await db
+      .update(schema.portalOrderOtpChallenges)
+      .set({ status: 'failed', updatedAt: new Date() })
+      .where(eq(schema.portalOrderOtpChallenges.attemptId, attempt.id))
+      .catch(() => {});
+
+    // Notify failure via Telegram (with screenshot)
+    if (telegramChatId) {
+      const tg = getTelegramClient();
+      const screenshot = await activePaymentPage.screenshot({ timeout: 5000 }).catch(() => null);
+      const errorDetail = isDefinitiveFailure
+        ? allPageTexts.slice(0, 150).trim()
+        : `Transaction initiated on portal (${initiatedOrderId || 'N/A'}) but confirmation was not received. Current URL: ${finalUrl.slice(0, 100)}`;
+
+      if (screenshot) {
+        await tg.sendOrderFailureWithScreenshot({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: failureReason,
+          errorDetail,
+          screenshotBuffer: screenshot,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
+      } else {
+        await tg.sendOrderFailure({
+          chatId: telegramChatId,
+          cardName: cardRow?.cardName ?? 'RuPay Card',
+          cardLast4: cardRecord?.lastDigits ?? undefined,
+          portalAccountLabel: account.label,
+          benefitName: benefitDetails.exactBenefit,
+          provider: benefitDetails.benefitProvider || undefined,
+          category: benefitDetails.benefitType || undefined,
+          voucherValue: benefitDetails.cashValue || undefined,
+          reason: failureReason,
+          errorDetail,
+        }).catch((err) => console.error('[telegram] Failed to send order failure notification:', err));
       }
-      await context.close().catch(() => {});
-      await client.end().catch(() => {});
-
-      // Do not exit the process: a batch run must continue with the next
-      // account and report this one as failed.
-      return {
-        attempted: true,
-        accountLabel: account.label,
-        instanceId: candidate.instanceId,
-        reason: 'payment_failed',
-      };
     }
+
+    await activePaymentPage.waitForTimeout(2000).catch(() => {});
+    await context.close().catch(() => {});
+    await client.end().catch(() => {});
+
+    return {
+      attempted: true,
+      accountLabel: account.label,
+      instanceId: candidate.instanceId,
+      reason: isDefinitiveFailure ? 'payment_failed' : 'timeout_unconfirmed',
+    };
   } else {
     console.log(`\n⚠️ OTP was not completed or timed out.`);
     await db
       .update(schema.portalOrderAttempts)
       .set({ state: 'failed_pre_submit', failureCode: 'otp_timeout', finishedAt: new Date() })
       .where(eq(schema.portalOrderAttempts.id, attempt.id));
+
+    await db
+      .update(schema.portalOrderOtpChallenges)
+      .set({ status: 'failed', updatedAt: new Date() })
+      .where(eq(schema.portalOrderOtpChallenges.attemptId, attempt.id))
+      .catch(() => {});
 
     // Notify failure via Telegram (with screenshot if available)
     if (telegramChatId) {
@@ -1860,7 +1962,7 @@ async function addCardToPortalAccount(
     attempted: true,
     accountLabel: account.label,
     instanceId: candidate.instanceId,
-    reason: 'ordered',
+    reason: 'otp_timeout',
   };
 }
 

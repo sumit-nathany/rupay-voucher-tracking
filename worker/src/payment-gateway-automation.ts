@@ -413,29 +413,37 @@ export async function findOtpInput(page: Page): Promise<{ target: Page | Frame; 
     '#otp',
     '#otpPassword',
     '#txtOtp',
+    '#txtOtpPassword',
+    '#txtPin',
     '#login-otp',
+    '#otpbox',
+    '.otp-input',
+    'input[id*="password" i]',
+    'input[name*="password" i]',
+    'input[title*="otp" i]',
+    'input[aria-label*="otp" i]',
   ];
 
-  // Check main page first
-  for (const sel of otpSelectors) {
-    try {
-      const loc = page.locator(sel).first();
-      if (await loc.isVisible({ timeout: 500 })) {
-        return { target: page, locator: loc };
-      }
-    } catch {}
-  }
-
-  // Check frames (bank 3DS ACS pages are frequently embedded in an iframe)
+  // Check frames first (bank 3DS ACS pages are almost always embedded in an iframe)
   for (const frame of page.frames()) {
     for (const sel of otpSelectors) {
       try {
         const loc = frame.locator(sel).first();
-        if (await loc.isVisible({ timeout: 500 })) {
+        if (await loc.isVisible({ timeout: 800 })) {
           return { target: frame, locator: loc };
         }
       } catch {}
     }
+  }
+
+  // Check main page
+  for (const sel of otpSelectors) {
+    try {
+      const loc = page.locator(sel).first();
+      if (await loc.isVisible({ timeout: 800 })) {
+        return { target: page, locator: loc };
+      }
+    } catch {}
   }
 
   // Fallback to Adaptive Gateway Agent
@@ -474,6 +482,13 @@ export async function checkBankOtpError(page: Page): Promise<string | null> {
     'please enter the correct otp',
     'you have entered an invalid otp',
     'authentication unsuccessful',
+    'otp verification failed',
+    'incorrect otp entered',
+    'entered incorrect otp',
+    'invalid pin/otp',
+    'otp timed out',
+    'otp has expired',
+    'incorrect code',
   ];
 
   const targets = [page, ...page.frames()];
@@ -659,46 +674,89 @@ export async function promptForOtpAndSubmit(
         return false;
       }
 
+      await otpInput.locator.click({ timeout: 3000 }).catch(() => {});
       await otpInput.locator.fill(otp);
-      console.log('[gateway] OTP filled! Clicking Submit/Verify button...');
+      console.log('[gateway] OTP filled! Locating Submit/Verify button inside bank ACS frame...');
 
-      const submitSelectors = [
+      // Bank submit buttons:
+      // Strictly target Submit / Verify / Proceed / Confirm.
+      // NEVER match "Continue", which collides with host-page backdrop / Truztee modal and cancels Razorpay!
+      const bankSubmitSelectors = [
         'input[type="submit"]',
+        'button[type="submit"]',
         'input[value*="submit" i]',
         'input[value*="verify" i]',
         'input[value*="confirm" i]',
         'input[value*="proceed" i]',
+        'input[value*="pay" i]',
         'input[type="button"][value*="submit" i]',
         'input[type="button"][value*="verify" i]',
+        'input[type="button"][value*="confirm" i]',
+        'input[type="button"][value*="proceed" i]',
         'button:has-text("Submit")',
-        'button:has-text("Continue")',
+        'button:has-text("SUBMIT")',
         'button:has-text("Verify")',
+        'button:has-text("VERIFY")',
         'button:has-text("Confirm")',
+        'button:has-text("CONFIRM")',
         'button:has-text("Proceed")',
+        'button:has-text("PROCEED")',
+        'button:has-text("Make Payment")',
+        'button:has-text("Pay")',
         '#btnSubmit',
-        '#submit',
-        '#Submit',
         '#submitBtn',
         '#btn_submit',
+        '#submit',
+        '#Submit',
+        '#SUBMIT',
         '#verifyBtn',
-        '[id*="submit" i]',
-        '[name*="submit" i]',
+        '#btnVerify',
+        '#confirmBtn',
+        '#proceedBtn',
+        '#login-submit',
+        '[id*="submit" i]:not([id*="cancel" i]):not([id*="resend" i])',
+        '[name*="submit" i]:not([name*="cancel" i]):not([name*="resend" i])',
+        'button[id*="verify" i]',
+        'button[name*="verify" i]',
         'a:has-text("Submit")',
+        'a:has-text("SUBMIT")',
         'a:has-text("Verify")',
+        'a:has-text("VERIFY")',
+        'a[id*="submit" i]',
+        'a[id*="verify" i]',
       ];
 
-      // Try on otpInput.target first, then all frames, then page
-      const targets = [otpInput.target, ...page.frames(), page];
+      // Targets: Search ONLY inside otpInput.target (the bank ACS frame/page),
+      // and any child or sibling payment frames. NEVER the host page 'page' outside the gateway!
+      const candidateTargets: (Page | Frame)[] = [otpInput.target];
+      if (otpInput.target !== page) {
+        for (const f of page.frames()) {
+          if (f !== otpInput.target && f !== page.mainFrame()) {
+            const u = f.url().toLowerCase();
+            if (u.includes('razorpay') || u.includes('bank') || u.includes('acs') || u.includes('card') || u.includes('otp')) {
+              candidateTargets.push(f);
+            }
+          }
+        }
+      }
+
       let clicked = false;
-      for (const t of targets) {
-        for (const sel of submitSelectors) {
+      for (const t of candidateTargets) {
+        for (const sel of bankSubmitSelectors) {
           try {
             const elements = await t.locator(sel).all();
             for (const el of elements) {
-              if (await el.isVisible({ timeout: 200 })) {
-                await el.click({ timeout: 2000, force: true });
+              if (await el.isVisible({ timeout: 1500 })) {
+                // Ensure button is not Cancel, Resend, or Back
+                const btnText = (await el.innerText().catch(() => '')) || (await el.getAttribute('value').catch(() => '')) || '';
+                const lower = btnText.toLowerCase();
+                if (lower.includes('cancel') || lower.includes('resend') || lower.includes('back')) {
+                  continue;
+                }
+
+                await el.click({ timeout: 3000, force: true });
                 await el.evaluate((b: HTMLElement) => b.click()).catch(() => {});
-                console.log(`[gateway] Clicked visible OTP submit via "${sel}".`);
+                console.log(`[gateway] Clicked visible bank OTP submit via "${sel}".`);
                 clicked = true;
                 break;
               }
@@ -709,16 +767,19 @@ export async function promptForOtpAndSubmit(
         if (clicked) break;
       }
 
-      // If button not clicked via selectors, evaluate DOM directly for any button/link with Submit/Verify text
+      // If button not clicked via selectors, evaluate DOM directly inside candidate targets for any button/link with Submit/Verify text
       if (!clicked) {
-        for (const t of targets) {
+        for (const t of candidateTargets) {
           try {
             const clickedInDom = await t.evaluate(() => {
               const candidates = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"], a, [role="button"]'));
               for (const el of candidates) {
                 const text = ((el as HTMLElement).innerText || (el as HTMLInputElement).value || '').trim().toLowerCase();
                 const isVisible = (el as HTMLElement).offsetWidth > 0 && (el as HTMLElement).offsetHeight > 0;
-                if (isVisible && (text === 'submit' || text === 'verify' || text === 'proceed' || text === 'confirm' || text === 'make payment')) {
+                if (
+                  isVisible &&
+                  (text === 'submit' || text === 'verify' || text === 'proceed' || text === 'confirm' || text === 'pay' || text === 'make payment')
+                ) {
                   (el as HTMLElement).click();
                   return true;
                 }
@@ -726,7 +787,7 @@ export async function promptForOtpAndSubmit(
               return false;
             });
             if (clickedInDom) {
-              console.log('[gateway] Clicked OTP submit button via DOM text match.');
+              console.log('[gateway] Clicked OTP submit button via DOM text match inside bank frame.');
               clicked = true;
               break;
             }
@@ -734,18 +795,24 @@ export async function promptForOtpAndSubmit(
         }
       }
 
-      // If button still not clicked, press Enter on the OTP input
-      if (!clicked) {
-        try {
-          console.log('[gateway] Standard submit button not found. Pressing Enter on OTP input field...');
-          await otpInput.locator.press('Enter');
-          clicked = true;
-        } catch (e: any) {
-          console.warn('[gateway] Pressing Enter failed:', e?.message || e);
-        }
+      // Always dispatch Enter key on the OTP input and trigger form submit
+      try {
+        await otpInput.locator.press('Enter').catch(() => {});
+        await otpInput.locator.evaluate((input: HTMLInputElement) => {
+          if (input.form) {
+            if (typeof input.form.requestSubmit === 'function') {
+              input.form.requestSubmit();
+            } else {
+              input.form.submit();
+            }
+          }
+        }).catch(() => {});
+        console.log('[gateway] Dispatched Enter key & form.requestSubmit() on OTP input.');
+      } catch (e: any) {
+        console.warn('[gateway] Pressing Enter / form submit failed:', e?.message || e);
       }
 
-      return clicked;
+      return clicked || true;
     }
 
     let otpAttemptCount = 0;
@@ -759,97 +826,141 @@ export async function promptForOtpAndSubmit(
 
       try {
         console.log(`\n[gateway] >>> Handling OTP attempt #${otpAttemptCount + 1} (${source}): ${otp} <<<`);
-        const clicked = await injectOtp(otp, source);
-        if (!clicked) {
-          console.warn('[gateway] Could not click submit button automatically. Please click Submit in browser.');
-        }
+        await injectOtp(otp, source);
 
-        // Wait 3.5 seconds for bank 3DS validation response/redirect
-        await resolvePage(page).waitForTimeout(3500);
+        // Wait and poll for bank 3DS validation response / state change
+        console.log('[gateway] Waiting for bank 3DS verification response...');
+        for (let waitSec = 1; waitSec <= 25; waitSec++) {
+          await resolvePage(page).waitForTimeout(1000);
 
-        // Check if page navigated away from bank ACS screen or reached success
-        const currUrl = resolvePage(page).url();
-        const isPostPaymentSuccess =
-          currUrl.includes('success') ||
-          currUrl.includes('confirm') ||
-          currUrl.includes('truztee.com/#/myaccount') ||
-          currUrl.includes('truztee.com/#/view-redeemed-offers') ||
-          currUrl.includes('redirect');
+          // 1. Check if bank 3DS screen shows an invalid OTP error
+          const bankError = await checkBankOtpError(page);
 
-        // Check if bank 3DS screen shows an invalid OTP error
-        const bankError = await checkBankOtpError(page);
+          if (bankError) {
+            otpAttemptCount++;
+            console.warn(`\n⚠️ [gateway] Bank rejected OTP (${bankError}). Attempt ${otpAttemptCount}/${maxOtpAttempts}.`);
 
-        if (bankError) {
-          otpAttemptCount++;
-          console.warn(`\n⚠️ [gateway] Bank rejected OTP (${bankError}). Attempt ${otpAttemptCount}/${maxOtpAttempts}.`);
-
-          if (otpAttemptCount < maxOtpAttempts) {
-            // Notify user via Telegram that the OTP was incorrect and request retry
-            if (contextOptions?.telegramChatId) {
-              try {
-                const tg = getTelegramClient();
-                await tg.sendOtpPrompt({
-                  chatId: contextOptions.telegramChatId,
-                  cardName: contextOptions.cardName || 'RuPay Card',
-                  cardLast4: contextOptions.cardLast4,
-                  portalAccountLabel: contextOptions.portalAccountLabel,
-                  benefitName: contextOptions.benefitName || 'RuPay Benefit',
-                  provider: contextOptions.provider,
-                  category: contextOptions.category,
-                  voucherValue: contextOptions.voucherValue,
-                  amount: 1,
-                  timeoutMinutes: 2,
-                  isRetry: true,
-                  errorMessage: `Bank reported: "${bankError}".`,
-                });
-                console.log('[gateway] 💬 Dispatched "Wrong OTP" retry prompt to Telegram.');
-              } catch (err) {
-                console.error('[gateway] Failed to send Telegram retry prompt:', err);
+            if (otpAttemptCount < maxOtpAttempts) {
+              // Notify user via Telegram that the OTP was incorrect and request retry
+              if (contextOptions?.telegramChatId) {
+                try {
+                  const tg = getTelegramClient();
+                  await tg.sendOtpPrompt({
+                    chatId: contextOptions.telegramChatId,
+                    cardName: contextOptions.cardName || 'RuPay Card',
+                    cardLast4: contextOptions.cardLast4,
+                    portalAccountLabel: contextOptions.portalAccountLabel,
+                    benefitName: contextOptions.benefitName || 'RuPay Benefit',
+                    provider: contextOptions.provider,
+                    category: contextOptions.category,
+                    voucherValue: contextOptions.voucherValue,
+                    amount: 1,
+                    timeoutMinutes: 2,
+                    isRetry: true,
+                    errorMessage: `Bank reported: "${bankError}".`,
+                  });
+                  console.log('[gateway] 💬 Dispatched "Wrong OTP" retry prompt to Telegram.');
+                } catch (err) {
+                  console.error('[gateway] Failed to send Telegram retry prompt:', err);
+                }
               }
-            }
 
-            // Reset DB challenge status to 'pending' so Telegram webhook captures the user's next reply
-            if (challengeId && contextOptions?.db) {
-              try {
-                await contextOptions.db
-                  .update(schema.portalOrderOtpChallenges)
-                  .set({
-                    status: 'pending',
-                    otpCode: null,
-                    expiresAt: new Date(Date.now() + 3 * 60 * 1000), // extend 3 mins
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(schema.portalOrderOtpChallenges.id, challengeId));
-                console.log(`[gateway] Reset DB challenge ${challengeId} to 'pending' for retry.`);
-              } catch (err) {
-                console.error('[gateway] Failed to reset challenge in DB:', err);
+              // Reset DB challenge status to 'pending' so Telegram webhook captures the user's next reply
+              if (challengeId && contextOptions?.db) {
+                try {
+                  await contextOptions.db
+                    .update(schema.portalOrderOtpChallenges)
+                    .set({
+                      status: 'pending',
+                      otpCode: null,
+                      expiresAt: new Date(Date.now() + 3 * 60 * 1000), // extend 3 mins
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(schema.portalOrderOtpChallenges.id, challengeId));
+                  console.log(`[gateway] Reset DB challenge ${challengeId} to 'pending' for retry.`);
+                } catch (err) {
+                  console.error('[gateway] Failed to reset challenge in DB:', err);
+                }
               }
+
+              lastProcessedOtp = null;
+
+              // Clear the OTP input field on the page for clean re-entry
+              const otpInput = await findOtpInput(page);
+              if (otpInput) {
+                await otpInput.locator.fill('').catch(() => {});
+              }
+
+              // Prompt terminal again
+              promptTerminal();
+              isSubmitting = false;
+              return; // Continue polling!
+            } else {
+              console.error('[gateway] ❌ Maximum OTP attempts exceeded.');
+              cleanup();
+              resolve(false);
+              return;
             }
+          }
 
-            lastProcessedOtp = null;
+          // 2. Check for definitive failure / cancellation at bank or gateway level across all frames
+          const currUrl = resolvePage(page).url().toLowerCase();
+          const allTexts = [
+            await resolvePage(page).evaluate(() => document.body?.innerText || '').catch(() => ''),
+            ...(await Promise.all(
+              resolvePage(page).frames().map((f) => f.evaluate(() => document.body?.innerText || '').catch(() => ''))
+            )),
+          ].join(' ').toLowerCase();
 
-            // Clear the OTP input field on the page for clean re-entry
-            const otpInput = await findOtpInput(page);
-            if (otpInput) {
-              await otpInput.locator.fill('').catch(() => {});
-            }
+          const isDefinitiveFailure =
+            allTexts.includes('transaction failed') ||
+            allTexts.includes('payment failed') ||
+            allTexts.includes('transaction cancelled') ||
+            allTexts.includes('payment cancelled') ||
+            allTexts.includes('cancelled by user') ||
+            allTexts.includes('payment declined') ||
+            allTexts.includes('declined by bank') ||
+            currUrl.includes('failure') ||
+            currUrl.includes('cancel');
 
-            // Prompt terminal again
-            promptTerminal();
-            isSubmitting = false;
-            return; // Continue polling!
-          } else {
-            console.error('[gateway] ❌ Maximum OTP attempts exceeded.');
+          if (isDefinitiveFailure) {
+            console.error(`[gateway] ❌ Bank/gateway reported definitive failure after OTP submission.`);
             cleanup();
             resolve(false);
             return;
           }
+
+          // 3. Check if screen transitioned away from bank ACS screen or reached success
+          const isPostPaymentSuccess =
+            currUrl.includes('success') ||
+            currUrl.includes('confirm') ||
+            currUrl.includes('truztee.com/#/myaccount') ||
+            currUrl.includes('truztee.com/#/view-redeemed-offers');
+
+          const otpInputStillPresent = await findOtpInput(page);
+          if (isPostPaymentSuccess || (!otpInputStillPresent && waitSec >= 3)) {
+            console.log(`[gateway] ✓ Bank OTP accepted or transitioned from ACS screen after ${waitSec}s (URL: ${resolvePage(page).url()})`);
+            cleanup();
+            resolve(true);
+            return;
+          }
+
+          if (waitSec % 5 === 0) {
+            console.log(`[gateway] Waiting for bank 3DS processing (${waitSec}s / 25s)...`);
+          }
         }
 
-        // If no bank error detected and either left ACS or completed:
-        console.log(`[gateway] ✓ OTP accepted or transitioning from bank ACS screen (URL: ${currUrl})`);
-        cleanup();
-        resolve(true);
+        // If after 25s loop finished, check if OTP input is still there
+        const remainingOtpInput = await findOtpInput(page);
+        if (!remainingOtpInput) {
+          console.log('[gateway] ✓ OTP input is no longer present; transition assumed complete.');
+          cleanup();
+          resolve(true);
+        } else {
+          console.warn('[gateway] ⚠️ Bank screen did not transition after 25s. Handing off to transaction monitor...');
+          cleanup();
+          resolve(true);
+        }
       } finally {
         isSubmitting = false;
       }
