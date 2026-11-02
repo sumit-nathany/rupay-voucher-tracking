@@ -18,6 +18,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   numeric,
   pgSchema,
   primaryKey,
@@ -778,11 +779,28 @@ export const portalOrderPreorderSessions = app.table(
     instanceId: uuid("instance_id")
       .notNull()
       .references(() => benefitInstances.id, { onDelete: "cascade" }),
+    selectedInstanceId: uuid("selected_instance_id")
+      .references(() => benefitInstances.id, { onDelete: "set null" }),
     telegramChatId: text("telegram_chat_id").notNull(),
     messageId: text("message_id"),
-    status: text("status").notNull().default("pending"), // 'pending' | 'proceed' | 'change_requested' | 'option_selected' | 'skipped'
+    status: text("status").notNull().default("pending"), // 'pending' | 'browsing' | 'proceed' | 'benefit_selected' | 'option_selected' | 'skipped' | 'expired'
     selectedOptionId: uuid("selected_option_id"),
     selectedOptionName: text("selected_option_name"),
+    metadata: jsonb("metadata").$type<{
+      availableBenefits?: Array<{
+        instanceId: string;
+        benefitType: string;
+        benefitProvider: string;
+        exactBenefit: string;
+        cashValue: string;
+        optionCount: number;
+      }>;
+      availableBenefitIds?: string[];
+      pendingInstanceId?: string;
+      availableOptionIds?: string[];
+      cardId?: string;
+      portalAccountId?: string;
+    }>(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: createdAt().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

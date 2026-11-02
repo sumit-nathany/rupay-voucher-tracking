@@ -32,6 +32,7 @@ import { getWhatsAppClient } from '../../web/src/lib/whatsapp-client';
 import { getTelegramClient } from '../../web/src/lib/telegram-client';
 import { humanClick, humanType, humanDelay, humanHesitate, installVisualMouseCursor } from './human-interaction';
 import { finalizeConfirmedOrder } from '../../web/src/domain/automation-worker';
+import { getAvailableBenefitsForPreorder } from '../../web/src/domain/preorder';
 
 export interface BrowserRunnerOptions {
   portalAccountId?: string;
@@ -172,6 +173,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     .select({
       last4: schema.cards.lastDigits,
       cardName: schema.bankCardTypes.displayName,
+      bankCardTypeId: schema.cards.bankCardTypeId,
       variantName: schema.cardVariants.name,
       portalCardType: schema.cardVariants.portalCardType,
       cardHolderName: schema.cardHolders.name,
@@ -186,6 +188,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     .select({
       id: schema.benefitInstances.id,
       generatedFromVersion: schema.benefitInstances.generatedFromVersion,
+      periodStart: schema.benefitInstances.periodStart,
     })
     .from(schema.benefitInstances)
     .where(eq(schema.benefitInstances.id, candidate.instanceId));
@@ -330,19 +333,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     const tg = getTelegramClient();
     console.log(`\n--- Step 1.5: Pre-order Interactive Confirmation (45s window) ---`);
 
-    // Look up available options from schema.benefitOptions for instanceRow.generatedFromVersion
-    let availableOptions: Array<{ id: string; provider: string; offerName: string; cashValue: string | null }> = [];
-    if (instanceRow?.generatedFromVersion) {
-      availableOptions = await db
-        .select({
-          id: schema.benefitOptions.id,
-          provider: schema.benefitOptions.provider,
-          offerName: schema.benefitOptions.offerName,
-          cashValue: schema.benefitOptions.cashValue,
-        })
-        .from(schema.benefitOptions)
-        .where(eq(schema.benefitOptions.versionId, instanceRow.generatedFromVersion));
-    }
+    // Look up all eligible, unredeemed benefits for this card in the current period
+    const availableBenefits = await getAvailableBenefitsForPreorder(db, {
+      workspaceId: account.workspaceId,
+      cardId: candidate.cardId,
+      portalAccountId: account.id,
+      bankCardTypeId: cardRow?.bankCardTypeId ?? '',
+      periodStart: instanceRow?.periodStart ?? today,
+      today,
+    });
+
+    const otherBenefits = availableBenefits.filter((b) => b.instanceId !== candidate.instanceId);
+    const currentBenefit = availableBenefits.find((b) => b.instanceId === candidate.instanceId);
+    const availableOptions = currentBenefit?.options ?? [];
 
     const expiresAt = new Date(Date.now() + 45000);
     const [session] = await db
@@ -353,6 +356,19 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
         telegramChatId,
         status: 'pending',
         expiresAt,
+        metadata: {
+          availableBenefits: availableBenefits.map((b) => ({
+            instanceId: b.instanceId,
+            benefitType: b.benefitType,
+            benefitProvider: b.benefitProvider,
+            exactBenefit: b.exactBenefit,
+            cashValue: b.cashValue,
+            optionCount: b.options.length,
+          })),
+          availableBenefitIds: availableBenefits.map((b) => b.instanceId),
+          cardId: candidate.cardId,
+          portalAccountId: account.id,
+        },
       })
       .returning();
 
@@ -375,14 +391,24 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       brandLine +
       categoryLine +
       voucherLine +
-      `\nThe automation will automatically proceed with this order in 45 seconds unless you change the option or skip below:`;
+      `\nThe automation will automatically proceed with this order in 45 seconds unless you change the benefit or skip below:`;
 
     const inlineKeyboard: Array<Array<{ text: string; callbackData: string }>> = [
       [{ text: '✅ Proceed Now (45s)', callbackData: `preorder:proceed:${session.id}` }],
     ];
-    if (availableOptions.length > 1) {
+    if (otherBenefits.length > 0) {
       inlineKeyboard.push([
-        { text: `🔄 Change Option (${availableOptions.length} available)`, callbackData: `preorder:change:${session.id}` },
+        {
+          text: `🔀 Change Benefit (${otherBenefits.length} other available)`,
+          callbackData: `preorder:bmenu:${session.id}`,
+        },
+      ]);
+    } else if (availableOptions.length > 1) {
+      inlineKeyboard.push([
+        {
+          text: `🔄 Change Option (${availableOptions.length} available)`,
+          callbackData: `preorder:change:${session.id}`,
+        },
       ]);
     }
     inlineKeyboard.push([
@@ -404,14 +430,16 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
     const sentMessageId = sendRes.messageId;
 
-    // Wait loop (45 seconds):
-    const deadline = Date.now() + 45000;
+    // Wait loop (up to 45 seconds initial, extendable if user interacts):
+    let deadline = Date.now() + 45000;
+    const hardMaxDeadline = Date.now() + 180000; // 3 min safety ceiling
     let finalStatus: string = 'pending';
     let selectedOptionId: string | null = null;
+    let selectedInstanceId: string | null = null;
 
     console.log(`[preorder] Waiting up to 45s for Telegram user input on session ${session.id}...`);
 
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && Date.now() < hardMaxDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       const [updatedSession] = await db
@@ -421,16 +449,25 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
       if (!updatedSession) break;
 
+      // Extend local deadline if user is actively browsing or selecting on Telegram
+      if (updatedSession.status === 'browsing' || updatedSession.status === 'selecting') {
+        const sessionExpiryMs = new Date(updatedSession.expiresAt).getTime();
+        if (sessionExpiryMs > deadline) {
+          deadline = Math.min(sessionExpiryMs, hardMaxDeadline);
+        }
+      }
+
       if (updatedSession.status === 'proceed') {
         console.log(`[preorder] User explicitly clicked Proceed.`);
         finalStatus = 'proceed';
         break;
       }
 
-      if (updatedSession.status === 'option_selected') {
-        console.log(`[preorder] User selected option: ${updatedSession.selectedOptionName} (${updatedSession.selectedOptionId})`);
-        finalStatus = 'option_selected';
+      if (updatedSession.status === 'benefit_selected' || updatedSession.status === 'option_selected') {
+        finalStatus = updatedSession.status;
         selectedOptionId = updatedSession.selectedOptionId;
+        selectedInstanceId = updatedSession.selectedInstanceId;
+        console.log(`[preorder] User finalized selection: status=${finalStatus}, instance=${selectedInstanceId ?? 'same'}, option=${selectedOptionId ?? 'default'}`);
         break;
       }
 
@@ -451,7 +488,37 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       };
     }
 
-    if (finalStatus === 'option_selected' && selectedOptionId) {
+    // 1. Swap instance if user switched benefit category
+    if (selectedInstanceId && selectedInstanceId !== candidate.instanceId) {
+      const [swappedInstance] = await db
+        .select()
+        .from(schema.benefitInstances)
+        .where(eq(schema.benefitInstances.id, selectedInstanceId));
+
+      if (swappedInstance) {
+        candidate.instanceId = swappedInstance.id;
+        candidate.chosenOptionId = swappedInstance.chosenOptionId;
+
+        if (swappedInstance.generatedFromVersion) {
+          const [b] = await db
+            .select()
+            .from(schema.benefitCatalogVersions)
+            .where(eq(schema.benefitCatalogVersions.id, swappedInstance.generatedFromVersion));
+          if (b) {
+            benefitDetails = {
+              benefitType: b.benefitType,
+              benefitProvider: b.benefitProvider ?? '',
+              exactBenefit: b.exactBenefit,
+              cashValue: swappedInstance.cashValue || b.defaultCashValue || '0',
+            };
+          }
+        }
+        console.log(`[preorder] ✓ Swapped order target to benefit instance ${candidate.instanceId}: ${benefitDetails.benefitType} - ${benefitDetails.exactBenefit} (${benefitDetails.benefitProvider})`);
+      }
+    }
+
+    // 2. Update option if user selected an offer variation
+    if (selectedOptionId) {
       const [opt] = await db
         .select()
         .from(schema.benefitOptions)
@@ -462,7 +529,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
         benefitDetails.exactBenefit = opt.offerName;
         if (opt.cashValue) benefitDetails.cashValue = opt.cashValue;
         candidate.chosenOptionId = opt.id;
-        console.log(`[preorder] Updated target benefit details to: ${opt.offerName} (${opt.provider})`);
+        console.log(`[preorder] ✓ Updated target benefit details to option: ${opt.offerName} (${opt.provider})`);
       }
     } else if (finalStatus === 'pending') {
       console.log(`[preorder] 45s countdown elapsed. Auto-proceeding with scheduled benefit.`);

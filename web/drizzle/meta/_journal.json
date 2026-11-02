@@ -239,6 +239,13 @@
       "when": 1793628989977,
       "tag": "0033_purple_silver_fox",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793630805611,
+      "tag": "0034_rapid_northstar",
+      "breakpoints": true
     }
   ]
 }

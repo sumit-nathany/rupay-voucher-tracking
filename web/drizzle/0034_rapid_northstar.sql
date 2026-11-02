@@ -1,0 +1,3 @@
+ALTER TABLE "app"."portal_order_preorder_sessions" ADD COLUMN "selected_instance_id" uuid;--> statement-breakpoint
+ALTER TABLE "app"."portal_order_preorder_sessions" ADD COLUMN "metadata" jsonb;--> statement-breakpoint
+ALTER TABLE "app"."portal_order_preorder_sessions" ADD CONSTRAINT "portal_order_preorder_sessions_selected_instance_id_benefit_instances_id_fk" FOREIGN KEY ("selected_instance_id") REFERENCES "app"."benefit_instances"("id") ON DELETE set null ON UPDATE no action;
