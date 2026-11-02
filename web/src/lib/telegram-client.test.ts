@@ -110,7 +110,7 @@ describe('telegram client service', () => {
     const body = JSON.parse(options.body);
     expect(body.chat_id).toBe('987654321');
     expect(body.text).toContain('• *Card Holder:* Sumit Nathany\n');
-    expect(body.text).toContain("📲 *Note:* The bank OTP for 3D-Secure verification will be received on *Sumit Nathany*'s phone number. Please be ready to share the OTP.");
+    expect(body.text).toContain("📲 *Note:* The bank OTP will be received on *Sumit Nathany*'s phone number. Please be ready to share the OTP.");
   });
 
   it('RealTelegramClient sends order attempt without cardHolderName', async () => {

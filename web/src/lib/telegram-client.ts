@@ -270,7 +270,7 @@ export class RealTelegramClient implements TelegramClient {
       : `• *Voucher Details:* ${options.benefitName}\n`;
 
     const otpCallout = options.cardHolderName
-      ? `\n📲 *Note:* The bank OTP for 3D-Secure verification will be received on *${options.cardHolderName}*'s phone number. Please be ready to share the OTP.`
+      ? `\n📲 *Note:* The bank OTP will be received on *${options.cardHolderName}*'s phone number. Please be ready to share the OTP.`
       : `\n📲 *Note:* Please be ready to share the bank OTP when prompted.`;
 
     const messageText =
