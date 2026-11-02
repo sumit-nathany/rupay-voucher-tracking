@@ -2,7 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 import { getCtx, requireSystemAdmin, isSystemAdmin } from '@/lib/session';
+import { automationSettings } from '@/db/schema';
+import * as auto from '@/domain/automation';
 import {
   getCloudWorkerStatus,
   setCloudSchedulerState,
@@ -10,17 +13,30 @@ import {
   type CloudWorkerStatus,
 } from '@/lib/gcp-worker-client';
 
-export async function getAdminWorkerStatusAction(): Promise<CloudWorkerStatus & { isSuperAdmin: boolean }> {
+export interface AdminWorkerStatusResponse extends CloudWorkerStatus {
+  isSuperAdmin: boolean;
+  workspaceAutomationEnabled: boolean;
+}
+
+export async function getAdminWorkerStatusAction(): Promise<AdminWorkerStatusResponse> {
   const ctx = await getCtx();
   const isAdmin = await isSystemAdmin(ctx.db, ctx.userId);
   if (!isAdmin) {
     throw new Error('Unauthorized: Super Admin access required');
   }
 
-  const status = await getCloudWorkerStatus();
+  const [status, [settings]] = await Promise.all([
+    getCloudWorkerStatus(),
+    ctx.db
+      .select({ enabled: automationSettings.enabled })
+      .from(automationSettings)
+      .where(eq(automationSettings.workspaceId, ctx.workspaceId)),
+  ]);
+
   return {
     ...status,
     isSuperAdmin: true,
+    workspaceAutomationEnabled: settings?.enabled ?? false,
   };
 }
 
@@ -49,4 +65,20 @@ export async function triggerAdminWorkerRunAction() {
   revalidatePath('/admin/worker');
   revalidatePath('/automation');
   return result;
+}
+
+const toggleWorkspaceAutomationSchema = z.object({
+  enable: z.boolean(),
+});
+
+export async function toggleAdminWorkspaceAutomationAction(input: z.infer<typeof toggleWorkspaceAutomationSchema>) {
+  const ctx = await getCtx();
+  await requireSystemAdmin(ctx);
+
+  const parsed = toggleWorkspaceAutomationSchema.parse(input);
+  await auto.saveAutomationSettings(ctx, { enabled: parsed.enable });
+
+  revalidatePath('/admin/worker');
+  revalidatePath('/automation');
+  return { success: true, enabled: parsed.enable };
 }

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
+import { eq } from 'drizzle-orm';
 import { getCtx, isSystemAdmin } from '@/lib/session';
+import { automationSettings } from '@/db/schema';
 import { ContentStage } from '@/components/layout/content-stage';
 import { PageHeader } from '@/components/layout/page-header';
 import { CloudWorkerControl } from '@/components/admin/cloud-worker-control';
@@ -14,7 +16,13 @@ export default async function AdminWorkerPage() {
     notFound();
   }
 
-  const initialStatus = await getCloudWorkerStatus();
+  const [initialStatus, [settings]] = await Promise.all([
+    getCloudWorkerStatus(),
+    ctx.db
+      .select({ enabled: automationSettings.enabled })
+      .from(automationSettings)
+      .where(eq(automationSettings.workspaceId, ctx.workspaceId)),
+  ]);
 
   return (
     <ContentStage className="max-w-5xl space-y-8 sm:space-y-10 p-6 sm:p-10 [.nav-unpinned_&]:max-w-6xl [.nav-unpinned_&]:2xl:max-w-7xl">
@@ -24,7 +32,10 @@ export default async function AdminWorkerPage() {
         description="Monitor Google Cloud worker status, toggle the hourly Cloud Scheduler, and trigger batch ordering jobs on demand."
       />
 
-      <CloudWorkerControl initialStatus={initialStatus} />
+      <CloudWorkerControl
+        initialStatus={initialStatus}
+        initialWorkspaceAutomationEnabled={settings?.enabled ?? false}
+      />
     </ContentStage>
   );
 }

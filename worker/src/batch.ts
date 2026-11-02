@@ -31,7 +31,7 @@
  */
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and, or, lte } from 'drizzle-orm';
 import * as schema from '../../web/src/db/schema';
 import type { Database } from '../../web/src/lib/context';
 import { today as todayInIST } from '../../web/src/lib/periods';
@@ -97,6 +97,32 @@ async function main() {
   let status: 'completed' | 'failed' = 'completed';
 
   try {
+    // 1.5 Auto-recover stale in-flight attempts (> 20 mins old or expired lease)
+    // Ensures interrupted, abandoned, or timed-out attempts from prior runs do not permanently lock accounts.
+    const twentyMinutesAgo = new Date(Date.now() - 20 * 60 * 1000);
+    const now = new Date();
+    const recovered = await db
+      .update(schema.portalOrderAttempts)
+      .set({
+        state: 'failed_pre_submit',
+        failureCode: 'abandoned_or_timeout',
+        finishedAt: now,
+      })
+      .where(
+        and(
+          inArray(schema.portalOrderAttempts.state, ['reserved', 'submitting']),
+          or(
+            lte(schema.portalOrderAttempts.leaseExpiresAt, now),
+            lte(schema.portalOrderAttempts.reservedAt, twentyMinutesAgo),
+          ),
+        ),
+      )
+      .returning({ id: schema.portalOrderAttempts.id });
+
+    if (recovered.length > 0) {
+      console.log(`[worker] Auto-recovered ${recovered.length} stale in-flight attempt(s).`);
+    }
+
     // 2. Every connected portal account, across all workspaces.
     const accounts = await db
       .select({

@@ -8,6 +8,7 @@ import {
   RotateCw,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   ExternalLink,
   Terminal,
   Loader2,
@@ -15,6 +16,7 @@ import {
   Layers,
   Activity,
   Cpu,
+  Power,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +25,7 @@ import {
   toggleAdminWorkerSchedulerAction,
   triggerAdminWorkerRunAction,
   getAdminWorkerStatusAction,
+  toggleAdminWorkspaceAutomationAction,
 } from '@/actions/admin-worker';
 
 function formatIST(isoString?: string | null): string {
@@ -57,9 +60,19 @@ function formatIST(isoString?: string | null): string {
   }
 }
 
-export function CloudWorkerControl({ initialStatus }: { initialStatus: CloudWorkerStatus }) {
+export function CloudWorkerControl({
+  initialStatus,
+  initialWorkspaceAutomationEnabled = false,
+}: {
+  initialStatus: CloudWorkerStatus;
+  initialWorkspaceAutomationEnabled?: boolean;
+}) {
   const [status, setStatus] = useState<CloudWorkerStatus>(initialStatus);
+  const [workspaceAutomationEnabled, setWorkspaceAutomationEnabled] = useState(
+    initialWorkspaceAutomationEnabled,
+  );
   const [togglingScheduler, setTogglingScheduler] = useState(false);
+  const [togglingWorkspace, setTogglingWorkspace] = useState(false);
   const [triggeringRun, setTriggeringRun] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -73,6 +86,7 @@ export function CloudWorkerControl({ initialStatus }: { initialStatus: CloudWork
     try {
       const updated = await getAdminWorkerStatusAction();
       setStatus(updated);
+      setWorkspaceAutomationEnabled(updated.workspaceAutomationEnabled);
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -80,6 +94,28 @@ export function CloudWorkerControl({ initialStatus }: { initialStatus: CloudWork
       });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleToggleWorkspaceAutomation(enable: boolean) {
+    setTogglingWorkspace(true);
+    setFeedback(null);
+    try {
+      await toggleAdminWorkspaceAutomationAction({ enable });
+      setWorkspaceAutomationEnabled(enable);
+      setFeedback({
+        type: 'success',
+        message: enable
+          ? 'Workspace Automation enabled! The Cloud Worker will now process accounts and initiate orders.'
+          : 'Workspace Automation paused. The Cloud Worker will skip this workspace.',
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to update Workspace Automation setting',
+      });
+    } finally {
+      setTogglingWorkspace(false);
     }
   }
 
@@ -115,10 +151,17 @@ export function CloudWorkerControl({ initialStatus }: { initialStatus: CloudWork
     setFeedback(null);
     try {
       const res = await triggerAdminWorkerRunAction();
-      setFeedback({
-        type: 'success',
-        message: `Execution dispatched to Google Cloud Run (${res.executionName})!`,
-      });
+      if (!workspaceAutomationEnabled) {
+        setFeedback({
+          type: 'error',
+          message: `Execution dispatched to Google Cloud Run (${res.executionName}), but Workspace Automation is currently PAUSED. The worker will skip all accounts unless Workspace Automation is enabled.`,
+        });
+      } else {
+        setFeedback({
+          type: 'success',
+          message: `Execution dispatched to Google Cloud Run (${res.executionName})!`,
+        });
+      }
       setTimeout(handleRefresh, 3000);
     } catch (err) {
       setFeedback({
@@ -164,6 +207,70 @@ export function CloudWorkerControl({ initialStatus }: { initialStatus: CloudWork
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Workspace Automation Status Banner */}
+      {!workspaceAutomationEnabled ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 sm:p-6 shadow-sm">
+          <div className="flex items-start gap-3.5">
+            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-amber-950 dark:text-amber-200 text-sm sm:text-base">
+                  Workspace Automation is Paused
+                </span>
+                <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400 text-xs">
+                  Orders Blocked
+                </Badge>
+              </div>
+              <p className="text-xs sm:text-sm text-amber-900/80 dark:text-amber-300/80">
+                The Google Cloud Worker runs on schedule, but will skip all connected portal accounts because Workspace Automation is currently paused.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="default"
+            size="sm"
+            disabled={togglingWorkspace}
+            onClick={() => handleToggleWorkspaceAutomation(true)}
+            className="shrink-0 h-9 px-4 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            {togglingWorkspace ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Power className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Enable Workspace Automation
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-3xl border border-emerald-500/30 bg-emerald-500/5 p-4 sm:p-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <div>
+              <span className="text-sm font-semibold text-emerald-950 dark:text-emerald-200">
+                Workspace Automation is Active
+              </span>
+              <p className="text-xs text-muted-foreground">
+                The Cloud Worker is authorized to evaluate queue priorities and initiate orders for this workspace.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={togglingWorkspace}
+            onClick={() => handleToggleWorkspaceAutomation(false)}
+            className="shrink-0 h-8 px-3 text-xs text-destructive hover:bg-destructive/10 border-destructive/30 rounded-xl"
+          >
+            {togglingWorkspace ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Pause className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Pause Automation
+          </Button>
         </div>
       )}
 
