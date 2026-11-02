@@ -1243,6 +1243,7 @@ export async function findCandidateFromGlobalQueue(
   options?: {
     ignoreCooldown?: boolean;
     portalAccountId?: string;
+    skipSync?: boolean;
   },
 ): Promise<GlobalCandidateNomination | null> {
   // 1. Verify workspace has automation enabled (unless options?.ignoreCooldown)
@@ -1253,18 +1254,20 @@ export async function findCandidateFromGlobalQueue(
 
   if (!settings || (!settings.enabled && !options?.ignoreCooldown)) return null;
 
-  // 2. Auto-sync global ordering queue for this workspace
-  try {
-    await syncGlobalOrderingQueue({
-      userId: 'system',
-      workspaceId,
-      role: 'admin',
-      db,
-      today,
-    });
-  } catch (err) {
-    // If sync encounters any error (e.g. test environment without full schema), proceed with existing DB state
-    console.warn('[automation] syncGlobalOrderingQueue warning:', err instanceof Error ? err.message : err);
+  // 2. Auto-sync global ordering queue for this workspace (unless caller requested skipSync)
+  if (!options?.skipSync) {
+    try {
+      await syncGlobalOrderingQueue({
+        userId: 'system',
+        workspaceId,
+        role: 'admin',
+        db,
+        today,
+      });
+    } catch (err) {
+      // If sync encounters any error (e.g. test environment without full schema), proceed with existing DB state
+      console.warn('[automation] syncGlobalOrderingQueue warning:', err instanceof Error ? err.message : err);
+    }
   }
 
   // 3. Fetch connected portal accounts that are active in the ecosystem and have automation enabled
@@ -1283,39 +1286,55 @@ export async function findCandidateFromGlobalQueue(
 
   if (accounts.length === 0) return null;
 
-  // 4. Filter for currently eligible accounts
+  // 4. Filter for currently eligible accounts in batch (avoids N+1 query loops)
+  const accountIds = accounts.map((a) => a.id);
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const eligibleAccountsMap = new Map<string, typeof accounts[0]>();
+
+  const [recentRows, activeRows] = await Promise.all([
+    options?.ignoreCooldown
+      ? Promise.resolve([])
+      : db
+          .select({
+            portalAccountId: portalOrderAttempts.portalAccountId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(portalOrderAttempts)
+          .where(
+            and(
+              inArray(portalOrderAttempts.portalAccountId, accountIds),
+              gte(portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
+              inArray(portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
+            ),
+          )
+          .groupBy(portalOrderAttempts.portalAccountId),
+    db
+      .select({
+        portalAccountId: portalOrderAttempts.portalAccountId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(portalOrderAttempts)
+      .where(
+        and(
+          inArray(portalOrderAttempts.portalAccountId, accountIds),
+          inArray(portalOrderAttempts.state, ['reserved', 'submitting']),
+        ),
+      )
+      .groupBy(portalOrderAttempts.portalAccountId),
+  ]);
+
+  const recentCounts = new Map(recentRows.map((r) => [r.portalAccountId, r.count]));
+  const activeCounts = new Map(activeRows.map((r) => [r.portalAccountId, r.count]));
 
   for (const acc of accounts) {
     if (!options?.ignoreCooldown) {
       if (acc.cooldownUntil && new Date(acc.cooldownUntil) > new Date()) {
         continue;
       }
-
-      const [recentAttempts] = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(portalOrderAttempts)
-        .where(
-          and(
-            eq(portalOrderAttempts.portalAccountId, acc.id),
-            gte(portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
-            inArray(portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
-          ),
-        );
-      if (recentAttempts && recentAttempts.count > 0) continue;
+      if ((recentCounts.get(acc.id) ?? 0) > 0) continue;
     }
 
-    const [activeAttempts] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(portalOrderAttempts)
-      .where(
-        and(
-          eq(portalOrderAttempts.portalAccountId, acc.id),
-          inArray(portalOrderAttempts.state, ['reserved', 'submitting']),
-        ),
-      );
-    if (activeAttempts && activeAttempts.count > 0) continue;
+    if ((activeCounts.get(acc.id) ?? 0) > 0) continue;
 
     eligibleAccountsMap.set(acc.id, acc);
   }
@@ -2040,7 +2059,7 @@ export async function getNextEligibleRunTime(
 
     // Check if Global Order Queue has an immediate candidate ready
     const today = todayInIST(now);
-    const globalNomination = await findCandidateFromGlobalQueue(db, workspaceId, today);
+    const globalNomination = await findCandidateFromGlobalQueue(db, workspaceId, today, { skipSync: true });
     if (globalNomination) {
       if (isPaused) {
         return {

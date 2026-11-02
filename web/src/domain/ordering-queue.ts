@@ -1,4 +1,4 @@
-import { eq, and, gte, asc, inArray, notInArray, isNull, isNotNull, ne } from 'drizzle-orm';
+import { eq, and, gte, asc, inArray, notInArray, isNull, isNotNull, ne, sql } from 'drizzle-orm';
 import type { Ctx } from '@/lib/context';
 import * as schema from '@/db/schema';
 import { resolveOfferKind } from '@/domain/benefit-offer-kind';
@@ -80,68 +80,121 @@ async function fetchRawQueueCandidates(
   ctx: Ctx,
   filter?: QueueFilter,
 ): Promise<Array<{ item: QueueItemView; hasStoredPosition: boolean }>> {
-  // 1. Fetch active cards in workspace
-  const activeCards = await ctx.db
-    .select({
-      id: schema.cards.id,
-      displayName: schema.cards.displayName,
-      lastDigits: schema.cards.lastDigits,
-      holderId: schema.cards.holderId,
-    })
-    .from(schema.cards)
-    .where(
-      and(
-        eq(schema.cards.workspaceId, ctx.workspaceId),
-        eq(schema.cards.active, true),
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // 1-4. Concurrently fetch cards, accounts, mappings, and consumed attempts (reduces serial query latency)
+  const [
+    activeCards,
+    allWorkspaceAccounts,
+    rawMappings,
+    consumedAttempts,
+    directRedemptions,
+    recentAttempts,
+  ] = await Promise.all([
+    ctx.db
+      .select({
+        id: schema.cards.id,
+        displayName: schema.cards.displayName,
+        lastDigits: schema.cards.lastDigits,
+        holderId: schema.cards.holderId,
+      })
+      .from(schema.cards)
+      .where(
+        and(
+          eq(schema.cards.workspaceId, ctx.workspaceId),
+          eq(schema.cards.active, true),
+        ),
       ),
-    );
+    ctx.db
+      .select({
+        id: schema.portalAccounts.id,
+        label: schema.portalAccounts.label,
+        status: schema.portalAccounts.status,
+        automationEnabled: schema.portalAccounts.automationEnabled,
+        cooldownUntil: schema.portalAccounts.cooldownUntil,
+      })
+      .from(schema.portalAccounts)
+      .where(
+        and(
+          eq(schema.portalAccounts.workspaceId, ctx.workspaceId),
+          eq(schema.portalAccounts.active, true),
+        ),
+      ),
+    ctx.db
+      .select({
+        id: schema.portalCardMappings.id,
+        cardId: schema.portalCardMappings.cardId,
+        portalAccountId: schema.portalCardMappings.portalAccountId,
+        portalAccountLabel: schema.portalAccounts.label,
+        portalAccountStatus: schema.portalAccounts.status,
+        mappingPaymentDetailsEncrypted: schema.portalCardMappings.paymentDetailsEncrypted,
+        cardPaymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted,
+      })
+      .from(schema.portalCardMappings)
+      .innerJoin(
+        schema.portalAccounts,
+        eq(schema.portalCardMappings.portalAccountId, schema.portalAccounts.id),
+      )
+      .innerJoin(
+        schema.cards,
+        eq(schema.portalCardMappings.cardId, schema.cards.id),
+      )
+      .where(
+        and(
+          eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
+          eq(schema.portalCardMappings.active, true),
+          eq(schema.portalAccounts.active, true),
+        ),
+      ),
+    ctx.db
+      .select({
+        portalAccountId: schema.portalOrderAttempts.portalAccountId,
+        bankCardTypeId: schema.benefitInstances.bankCardTypeId,
+        benefitId: schema.benefitInstances.benefitId,
+        overrideId: schema.benefitInstances.overrideId,
+        periodStart: schema.benefitInstances.periodStart,
+      })
+      .from(schema.portalOrderAttempts)
+      .innerJoin(
+        schema.benefitInstances,
+        eq(schema.portalOrderAttempts.instanceId, schema.benefitInstances.id),
+      )
+      .where(
+        and(
+          eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
+          inArray(schema.portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
+        ),
+      ),
+    ctx.db
+      .select({
+        portalAccountId: schema.benefitInstances.portalAccountId,
+        bankCardTypeId: schema.benefitInstances.bankCardTypeId,
+        benefitId: schema.benefitInstances.benefitId,
+        overrideId: schema.benefitInstances.overrideId,
+        periodStart: schema.benefitInstances.periodStart,
+      })
+      .from(schema.benefitInstances)
+      .where(
+        and(
+          eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
+          isNotNull(schema.benefitInstances.portalAccountId),
+          ne(schema.benefitInstances.orderStatus, 'Not Ordered'),
+          eq(schema.benefitInstances.archived, false),
+        ),
+      ),
+    ctx.db
+      .select({ portalAccountId: schema.portalOrderAttempts.portalAccountId })
+      .from(schema.portalOrderAttempts)
+      .where(
+        and(
+          eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
+          gte(schema.portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
+          inArray(schema.portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
+        ),
+      ),
+  ]);
 
   if (activeCards.length === 0) return [];
-
-  // 2. Fetch all active portal accounts for workspace
-  const allWorkspaceAccounts = await ctx.db
-    .select({
-      id: schema.portalAccounts.id,
-      label: schema.portalAccounts.label,
-      status: schema.portalAccounts.status,
-      automationEnabled: schema.portalAccounts.automationEnabled,
-      cooldownUntil: schema.portalAccounts.cooldownUntil,
-    })
-    .from(schema.portalAccounts)
-    .where(
-      and(
-        eq(schema.portalAccounts.workspaceId, ctx.workspaceId),
-        eq(schema.portalAccounts.active, true),
-      ),
-    );
-
-  // 3. Fetch all active portal card mappings for active accounts in workspace
-  const rawMappings = await ctx.db
-    .select({
-      id: schema.portalCardMappings.id,
-      cardId: schema.portalCardMappings.cardId,
-      portalAccountId: schema.portalCardMappings.portalAccountId,
-      portalAccountLabel: schema.portalAccounts.label,
-      portalAccountStatus: schema.portalAccounts.status,
-      mappingPaymentDetailsEncrypted: schema.portalCardMappings.paymentDetailsEncrypted,
-      cardPaymentDetailsEncrypted: schema.cards.paymentDetailsEncrypted,
-    })
-    .from(schema.portalCardMappings)
-    .innerJoin(
-      schema.portalAccounts,
-      eq(schema.portalCardMappings.portalAccountId, schema.portalAccounts.id),
-    )
-    .innerJoin(
-      schema.cards,
-      eq(schema.portalCardMappings.cardId, schema.cards.id),
-    )
-    .where(
-      and(
-        eq(schema.portalCardMappings.workspaceId, ctx.workspaceId),
-        eq(schema.portalCardMappings.active, true),
-        eq(schema.portalAccounts.active, true),
-      ),
-    );
 
   const cardToAccountsMap = new Map<string, Array<{ id: string; label: string }>>();
   const accountToCardIdsMap = new Map<string, Set<string>>();
@@ -171,45 +224,6 @@ async function fetchRawQueueCandidates(
     accountToCardIdsMap.set(m.portalAccountId, cardSet);
   }
 
-  // 4. Fetch consumed entitlements to detect (account, card_type, benefit, period) conflicts
-  const consumedAttempts = await ctx.db
-    .select({
-      portalAccountId: schema.portalOrderAttempts.portalAccountId,
-      bankCardTypeId: schema.benefitInstances.bankCardTypeId,
-      benefitId: schema.benefitInstances.benefitId,
-      overrideId: schema.benefitInstances.overrideId,
-      periodStart: schema.benefitInstances.periodStart,
-    })
-    .from(schema.portalOrderAttempts)
-    .innerJoin(
-      schema.benefitInstances,
-      eq(schema.portalOrderAttempts.instanceId, schema.benefitInstances.id),
-    )
-    .where(
-      and(
-        eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
-        inArray(schema.portalOrderAttempts.state, ['reserved', 'submitting', 'confirmed', 'uncertain']),
-      ),
-    );
-
-  const directRedemptions = await ctx.db
-    .select({
-      portalAccountId: schema.benefitInstances.portalAccountId,
-      bankCardTypeId: schema.benefitInstances.bankCardTypeId,
-      benefitId: schema.benefitInstances.benefitId,
-      overrideId: schema.benefitInstances.overrideId,
-      periodStart: schema.benefitInstances.periodStart,
-    })
-    .from(schema.benefitInstances)
-    .where(
-      and(
-        eq(schema.benefitInstances.workspaceId, ctx.workspaceId),
-        isNotNull(schema.benefitInstances.portalAccountId),
-        ne(schema.benefitInstances.orderStatus, 'Not Ordered'),
-        eq(schema.benefitInstances.archived, false),
-      ),
-    );
-
   const accountConsumedSet = new Set<string>();
   for (const r of consumedAttempts) {
     accountConsumedSet.add(`${r.portalAccountId}:${r.bankCardTypeId}:${r.benefitId || r.overrideId}:${r.periodStart}`);
@@ -220,18 +234,6 @@ async function fetchRawQueueCandidates(
     }
   }
 
-  // 24-hour rate limit check
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const recentAttempts = await ctx.db
-    .select({ portalAccountId: schema.portalOrderAttempts.portalAccountId })
-    .from(schema.portalOrderAttempts)
-    .where(
-      and(
-        eq(schema.portalOrderAttempts.workspaceId, ctx.workspaceId),
-        gte(schema.portalOrderAttempts.submissionStartedAt, twentyFourHoursAgo),
-        inArray(schema.portalOrderAttempts.state, ['confirmed', 'uncertain', 'resolved_no_order']),
-      ),
-    );
   const accountsIn24hCooldown = new Set(recentAttempts.map((r) => r.portalAccountId));
 
   // 5. Determine target card IDs based on filter
@@ -605,8 +607,17 @@ export async function syncGlobalOrderingQueue(ctx: Ctx): Promise<QueueItemView[]
     allOrdered = [...existing, ...newItems];
   }
 
-  // 3. Assign sequential positions 1..N and persist to database
+  // 3. Assign sequential positions 1..N and persist to database in batch
   const result: QueueItemView[] = [];
+  const toUpsert: Array<{
+    workspaceId: string;
+    instanceId: string;
+    position: number;
+    enabled: boolean;
+    chosenOptionId: string | null;
+    portalAccountId: string | null;
+    updatedAt: Date;
+  }> = [];
 
   for (let idx = 0; idx < allOrdered.length; idx++) {
     const c = allOrdered[idx];
@@ -616,27 +627,31 @@ export async function syncGlobalOrderingQueue(ctx: Ctx): Promise<QueueItemView[]
     c.item.position = newPos;
 
     if (posChanged) {
-      await ctx.db
-        .insert(schema.orderingQueueItems)
-        .values({
-          workspaceId: ctx.workspaceId,
-          instanceId: c.item.instanceId,
-          position: newPos,
-          enabled: c.item.enabled,
-          chosenOptionId: c.item.chosenOptionId,
-          portalAccountId: c.item.chosenPortalAccountId ?? null,
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: [schema.orderingQueueItems.workspaceId, schema.orderingQueueItems.instanceId],
-          set: {
-            position: newPos,
-            updatedAt: new Date(),
-          },
-        });
+      toUpsert.push({
+        workspaceId: ctx.workspaceId,
+        instanceId: c.item.instanceId,
+        position: newPos,
+        enabled: c.item.enabled,
+        chosenOptionId: c.item.chosenOptionId,
+        portalAccountId: c.item.chosenPortalAccountId ?? null,
+        updatedAt: new Date(),
+      });
     }
 
     result.push(c.item);
+  }
+
+  if (toUpsert.length > 0) {
+    await ctx.db
+      .insert(schema.orderingQueueItems)
+      .values(toUpsert)
+      .onConflictDoUpdate({
+        target: [schema.orderingQueueItems.workspaceId, schema.orderingQueueItems.instanceId],
+        set: {
+          position: sql`excluded.position`,
+          updatedAt: new Date(),
+        },
+      });
   }
 
   return result;
