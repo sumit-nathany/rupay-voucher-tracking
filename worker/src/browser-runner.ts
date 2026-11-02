@@ -62,7 +62,8 @@ export interface BrowserRunResult {
     | 'payment_failed'
     | 'otp_timeout'
     | 'timeout_unconfirmed'
-    | 'portal_refused';
+    | 'portal_refused'
+    | 'user_skipped';
   /** The instance the run acted on, when one was selected. */
   instanceId?: string;
 }
@@ -173,10 +174,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       cardName: schema.bankCardTypes.displayName,
       variantName: schema.cardVariants.name,
       portalCardType: schema.cardVariants.portalCardType,
+      cardHolderName: schema.cardHolders.name,
     })
     .from(schema.cards)
     .innerJoin(schema.bankCardTypes, eq(schema.cards.bankCardTypeId, schema.bankCardTypes.id))
     .innerJoin(schema.cardVariants, eq(schema.bankCardTypes.variantId, schema.cardVariants.id))
+    .leftJoin(schema.cardHolders, eq(schema.cards.holderId, schema.cardHolders.id))
     .where(eq(schema.cards.id, candidate.cardId));
 
   const [instanceRow] = await db
@@ -292,22 +295,6 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
   const targetPhoneNumber = account.phoneNumber || creds.extra?.phone || creds.extra?.mobile || null;
   console.log(`[gateway] Portal account mobile number for payment gateway contact: ${targetPhoneNumber || '(not configured, relying on prefill)'}`);
 
-  // Proactive notification: announce the order attempt starting
-  if (telegramChatId) {
-    const tg = getTelegramClient();
-    await tg.sendOrderAttempt({
-      chatId: telegramChatId,
-      cardName: cardRow?.cardName ?? 'RuPay Card',
-      cardLast4: cardRecord?.lastDigits ?? undefined,
-      portalAccountLabel: account.label,
-      benefitName: benefitDetails.exactBenefit,
-      provider: benefitDetails.benefitProvider || undefined,
-      category: benefitDetails.benefitType || undefined,
-      voucherValue: benefitDetails.cashValue || undefined,
-    }).catch((err) => console.error('[telegram] Failed to send order attempt notification:', err));
-    console.log(`[gateway] Proactive Telegram notification sent: order attempt starting.`);
-  }
-
   if (!paymentDetails || !isValidPaymentDetails(paymentDetails)) {
     console.error(`\n[runner] ❌ Aborting run: Card "${cardRow?.cardName}" (••${cardRow?.last4}) does not have valid payment details configured.`);
     console.error(`Automation cannot checkout without payment details (card number, expiry date, CVV). Please configure payment details on this card in the Cards section.`);
@@ -336,6 +323,157 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       instanceId: candidate.instanceId,
       reason: 'missing_payment_details',
     };
+  }
+
+  // Pre-order Interactive Confirmation (45s window via Telegram)
+  if (telegramChatId) {
+    const tg = getTelegramClient();
+    console.log(`\n--- Step 1.5: Pre-order Interactive Confirmation (45s window) ---`);
+
+    // Look up available options from schema.benefitOptions for instanceRow.generatedFromVersion
+    let availableOptions: Array<{ id: string; provider: string; offerName: string; cashValue: string | null }> = [];
+    if (instanceRow?.generatedFromVersion) {
+      availableOptions = await db
+        .select({
+          id: schema.benefitOptions.id,
+          provider: schema.benefitOptions.provider,
+          offerName: schema.benefitOptions.offerName,
+          cashValue: schema.benefitOptions.cashValue,
+        })
+        .from(schema.benefitOptions)
+        .where(eq(schema.benefitOptions.versionId, instanceRow.generatedFromVersion));
+    }
+
+    const expiresAt = new Date(Date.now() + 45000);
+    const [session] = await db
+      .insert(schema.portalOrderPreorderSessions)
+      .values({
+        workspaceId: account.workspaceId,
+        instanceId: candidate.instanceId,
+        telegramChatId,
+        status: 'pending',
+        expiresAt,
+      })
+      .returning();
+
+    const accountLine = account.label ? `• *RuPay Account:* \`${account.label}\`\n` : '';
+    const cardLine = cardRecord?.lastDigits
+      ? `• *Card:* ${cardRow?.cardName ?? 'RuPay Card'} (•••• ${cardRecord.lastDigits})\n`
+      : `• *Card:* ${cardRow?.cardName ?? 'RuPay Card'}\n`;
+    const cardHolderLine = cardRow?.cardHolderName ? `• *Card Holder:* ${cardRow.cardHolderName}\n` : '';
+    const brandLine = benefitDetails.benefitProvider ? `• *Brand / Merchant:* *${benefitDetails.benefitProvider}*\n` : '';
+    const categoryLine = benefitDetails.benefitType ? `• *Category:* ${benefitDetails.benefitType}\n` : '';
+    const voucherLine = benefitDetails.cashValue && benefitDetails.cashValue !== '0'
+      ? `• *Voucher Details:* ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue} value)\n`
+      : `• *Voucher Details:* ${benefitDetails.exactBenefit}\n`;
+
+    const interactiveText =
+      `⏳ *RuPay Benefit Order Confirmation (45s window)*\n\n` +
+      accountLine +
+      cardLine +
+      cardHolderLine +
+      brandLine +
+      categoryLine +
+      voucherLine +
+      `\nThe automation will automatically proceed with this order in 45 seconds unless you change the option or skip below:`;
+
+    const inlineKeyboard: Array<Array<{ text: string; callbackData: string }>> = [
+      [{ text: '✅ Proceed Now (45s)', callbackData: `preorder:proceed:${session.id}` }],
+    ];
+    if (availableOptions.length > 1) {
+      inlineKeyboard.push([
+        { text: `🔄 Change Option (${availableOptions.length} available)`, callbackData: `preorder:change:${session.id}` },
+      ]);
+    }
+    inlineKeyboard.push([
+      { text: '🛑 Skip This Card', callbackData: `preorder:skip:${session.id}` },
+    ]);
+
+    const sendRes = await tg.sendMessageWithInlineKeyboard(
+      telegramChatId,
+      interactiveText,
+      inlineKeyboard
+    );
+
+    if (sendRes.success && sendRes.messageId) {
+      await db
+        .update(schema.portalOrderPreorderSessions)
+        .set({ messageId: sendRes.messageId })
+        .where(eq(schema.portalOrderPreorderSessions.id, session.id));
+    }
+
+    const sentMessageId = sendRes.messageId;
+
+    // Wait loop (45 seconds):
+    const deadline = Date.now() + 45000;
+    let finalStatus: string = 'pending';
+    let selectedOptionId: string | null = null;
+
+    console.log(`[preorder] Waiting up to 45s for Telegram user input on session ${session.id}...`);
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      const [updatedSession] = await db
+        .select()
+        .from(schema.portalOrderPreorderSessions)
+        .where(eq(schema.portalOrderPreorderSessions.id, session.id));
+
+      if (!updatedSession) break;
+
+      if (updatedSession.status === 'proceed') {
+        console.log(`[preorder] User explicitly clicked Proceed.`);
+        finalStatus = 'proceed';
+        break;
+      }
+
+      if (updatedSession.status === 'option_selected') {
+        console.log(`[preorder] User selected option: ${updatedSession.selectedOptionName} (${updatedSession.selectedOptionId})`);
+        finalStatus = 'option_selected';
+        selectedOptionId = updatedSession.selectedOptionId;
+        break;
+      }
+
+      if (updatedSession.status === 'skipped') {
+        console.log(`[preorder] User skipped this card.`);
+        finalStatus = 'skipped';
+        break;
+      }
+    }
+
+    if (finalStatus === 'skipped') {
+      await client.end();
+      return {
+        attempted: false,
+        accountLabel: account.label,
+        instanceId: candidate.instanceId,
+        reason: 'user_skipped',
+      };
+    }
+
+    if (finalStatus === 'option_selected' && selectedOptionId) {
+      const [opt] = await db
+        .select()
+        .from(schema.benefitOptions)
+        .where(eq(schema.benefitOptions.id, selectedOptionId));
+
+      if (opt) {
+        benefitDetails.benefitProvider = opt.provider;
+        benefitDetails.exactBenefit = opt.offerName;
+        if (opt.cashValue) benefitDetails.cashValue = opt.cashValue;
+        candidate.chosenOptionId = opt.id;
+        console.log(`[preorder] Updated target benefit details to: ${opt.offerName} (${opt.provider})`);
+      }
+    } else if (finalStatus === 'pending') {
+      console.log(`[preorder] 45s countdown elapsed. Auto-proceeding with scheduled benefit.`);
+      if (sentMessageId) {
+        await tg.editMessageText(
+          telegramChatId,
+          sentMessageId,
+          `⏰ 45s confirmation window elapsed. Proceeding with order...`
+        ).catch(() => {});
+      }
+    }
   }
 
   console.log('\n--- Step 2: Launching Browser with Isolated Account Profile ---');

@@ -232,6 +232,13 @@
       "when": 1793615021512,
       "tag": "0032_lame_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793628989977,
+      "tag": "0033_purple_silver_fox",
+      "breakpoints": true
     }
   ]
 }

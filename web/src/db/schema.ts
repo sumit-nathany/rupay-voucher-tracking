@@ -768,3 +768,28 @@ export const portalOrderOtpChallenges = app.table(
   ],
 );
 
+export const portalOrderPreorderSessions = app.table(
+  "portal_order_preorder_sessions",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    instanceId: uuid("instance_id")
+      .notNull()
+      .references(() => benefitInstances.id, { onDelete: "cascade" }),
+    telegramChatId: text("telegram_chat_id").notNull(),
+    messageId: text("message_id"),
+    status: text("status").notNull().default("pending"), // 'pending' | 'proceed' | 'change_requested' | 'option_selected' | 'skipped'
+    selectedOptionId: uuid("selected_option_id"),
+    selectedOptionName: text("selected_option_name"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: createdAt().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("portal_order_preorder_sessions_status_idx").on(t.status, t.expiresAt),
+  ],
+);
+
+

@@ -37,6 +37,7 @@ export interface TelegramOrderAttemptOptions {
   chatId: string;
   cardName: string;
   cardLast4?: string;
+  cardHolderName?: string;
   portalAccountLabel?: string;
   benefitName: string;
   provider?: string;
@@ -63,6 +64,21 @@ export interface TelegramOrderFailureWithScreenshotOptions extends TelegramOrder
 
 export interface TelegramClient {
   sendMessage(chatId: string, text: string): Promise<{ success: boolean; messageId?: string; error?: string }>;
+  sendMessageWithInlineKeyboard(
+    chatId: string,
+    text: string,
+    inlineKeyboard: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; messageId?: string; error?: string }>;
+  editMessageText(
+    chatId: string,
+    messageId: string,
+    text: string,
+    inlineKeyboard?: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; error?: string }>;
+  answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string
+  ): Promise<{ success: boolean; error?: string }>;
   sendOtpPrompt(options: TelegramSendOtpOptions): Promise<{ success: boolean; messageId?: string; error?: string }>;
   sendBookingConfirmation(options: TelegramConfirmationOptions): Promise<{ success: boolean; error?: string }>;
   sendOrderAttempt(options: TelegramOrderAttemptOptions): Promise<{ success: boolean; error?: string }>;
@@ -103,6 +119,116 @@ export class RealTelegramClient implements TelegramClient {
     }
   }
 
+  async sendMessageWithInlineKeyboard(
+    chatId: string,
+    text: string,
+    inlineKeyboard: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: inlineKeyboard.map((row) =>
+              row.map((b) => ({ text: b.text, callback_data: b.callbackData }))
+            ),
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[telegram] API error in sendMessageWithInlineKeyboard:', res.status, errorText);
+        return { success: false, error: errorText };
+      }
+
+      const json = await res.json();
+      return { success: true, messageId: String(json.result?.message_id) };
+    } catch (err) {
+      console.error('[telegram] Error sending message with inline keyboard:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async editMessageText(
+    chatId: string,
+    messageId: string,
+    text: string,
+    inlineKeyboard?: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        message_id: Number(messageId) || messageId,
+        text,
+        parse_mode: 'Markdown',
+      };
+
+      if (inlineKeyboard && inlineKeyboard.length > 0) {
+        body.reply_markup = {
+          inline_keyboard: inlineKeyboard.map((row) =>
+            row.map((b) => ({ text: b.text, callback_data: b.callbackData }))
+          ),
+        };
+      } else {
+        body.reply_markup = {
+          inline_keyboard: [],
+        };
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${this.botToken}/editMessageText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        if (errorText.includes('message is not modified')) {
+          return { success: true };
+        }
+        console.error('[telegram] API error in editMessageText:', res.status, errorText);
+        return { success: false, error: errorText };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('[telegram] Error editing message text:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.botToken}/answerCallbackQuery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          ...(text ? { text } : {}),
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('[telegram] API error in answerCallbackQuery:', res.status, errorText);
+        return { success: false, error: errorText };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('[telegram] Error answering callback query:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   async sendOtpPrompt(options: TelegramSendOtpOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
     const amount = options.amount ?? 1;
     const timeout = options.timeoutMinutes ?? 3;
@@ -136,20 +262,27 @@ export class RealTelegramClient implements TelegramClient {
     const cardLine = options.cardLast4
       ? `• *Card:* ${options.cardName} (•••• ${options.cardLast4})\n`
       : `• *Card:* ${options.cardName}\n`;
+    const cardHolderLine = options.cardHolderName ? `• *Card Holder:* ${options.cardHolderName}\n` : '';
     const brandLine = options.provider ? `• *Brand / Merchant:* *${options.provider}*\n` : '';
     const categoryLine = options.category ? `• *Category:* ${options.category}\n` : '';
     const voucherLine = options.voucherValue
       ? `• *Voucher Details:* ${options.benefitName} (₹${options.voucherValue} value)\n`
       : `• *Voucher Details:* ${options.benefitName}\n`;
 
+    const otpCallout = options.cardHolderName
+      ? `\n📲 *Note:* The bank OTP for 3D-Secure verification will be received on *${options.cardHolderName}*'s phone number. Please be ready to share the OTP.`
+      : `\n📲 *Note:* Please be ready to share the bank OTP when prompted.`;
+
     const messageText =
       `🚀 *RuPay Voucher Order Attempt Starting*\n\n` +
       accountLine +
       cardLine +
+      cardHolderLine +
       brandLine +
       categoryLine +
       voucherLine +
-      `The automation is now attempting to place this order on the RuPay portal. You will be notified of the result.`;
+      `\nThe automation is now attempting to place this order on the RuPay portal. You will be notified of the result.` +
+      otpCallout;
 
     const res = await this.sendMessage(options.chatId, messageText);
     return { success: res.success, error: res.error };
@@ -206,6 +339,39 @@ export class MockTelegramClient implements TelegramClient {
     console.log(`\n💬 [Mock Telegram] Outbound to chat ${chatId}:`);
     console.log(`   "${text.slice(0, 100)}..."`);
     return { success: true, messageId: `mock_tg_${Date.now()}` };
+  }
+
+  async sendMessageWithInlineKeyboard(
+    chatId: string,
+    text: string,
+    inlineKeyboard: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Outbound with keyboard to chat ${chatId}:`);
+    console.log(`   "${text.slice(0, 100)}..."`);
+    console.log(`   Buttons: ${JSON.stringify(inlineKeyboard)}`);
+    return { success: true, messageId: `mock_tg_kb_${Date.now()}` };
+  }
+
+  async editMessageText(
+    chatId: string,
+    messageId: string,
+    text: string,
+    inlineKeyboard?: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<{ success: boolean; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Edit message ${messageId} in chat ${chatId}:`);
+    console.log(`   "${text.slice(0, 100)}..."`);
+    if (inlineKeyboard) {
+      console.log(`   Updated buttons: ${JSON.stringify(inlineKeyboard)}`);
+    }
+    return { success: true };
+  }
+
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    console.log(`\n💬 [Mock Telegram] Answer callback query ${callbackQueryId}: ${text ?? ''}`);
+    return { success: true };
   }
 
   async sendOtpPrompt(options: TelegramSendOtpOptions): Promise<{ success: boolean; messageId: string }> {
