@@ -12,7 +12,20 @@ if (!url) {
 
 // Supabase transaction pooler (port 6543 / Supavisor) does not support
 // prepared statements, so prepare must be false (PLAN.md: Connection pooling).
-const client = postgres(url, { prepare: false });
+const globalForDb = globalThis as unknown as {
+  conn: postgres.Sql | undefined;
+};
+
+const client =
+  globalForDb.conn ??
+  postgres(url, {
+    prepare: false,
+    max: 2,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+
+globalForDb.conn = client;
 
 export const db = drizzle(client, { schema });
 export { schema };

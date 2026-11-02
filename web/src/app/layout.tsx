@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
+export const preferredRegion = 'bom1';
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

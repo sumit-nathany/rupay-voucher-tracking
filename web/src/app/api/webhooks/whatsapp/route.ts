@@ -3,6 +3,8 @@ import { eq, and, gt, or, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { portalOrderOtpChallenges } from '@/db/schema';
 
+export const preferredRegion = 'bom1';
+
 /**
  * GET: Meta Webhook verification challenge
  */

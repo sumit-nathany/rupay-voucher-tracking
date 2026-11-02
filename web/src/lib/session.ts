@@ -5,6 +5,7 @@
  * 'next/headers' are imported lazily so provisionWorkspace() can be unit
  * tested against PGlite without DATABASE_URL or a Next request scope.
  */
+import { cache } from 'react';
 import { createServerClient } from '@supabase/ssr';
 import type { User } from '@supabase/supabase-js';
 import { eq } from 'drizzle-orm';
@@ -57,11 +58,11 @@ export async function provisionWorkspace(db: Database, userId: string): Promise<
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function isSystemAdmin(db: Database, userId: string): Promise<boolean> {
+export const isSystemAdmin = cache(async (db: Database, userId: string): Promise<boolean> => {
   if (!UUID_REGEX.test(userId)) return false;
   const [row] = await db.select({ id: systemAdmins.id }).from(systemAdmins).where(eq(systemAdmins.userId, userId));
   return !!row;
-}
+});
 
 /** Gate for shared-catalog writes. Keyed on auth user id, never email. */
 export async function requireSystemAdmin(ctx: Ctx): Promise<void> {
@@ -87,12 +88,12 @@ export async function createSupabaseServerClient() {
 }
 
 /** Retrieve currently authenticated Supabase Auth user without provisioning workspace. */
-export async function getSessionUser(): Promise<User | null> {
+export const getSessionUser = cache(async (): Promise<User | null> => {
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
   return data.user;
-}
+});
 
 /** Build the request Ctx from the Supabase session. Throws AuthzError if unauthenticated. */
 export async function getCtx(): Promise<Ctx> {
@@ -101,7 +102,7 @@ export async function getCtx(): Promise<Ctx> {
 }
 
 /** Build Ctx and return the Supabase Auth user in one call. Throws AuthzError if unauthenticated. */
-export async function getCtxAndUser(): Promise<{ ctx: Ctx; user: User }> {
+export const getCtxAndUser = cache(async (): Promise<{ ctx: Ctx; user: User }> => {
   const supabase = await createSupabaseServerClient();
   // getUser() validates the JWT with Supabase Auth; getSession() would trust the cookie.
   const { data, error } = await supabase.auth.getUser();
@@ -112,4 +113,4 @@ export async function getCtxAndUser(): Promise<{ ctx: Ctx; user: User }> {
     ctx: { userId: data.user.id, workspaceId: m.workspaceId, role: m.role, db, today: today() },
     user: data.user,
   };
-}
+});

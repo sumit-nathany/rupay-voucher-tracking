@@ -25,6 +25,8 @@ function getBenefitEmoji(type: string): string {
   return '🎁';
 }
 
+export const preferredRegion = 'bom1';
+
 export async function GET() {
   return NextResponse.json({ status: 'ok', service: 'telegram-webhook' });
 }
@@ -46,6 +48,7 @@ export async function POST(req: NextRequest) {
       console.log(`[telegram-webhook] Callback query ${callbackQueryId} from chat ${chatId}: data="${data}"`);
 
       if (data.startsWith('preorder:proceed:')) {
+        await telegram.answerCallbackQuery(callbackQueryId, 'Proceeding with order!');
         const sessionId = data.slice('preorder:proceed:'.length);
         await db
           .update(portalOrderPreorderSessions)
@@ -59,7 +62,6 @@ export async function POST(req: NextRequest) {
             '✅ *Order Confirmed:* Proceeding with order now...'
           );
         }
-        await telegram.answerCallbackQuery(callbackQueryId, 'Proceeding with order!');
         return NextResponse.json({ status: 'proceed', sessionId });
       }
 
@@ -479,6 +481,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (data.startsWith('preorder:skip:')) {
+        await telegram.answerCallbackQuery(callbackQueryId, 'Skipped.');
         const sessionId = data.slice('preorder:skip:'.length);
         await db
           .update(portalOrderPreorderSessions)
@@ -495,7 +498,6 @@ export async function POST(req: NextRequest) {
             '🛑 *Order Skipped.* Moving to next eligible card/benefit.'
           );
         }
-        await telegram.answerCallbackQuery(callbackQueryId, 'Skipped.');
         return NextResponse.json({ status: 'skipped', sessionId });
       }
 
