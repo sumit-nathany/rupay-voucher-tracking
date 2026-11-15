@@ -985,6 +985,43 @@ export function AccountDetailSheet({
         existing={editingMapping}
         defaultAccountId={account.id}
         mappings={localMappings}
+        onSuccess={(accId, newCardIds) => {
+          const newCardSet = new Set(newCardIds);
+          setLocalMappings((prev) => {
+            const otherAccounts = prev.filter((m) => m.portalAccountId !== accId);
+            const existingThisAcc = prev.filter((m) => m.portalAccountId === accId && newCardSet.has(m.cardId));
+            const existingCardIds = new Set(existingThisAcc.map((m) => m.cardId));
+            const newlyAdded = newCardIds
+              .filter((cid) => !existingCardIds.has(cid))
+              .map((cid) => {
+                const c = availableCards.find((card) => card.id === cid);
+                return {
+                  id: crypto.randomUUID(),
+                  workspaceId: account.workspaceId,
+                  portalAccountId: accId,
+                  cardId: cid,
+                  cardName: c?.name ?? 'Card',
+                  holderName: c?.holderName ?? 'Holder',
+                  last4: c?.lastDigits ?? null,
+                  portalCardId: null,
+                  portalCardbinId: null,
+                  portalCardLabel: null,
+                  paymentDetails: {
+                    mode: 'full' as const,
+                    hasCvv: true,
+                    maskedCardNumber: `•••• •••• •••• ${c?.lastDigits || '••••'}`,
+                    expirySummary: '••/••',
+                    nameOnCard: null,
+                  },
+                  active: true,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                };
+              });
+            return [...otherAccounts, ...existingThisAcc, ...newlyAdded];
+          });
+          setFeedback('Card mappings updated successfully.');
+        }}
       />
     </>
   );

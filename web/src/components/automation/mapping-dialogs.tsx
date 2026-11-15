@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, AlertTriangle, ShieldCheck, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import type { PortalAccountView, PortalCardMappingView } from '@/domain/automation';
@@ -28,6 +27,7 @@ export interface AssignAccountsDialogProps {
   defaultCardId?: string;
   defaultAccountId?: string;
   existing?: PortalCardMappingView | null;
+  onSuccess?: (portalAccountId: string, cardIds: string[]) => void;
 }
 
 export function AssignAccountsDialog({
@@ -39,6 +39,7 @@ export function AssignAccountsDialog({
   defaultCardId,
   defaultAccountId,
   existing,
+  onSuccess,
 }: AssignAccountsDialogProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -46,11 +47,12 @@ export function AssignAccountsDialog({
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
 
-  const selectableAccounts = accounts.filter((a) => a.active);
+  const selectableAccounts = useMemo(() => accounts.filter((a) => a.active), [accounts]);
+  const prevOpenRef = useRef(false);
 
-  // Initialize or update selected account and card selections when dialog opens or defaults change
+  // Initialize selected account and card selections once when dialog opens or defaults change
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpenRef.current) {
       const activeAccountId =
         existing?.portalAccountId ??
         defaultAccountId ??
@@ -76,7 +78,8 @@ export function AssignAccountsDialog({
       setSelectedCards(mappedCardIds);
       setError(null);
     }
-  }, [open, existing, defaultAccountId, defaultCardId, accounts, mappings, selectableAccounts]);
+    prevOpenRef.current = open;
+  }, [open, existing, defaultAccountId, defaultCardId, selectableAccounts, mappings]);
 
   function handleAccountChange(accountId: string) {
     setSelectedAccount(accountId);
@@ -134,6 +137,7 @@ export function AssignAccountsDialog({
         portalAccountId: selectedAccount,
         cardIds: Array.from(selectedCards),
       });
+      onSuccess?.(selectedAccount, Array.from(selectedCards));
       router.refresh();
       onOpenChange(false);
     } catch (err) {
@@ -156,19 +160,27 @@ export function AssignAccountsDialog({
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 pt-1">
           {/* RuPay Account Selection at top */}
           <div className="space-y-2">
-            <Label className="text-xs font-semibold">RuPay Portal Account</Label>
-            <Select value={selectedAccount} onValueChange={handleAccountChange}>
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue placeholder="Select portal account" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectableAccounts.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
+            <Label htmlFor="mapping-account-select" className="text-xs font-semibold">
+              RuPay Portal Account
+            </Label>
+            <select
+              id="mapping-account-select"
+              value={selectedAccount}
+              onChange={(e) => handleAccountChange(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+            >
+              {selectableAccounts.length === 0 ? (
+                <option value="" disabled>
+                  No active RuPay accounts available
+                </option>
+              ) : (
+                selectableAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
                     {a.label} {a.phoneNumber ? `(${a.phoneNumber})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  </option>
+                ))
+              )}
+            </select>
 
             {/* Selected Account Summary Card */}
             {currentAccount && (

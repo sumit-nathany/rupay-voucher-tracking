@@ -198,6 +198,7 @@ export async function setCardPortalAccountsAction(input: z.infer<typeof setCardP
   await auto.setCardPortalAccounts(ctx, parsed);
   revalidatePath('/automation');
   revalidatePath('/accounts');
+  revalidatePath('/cards');
 }
 
 const setPortalAccountCardsSchema = z.object({
@@ -211,6 +212,7 @@ export async function setPortalAccountCardsAction(input: z.infer<typeof setPorta
   await auto.setPortalAccountCards(ctx, parsed);
   revalidatePath('/automation');
   revalidatePath('/accounts');
+  revalidatePath('/cards');
 }
 
 

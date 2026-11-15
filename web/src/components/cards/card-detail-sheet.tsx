@@ -1,7 +1,9 @@
 'use client';
 import * as React from 'react';
-import { AlertTriangle, Calendar, ChevronRight, CreditCard, Hash, Loader2, Pencil, Trash2, User, Lock, ShieldCheck, Pause, Play, Bot } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Calendar, CheckCircle2, ChevronRight, CreditCard, Hash, KeyRound, Loader2, Pencil, Trash2, User, Lock, ShieldCheck, Pause, Play, Bot } from 'lucide-react';
 import { deleteCard, updateCard, toggleCardAutomationAction } from '@/actions/cards';
+import { setCardPortalAccountsAction } from '@/actions/automation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,12 +26,28 @@ import type { CardRow, HolderOption, VariantOption } from './card-form';
 import type { CardTypeOption } from './card-type-combobox';
 import { CurationBadge } from './curation-badge';
 
+export interface CardPortalAccountOption {
+  id: string;
+  label: string;
+  phoneNumber: string | null;
+  active: boolean;
+  status: string;
+}
+
+export interface CardMappingOption {
+  id: string;
+  portalAccountId: string;
+  cardId: string;
+}
+
 export function CardDetailSheet({
   card,
   holder,
   bankCardType,
   variant,
   holders,
+  accounts = [],
+  mappings = [],
 }: {
   card: CardRow;
   holder?: HolderOption;
@@ -37,6 +55,8 @@ export function CardDetailSheet({
   variant?: VariantOption;
   holders: HolderOption[];
   variants?: VariantOption[];
+  accounts?: CardPortalAccountOption[];
+  mappings?: CardMappingOption[];
 }) {
   const [open, setOpen] = React.useState(false);
   const [mode, setMode] = React.useState<'view' | 'edit' | 'delete'>('view');
@@ -63,6 +83,16 @@ export function CardDetailSheet({
   const [cvv, setCvv] = React.useState('');
   const [nameOnCard, setNameOnCard] = React.useState('');
 
+  // Portal account mapping state
+  const [localMappings, setLocalMappings] = React.useState<CardMappingOption[]>(mappings);
+  const [selectedAccountIdToLink, setSelectedAccountIdToLink] = React.useState<string>('');
+  const [editPortalAccountId, setEditPortalAccountId] = React.useState<string>('');
+  const [feedback, setFeedback] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setLocalMappings(mappings);
+  }, [mappings]);
+
   function handleCardNumberChange(val: string) {
     const raw = val.replace(/\D/g, '').slice(0, 16);
     const formatted = raw.replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -87,15 +117,82 @@ export function CardDetailSheet({
       setExpiryYear('');
       setCvv('');
       setNameOnCard(card.paymentSummary?.nameOnCard ?? '');
+      setSelectedAccountIdToLink('');
+      const currentMappings = mappings.filter((m) => m.cardId === card.id);
+      setEditPortalAccountId(currentMappings[0]?.portalAccountId ?? '');
+      setFeedback(null);
       setMode('view');
     }
-  }, [open, card, bankCardType]);
+  }, [open, card, bankCardType, mappings]);
 
   const label = formatCardLabel({
     holderName: holder?.name,
     cardName: card.displayName,
     lastDigits: card.lastDigits,
   });
+
+  const currentCardMappings = localMappings.filter((m) => m.cardId === card.id);
+  const linkedAccountIds = currentCardMappings.map((m) => m.portalAccountId);
+  const linkedAccounts = accounts.filter((a) => linkedAccountIds.includes(a.id));
+  const activeUnlinkedAccounts = accounts.filter((a) => a.active && !linkedAccountIds.includes(a.id));
+
+  const hasValidPaymentDetails = Boolean(
+    card.paymentSummary &&
+      !card.paymentDetailsCorrupted &&
+      (card.paymentSummary.mode === 'saved_card'
+        ? card.paymentSummary.hasCvv
+        : card.paymentSummary.maskedCardNumber && card.paymentSummary.hasCvv && card.paymentSummary.expirySummary),
+  );
+
+  async function handleLinkAccount(accountIdToLink?: string) {
+    const targetAccountId = accountIdToLink || selectedAccountIdToLink;
+    if (!targetAccountId) return;
+    setError(null);
+    setFeedback(null);
+    const targetAcc = accounts.find((a) => a.id === targetAccountId);
+    const nextAccountIds = Array.from(new Set([...linkedAccountIds, targetAccountId]));
+    const ok = await run(
+      () =>
+        setCardPortalAccountsAction({
+          cardId: card.id,
+          portalAccountIds: nextAccountIds,
+        }),
+      'Failed to link card to RuPay account',
+    );
+    if (ok) {
+      setLocalMappings((prev) => [
+        ...prev.filter((m) => !(m.cardId === card.id && m.portalAccountId === targetAccountId)),
+        {
+          id: crypto.randomUUID(),
+          cardId: card.id,
+          portalAccountId: targetAccountId,
+        },
+      ]);
+      setSelectedAccountIdToLink('');
+      setFeedback(`Card successfully linked to "${targetAcc?.label ?? 'RuPay account'}".`);
+    }
+  }
+
+  async function handleUnlinkAccount(portalAccountId: string, accountLabel: string) {
+    if (!confirm(`Unlink this card from "${accountLabel}"?`)) return;
+    setError(null);
+    setFeedback(null);
+    const nextAccountIds = linkedAccountIds.filter((id) => id !== portalAccountId);
+    const ok = await run(
+      () =>
+        setCardPortalAccountsAction({
+          cardId: card.id,
+          portalAccountIds: nextAccountIds,
+        }),
+      'Failed to unlink card from RuPay account',
+    );
+    if (ok) {
+      setLocalMappings((prev) =>
+        prev.filter((m) => !(m.cardId === card.id && m.portalAccountId === portalAccountId)),
+      );
+      setFeedback(`Card unlinked from "${accountLabel}".`);
+    }
+  }
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
@@ -121,8 +218,8 @@ export function CardDetailSheet({
     }
 
     const ok = await run(
-      () =>
-        updateCard({
+      async () => {
+        await updateCard({
           id: card.id,
           holderId,
           displayName: cleanDisplayName,
@@ -132,10 +229,27 @@ export function CardDetailSheet({
           automationEnabled,
           inactiveFrom: active ? null : (inactiveFrom || undefined),
           paymentDetails,
-        }),
+        });
+
+        const initialAccountId = linkedAccountIds[0] ?? '';
+        if (editPortalAccountId !== initialAccountId) {
+          const nextAccountIds = editPortalAccountId ? [editPortalAccountId] : [];
+          await setCardPortalAccountsAction({
+            cardId: card.id,
+            portalAccountIds: nextAccountIds,
+          });
+          setLocalMappings((prev) => [
+            ...prev.filter((m) => m.cardId !== card.id),
+            ...(editPortalAccountId
+              ? [{ id: crypto.randomUUID(), cardId: card.id, portalAccountId: editPortalAccountId }]
+              : []),
+          ]);
+        }
+      },
       'Could not save card. Check the card details and try again.',
     );
     if (ok) {
+      setFeedback('Card details updated successfully.');
       setMode('view');
     }
   }
@@ -215,6 +329,12 @@ export function CardDetailSheet({
                       <Calendar className="h-3 w-3 opacity-70" aria-hidden />
                       since {card.trackingFrom}
                     </span>
+                    {linkedAccounts.length > 0 && (
+                      <span className="inline-flex items-center gap-1 font-medium text-primary">
+                        <KeyRound className="h-3 w-3 text-primary/70" aria-hidden />
+                        {linkedAccounts.map((a) => a.label).join(', ')}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -402,6 +522,145 @@ export function CardDetailSheet({
                   )}
                 </div>
 
+                {/* Feedback Alerts */}
+                {feedback && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>{feedback}</span>
+                  </div>
+                )}
+
+                {/* RuPay Portal Account Mapping Section */}
+                <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <KeyRound className="h-3.5 w-3.5 text-primary" /> RuPay Portal Account
+                    </h4>
+                    {linkedAccounts.length > 0 && (
+                      <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30 font-medium py-0 px-1.5">
+                        Linked ({linkedAccounts.length})
+                      </Badge>
+                    )}
+                  </div>
+
+                  {accounts.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border/80 p-3 text-center space-y-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        No RuPay portal accounts configured in this workspace yet.
+                      </p>
+                      <Button variant="link" size="sm" asChild className="h-auto p-0 text-xs">
+                        <Link href="/accounts">Go to RuPay Accounts →</Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {!hasValidPaymentDetails && (
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start justify-between gap-2 text-xs">
+                          <div className="space-y-0.5 min-w-0">
+                            <p className="text-amber-800 dark:text-amber-300 font-medium flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              Payment details not configured
+                            </p>
+                            <p className="text-muted-foreground text-[11px] leading-relaxed">
+                              You can link this card to RuPay accounts now. Configure full card details (16-digit card number, expiry, CVV) in Edit mode when ready for automated ordering sweeps.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditPortalAccountId(linkedAccountIds[0] ?? '');
+                              setMode('edit');
+                            }}
+                            className="h-6 px-2 text-[11px] font-medium shrink-0 border-amber-500/40 text-amber-900 dark:text-amber-200 hover:bg-amber-500/20"
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* List of currently linked accounts */}
+                      {linkedAccounts.length > 0 ? (
+                        <div className="space-y-2">
+                          {linkedAccounts.map((acc) => (
+                            <div
+                              key={acc.id}
+                              className="flex items-center justify-between gap-2.5 rounded-lg border border-border/60 bg-muted/20 p-2.5 text-xs"
+                            >
+                              <div className="min-w-0 space-y-0.5">
+                                <div className="font-semibold text-foreground truncate flex items-center gap-1.5">
+                                  <span>{acc.label}</span>
+                                  {!acc.active && (
+                                    <Badge variant="outline" className="text-[9px] py-0 px-1 border-muted-foreground/30 text-muted-foreground">
+                                      Inactive
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground">
+                                  {acc.phoneNumber ? `Mobile: ${acc.phoneNumber}` : 'No phone linked'}
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={pending}
+                                onClick={() => void handleUnlinkAccount(acc.id, acc.label)}
+                                className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                                title="Unlink card from this account"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Unlink
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          This card is not yet linked to any RuPay portal account.
+                        </p>
+                      )}
+
+                      {/* Link account selector when there are active unlinked accounts */}
+                      {activeUnlinkedAccounts.length > 0 && (
+                        <div className="pt-2 border-t border-border/40 space-y-2">
+                          <Label htmlFor="link-portal-account-select" className="text-[11px] font-medium text-muted-foreground">
+                            {linkedAccounts.length > 0 ? 'Link to an additional RuPay account:' : 'Link to RuPay portal account:'}
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <select
+                              id="link-portal-account-select"
+                              disabled={pending || !hasValidPaymentDetails}
+                              value={selectedAccountIdToLink}
+                              onChange={(e) => setSelectedAccountIdToLink(e.target.value)}
+                              className="flex h-8 flex-1 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <option value="">
+                                {hasValidPaymentDetails ? '— Select RuPay Account —' : '— Payment details required to link —'}
+                              </option>
+                              {activeUnlinkedAccounts.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.label} {a.phoneNumber ? `(${a.phoneNumber})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={pending || !hasValidPaymentDetails || !selectedAccountIdToLink}
+                              onClick={() => void handleLinkAccount()}
+                              className="h-8 text-xs font-semibold shrink-0 cursor-pointer"
+                            >
+                              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Link'}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Automated Ordering Control */}
                 <div className="rounded-xl border border-border/70 bg-card/60 p-4 space-y-3">
                   <div className="flex items-center justify-between gap-3">
@@ -468,7 +727,14 @@ export function CardDetailSheet({
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Close
                 </Button>
-                <Button type="button" className="gap-1.5" onClick={() => setMode('edit')}>
+                <Button
+                  type="button"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setEditPortalAccountId(linkedAccountIds[0] ?? '');
+                    setMode('edit');
+                  }}
+                >
                   <Pencil className="h-4 w-4" />
                   Edit
                 </Button>
@@ -621,6 +887,33 @@ export function CardDetailSheet({
                     </div>
                   </div>
                 </div>
+
+                <Field
+                  id="edit-card-portal-account"
+                  label="RuPay Portal Account (Optional, for Automation)"
+                  hint={
+                    hasValidPaymentDetails || (cardNumber.replace(/\s+/g, '').length >= 15 && expiryMonth.trim() && expiryYear.trim() && cvv.trim().length >= 3)
+                      ? "Assign this card to a RuPay portal account for automated ordering sweeps."
+                      : "Enter full card details (number, expiry, CVV) above before assigning to a RuPay account."
+                  }
+                >
+                  <select
+                    id="edit-card-portal-account"
+                    disabled={!hasValidPaymentDetails && !(cardNumber.replace(/\s+/g, '').length >= 15 && expiryMonth.trim() && expiryYear.trim() && cvv.trim().length >= 3)}
+                    value={editPortalAccountId}
+                    onChange={(e) => setEditPortalAccountId(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">— None (Unassigned) —</option>
+                    {accounts
+                      .filter((a) => a.active || a.id === editPortalAccountId)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label} {a.phoneNumber ? `(${a.phoneNumber})` : ''} {!a.active ? '(Inactive)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
 
                 <Field id="card-digits" label="Last 4 digits" hint="Enter the last 4 digits of the card number.">
                   <Input

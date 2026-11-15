@@ -1,5 +1,6 @@
 import { listBankCardTypes, listCardVariants, listCards } from '@/actions/cards';
 import { listHolders } from '@/actions/holders';
+import { listPortalAccountsAction, listPortalCardMappingsAction } from '@/actions/automation';
 import { CardDetailSheet } from '@/components/cards/card-detail-sheet';
 import { CardFormSheet } from '@/components/cards/card-form';
 import { ContentStage } from '@/components/layout/content-stage';
@@ -9,11 +10,13 @@ import { PageHeader } from '@/components/layout/page-header';
 export const dynamic = 'force-dynamic';
 
 export default async function CardsPage() {
-  const [cards, holders, types, variants] = await Promise.all([
+  const [cards, holders, types, variants, accounts, mappings] = await Promise.all([
     listCards(),
     listHolders(),
     listBankCardTypes(),
     listCardVariants(),
+    listPortalAccountsAction().catch(() => []),
+    listPortalCardMappingsAction().catch(() => []),
   ]);
 
   const typeById = new Map(types.map((t) => [t.id, t]));
@@ -28,6 +31,20 @@ export default async function CardsPage() {
     curationStatus: t.curationStatus,
   }));
   const holderOptions = holders.map((h) => ({ id: h.id, name: h.name }));
+
+  const accountOptions = accounts.map((a) => ({
+    id: a.id,
+    label: a.label,
+    phoneNumber: a.phoneNumber,
+    active: a.active,
+    status: a.status,
+  }));
+
+  const mappingOptions = mappings.map((m) => ({
+    id: m.id,
+    portalAccountId: m.portalAccountId,
+    cardId: m.cardId,
+  }));
 
   return (
     <ContentStage className="max-w-3xl [.nav-unpinned_&]:max-w-4xl">
@@ -61,6 +78,7 @@ export default async function CardsPage() {
                     lastDigits: c.lastDigits,
                     trackingFrom: c.trackingFrom,
                     active: c.active ?? true,
+                    automationEnabled: c.automationEnabled ?? true,
                     inactiveFrom: c.inactiveFrom,
                     paymentSummary: c.paymentSummary,
                     paymentDetailsCorrupted: c.paymentDetailsCorrupted,
@@ -80,6 +98,8 @@ export default async function CardsPage() {
                   variant={v ? { id: v.id, name: v.name } : undefined}
                   holders={holderOptions}
                   variants={variants}
+                  accounts={accountOptions}
+                  mappings={mappingOptions}
                 />
               </li>
             );
