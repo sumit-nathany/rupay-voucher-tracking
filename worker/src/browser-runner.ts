@@ -1234,10 +1234,20 @@ async function addCardToPortalAccount(
       let curr: HTMLElement | null = btn;
       let cardContainer: HTMLElement | null = null;
 
-      // Walk up DOM hierarchy to find the card container (stop at common card boundary or 5 levels)
-      for (let depth = 0; depth < 5 && curr && curr !== document.body; depth++) {
+      // Walk up DOM hierarchy to find the card container (stop at common card boundary or 6 levels)
+      for (let depth = 0; depth < 6 && curr && curr !== document.body; depth++) {
         const cls = (curr.getAttribute('class') || '').toLowerCase();
-        if (cls.includes('card') || cls.includes('deal') || cls.includes('item') || cls.includes('col-') || cls.includes('service')) {
+        const hasCardContent =
+          (curr.textContent?.length || 0) > (btn.textContent?.length || 0) + 15 ||
+          Boolean(curr.querySelector('img, h1, h2, h3, h4, h5, h6, strong, b'));
+        if (
+          hasCardContent &&
+          (cls.includes('card') ||
+            cls.includes('deal') ||
+            cls.includes('col-') ||
+            cls.includes('service') ||
+            cls.includes('box'))
+        ) {
           cardContainer = curr;
           break;
         }
@@ -1248,7 +1258,9 @@ async function addCardToPortalAccount(
         if (innerActionCount > 1) {
           break;
         }
-        cardContainer = curr;
+        if (hasCardContent) {
+          cardContainer = curr;
+        }
         curr = curr.parentElement;
       }
 
@@ -1267,7 +1279,13 @@ async function addCardToPortalAccount(
 
       // Check provider match
       if (pClean) {
-        if (cardTextClean.includes(pClean) || imgMatches) {
+        const pAliases = [pClean];
+        if (pClean.includes('prime')) pAliases.push('amazon');
+        if (pClean.includes('hotstar')) pAliases.push('disney');
+        if (pClean.includes('cult')) pAliases.push('curefit');
+
+        const matchesProvider = pAliases.some((alias) => cardTextClean.includes(alias)) || imgMatches;
+        if (matchesProvider) {
           score += 50;
         } else {
           continue; // Must match provider if specified
@@ -1280,21 +1298,21 @@ async function addCardToPortalAccount(
           score += 100;
         }
 
-        // Check duration match (e.g. "1 month" vs "3 month", "12 month")
-        const durationMatch = offerLower.match(/(\d+)\s*month/i);
+        // Check duration match (e.g. "1 month" vs "3 month", "12 month", "1 year")
+        const durationMatch = offerLower.match(/(\d+)\s*(month|year)/i);
         if (durationMatch) {
-          const months = durationMatch[1];
-          const hasExactMonths =
-            cardText.includes(`${months} month`) ||
-            cardText.includes(`${months}-month`) ||
-            cardText.includes(`${months}month`) ||
-            cardText.includes(`${months} m`);
-          if (hasExactMonths) {
+          const num = durationMatch[1];
+          const unit = durationMatch[2].toLowerCase();
+          const hasExactDuration =
+            cardText.includes(`${num} ${unit}`) ||
+            cardText.includes(`${num}-${unit}`) ||
+            cardText.includes(`${num}${unit}`);
+          if (hasExactDuration) {
             score += 60;
           } else {
-            // Check if card explicitly specifies a conflicting duration (e.g. 3 Month when looking for 1 Month)
-            const otherDurationMatch = cardText.match(/(\d+)\s*month/i);
-            if (otherDurationMatch && otherDurationMatch[1] !== months) {
+            // Check if card explicitly specifies a conflicting duration
+            const otherDurationMatch = cardText.match(/(\d+)\s*(month|year)/i);
+            if (otherDurationMatch && (otherDurationMatch[1] !== num || otherDurationMatch[2].toLowerCase() !== unit)) {
               score -= 80; // Heavy penalty for conflicting duration!
             }
           }
@@ -1304,7 +1322,7 @@ async function addCardToPortalAccount(
         const keywords = offerLower
           .split(/[\s-]+/)
           .map((w) => w.trim().toLowerCase())
-          .filter((w) => w.length > 3 && !['month', 'pass', 'subscription', 'free', 'access', 'card'].includes(w));
+          .filter((w) => w.length > 3 && !['month', 'year', 'pass', 'subscription', 'free', 'access', 'card'].includes(w));
         for (const kw of keywords) {
           if (cardText.includes(kw)) {
             score += 30;
@@ -1342,8 +1360,35 @@ async function addCardToPortalAccount(
       await cardEl.scrollIntoViewIfNeeded().catch(() => {});
       redeemBtn = cardEl.locator(':is(button, a, [role="button"], div.od-redeem-btn):has-text("Redeem"), div.od-redeem-btn').first();
     }
+  } else if (targetProvider) {
+    // If a specific provider was requested, DO NOT blindly click first()!
+    console.log(`[step 5] Target provider "${targetProvider}" ("${targetOffer}") not uniquely matched by DOM scorer. Consulting Autonomous LLM with page snapshot...`);
+    const pageAnalysis = await analyzeCurrentPageWithLLM(page, {
+      stepName: 'Step 5: Offer Selection',
+      goal: `Find and click Redeem on the target offer card specifically for "${targetOffer}" (${targetProvider})`,
+      cardName: cardRow?.cardName,
+      targetOffer,
+      provider: targetProvider,
+      accountLabel: account.label,
+    });
+    if (pageAnalysis.classification === 'BLOCKED_ERROR') {
+      throw new Error(`[LLM Analysis] Offer blocked on portal: ${pageAnalysis.explanation}`);
+    }
+    if (pageAnalysis.classification === 'COOLDOWN_LIMIT') {
+      const cooldownMs = (pageAnalysis.cooldownMinutes ?? 20) * 60 * 1000;
+      await recordPortalAccountCooldown(db, account.id, new Date(Date.now() + cooldownMs), 'portal_cooldown_detected');
+      throw new Error(`[LLM Analysis] Portal cooldown active: ${pageAnalysis.explanation}`);
+    }
+    if (pageAnalysis.recommendedAction?.selector) {
+      redeemBtn = page.locator(pageAnalysis.recommendedAction.selector).first();
+    }
+    if (!redeemBtn || !(await redeemBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
+      throw new Error(
+        `[step 5] Safety Guard: Target offer "${targetOffer}" (${targetProvider}) could NOT be verified or found on the category page. Aborting order to prevent placing an unintended offer. (LLM: ${pageAnalysis.explanation})`
+      );
+    }
   } else {
-    // Fallback: standard Redeem locator
+    // Single-offer category: standard Redeem locator fallback
     redeemBtn = page.locator('button.od-redeem-btn, button:has-text("Redeem"), div.od-redeem-btn').first();
   }
 
@@ -1490,6 +1535,37 @@ async function addCardToPortalAccount(
   }
 
   if (await continueToPaymentBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    // Safety verification: ensure modal corresponds to targetProvider if specified
+    if (targetProvider) {
+      const modalContent = await page.evaluate(() => {
+        const modal = document.querySelector('.modal, .swal2-modal, [role="dialog"], .payment-modal, .popup');
+        return (modal?.textContent || '').toLowerCase().replace(/[\s-_]+/g, '');
+      });
+      if (modalContent) {
+        const pClean = targetProvider.toLowerCase().replace(/[\s-_]+/g, '');
+        const pAliases = [pClean];
+        if (pClean.includes('prime')) pAliases.push('amazon');
+        if (pClean.includes('hotstar')) pAliases.push('disney');
+        if (pClean.includes('cult')) pAliases.push('curefit');
+
+        const matchesModal = pAliases.some((alias) => modalContent.includes(alias));
+        if (!matchesModal) {
+          console.warn(`[step 7] ⚠️ Modal content does not mention target provider "${targetProvider}". Verifying with LLM before payment...`);
+          const modalCheck = await analyzeCurrentPageWithLLM(page, {
+            stepName: 'Step 7: Modal Provider Verification',
+            goal: `Verify that the confirmation modal is for target offer "${targetOffer}" (${targetProvider}) before payment`,
+            cardName: cardRow?.cardName,
+            targetOffer,
+            provider: targetProvider,
+            accountLabel: account.label,
+          });
+          if (modalCheck.classification === 'BLOCKED_ERROR') {
+            throw new Error(`[step 7] Safety Guard: Modal verification failed: ${modalCheck.explanation}`);
+          }
+        }
+      }
+    }
+
     console.log('Gliding cursor and clicking "Continue to Payment" naturally...');
     await humanClick(continueToPaymentBtn, { hesitateBeforeMs: 800, pauseAfterMs: 1200 });
     // Also dispatch DOM click in case synthetic Playwright click didn't trigger attached Vue/jQuery handler

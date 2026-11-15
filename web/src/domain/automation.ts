@@ -1537,6 +1537,11 @@ export async function findCandidateFromGlobalQueue(
                   .where(eq(benefitOptions.versionId, inst.generatedFromVersion))
                   .orderBy(asc(benefitOptions.sortOrder));
                 if (opts.length > 1 && !chosenOpt) {
+                  // Multi-option "pick-one" benefit requires explicit option selection in queue.
+                  // Do not silently default to opts[0] to prevent ordering unintended offers.
+                  continue;
+                }
+                if (opts.length === 1 && !chosenOpt) {
                   chosenOpt = opts[0].id;
                 }
               }

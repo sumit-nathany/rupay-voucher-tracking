@@ -376,7 +376,7 @@ async function fetchRawQueueCandidates(
 
     const mappedAccounts = cardToAccountsMap.get(row.cardId) || [];
     const availableOpts = (row.catVersionId ? optionsMap.get(row.catVersionId) : []) || [];
-    const chosenOptId = row.queueChosenOptionId || row.chosenOptionId || (availableOpts[0]?.id ?? null);
+    const chosenOptId = row.queueChosenOptionId || row.chosenOptionId || (availableOpts.length === 1 ? availableOpts[0].id : null);
     const chosenOptName = availableOpts.find((o) => o.id === chosenOptId)?.offerName ?? null;
     const cashVal = row.cashValue ? parseFloat(row.cashValue) : 0;
     const daysRemaining = computeDaysRemaining(row.orderDeadline, ctx.today);
