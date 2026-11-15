@@ -6,6 +6,7 @@ import type { ORDER_STATUSES } from '@/domain/instances';
 import type { ViewedPeriod } from '@/lib/periods';
 import { EmptyState } from '@/components/layout/empty-state';
 import { BenefitList } from './benefit-list';
+import { SearchEmptyState } from './search-empty-state';
 
 export type BenefitFilters = {
   holderId?: string;
@@ -53,16 +54,50 @@ export async function BenefitsContent({
   }
 
   if (items.length === 0) {
+    if (filters.search) {
+      let allCount = 0;
+      if (!isAll) {
+        try {
+          const allMatches = await loadBenefitsAction({
+            view,
+            search: filters.search,
+            scope: 'all',
+          });
+          allCount = allMatches.length;
+        } catch (err) {
+          console.error('[BenefitsContent] failed to check all matches for search:', err);
+        }
+      }
+
+      const hasOtherFilters = Boolean(
+        filters.holderId ||
+          filters.cardId ||
+          filters.portalAccountId ||
+          filters.benefitId ||
+          filters.category ||
+          filters.status ||
+          filters.offerFilter ||
+          filters.lapsed,
+      );
+
+      return (
+        <SearchEmptyState
+          query={filters.search}
+          allCount={allCount}
+          hasOtherFilters={hasOtherFilters}
+          isAll={isAll}
+        />
+      );
+    }
+
     return (
       <EmptyState
         title={filtered ? 'No matches' : lifetime ? 'Nothing yet' : 'Nothing in this period'}
         description={
           filtered
-            ? isAll
-              ? 'Try adjusting your search terms or switch back to current filters.'
-              : lifetime
-                ? 'Try clearing a filter or pick a single period above.'
-                : 'Try clearing a filter or choosing another period.'
+            ? lifetime
+              ? 'Try clearing a filter or pick a single period above.'
+              : 'Try clearing a filter or choosing another period.'
             : 'Add a card on the Cards page — benefits appear here automatically.'
         }
       />
