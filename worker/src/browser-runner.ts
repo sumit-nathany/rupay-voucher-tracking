@@ -64,7 +64,8 @@ export interface BrowserRunResult {
     | 'otp_timeout'
     | 'timeout_unconfirmed'
     | 'portal_refused'
-    | 'user_skipped';
+    | 'user_skipped'
+    | 'selection_timeout';
   /** The instance the run acted on, when one was selected. */
   instanceId?: string;
 }
@@ -328,10 +329,12 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     };
   }
 
-  // Pre-order Interactive Confirmation (45s window via Telegram)
+  // Pre-order Interactive Confirmation (90s window via Telegram)
   if (telegramChatId) {
     const tg = getTelegramClient();
-    console.log(`\n--- Step 1.5: Pre-order Interactive Confirmation (45s window) ---`);
+    const PREORDER_WINDOW_MS = 90000;
+    const PREORDER_WINDOW_SECS = 90;
+    console.log(`\n--- Step 1.5: Pre-order Interactive Confirmation (${PREORDER_WINDOW_SECS}s window) ---`);
 
     // Look up all eligible, unredeemed benefits for this card in the current period
     const availableBenefits = await getAvailableBenefitsForPreorder(db, {
@@ -347,7 +350,7 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
     const currentBenefit = availableBenefits.find((b) => b.instanceId === candidate.instanceId);
     const availableOptions = currentBenefit?.options ?? [];
 
-    const expiresAt = new Date(Date.now() + 45000);
+    const expiresAt = new Date(Date.now() + PREORDER_WINDOW_MS);
     const [session] = await db
       .insert(schema.portalOrderPreorderSessions)
       .values({
@@ -384,30 +387,31 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       : `• *Voucher Details:* ${benefitDetails.exactBenefit}\n`;
 
     const interactiveText =
-      `⏳ *RuPay Benefit Order Confirmation (45s window)*\n\n` +
+      `⏳ *RuPay Benefit Order Confirmation (${PREORDER_WINDOW_SECS}s window)*\n\n` +
       accountLine +
       cardLine +
       cardHolderLine +
       brandLine +
       categoryLine +
       voucherLine +
-      `\nThe automation will automatically proceed with this order in 45 seconds unless you change the benefit or skip below:`;
+      `\nThe automation will automatically proceed with this order in ${PREORDER_WINDOW_SECS} seconds unless you change the benefit or skip below:`;
 
     const inlineKeyboard: Array<Array<{ text: string; callbackData: string }>> = [
-      [{ text: '✅ Proceed Now (45s)', callbackData: `preorder:proceed:${session.id}` }],
+      [{ text: `✅ Proceed Now (${PREORDER_WINDOW_SECS}s)`, callbackData: `preorder:proceed:${session.id}` }],
     ];
+    if (availableOptions.length > 1) {
+      inlineKeyboard.push([
+        {
+          text: `🔄 Change Option (${availableOptions.length} available)`,
+          callbackData: `preorder:change:${session.id}`,
+        },
+      ]);
+    }
     if (otherBenefits.length > 0) {
       inlineKeyboard.push([
         {
           text: `🔀 Change Benefit (${otherBenefits.length} other available)`,
           callbackData: `preorder:bmenu:${session.id}`,
-        },
-      ]);
-    } else if (availableOptions.length > 1) {
-      inlineKeyboard.push([
-        {
-          text: `🔄 Change Option (${availableOptions.length} available)`,
-          callbackData: `preorder:change:${session.id}`,
         },
       ]);
     }
@@ -430,15 +434,15 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
 
     const sentMessageId = sendRes.messageId;
 
-    // Wait loop (up to 45 seconds initial, extendable if user interacts):
-    let deadline = Date.now() + 45000;
+    // Wait loop (up to 90 seconds initial, extendable up to 4 mins if user interacts):
+    let deadline = Date.now() + PREORDER_WINDOW_MS;
     const hardMaxDeadline = Date.now() + 240000; // 4 min safety ceiling
     let finalStatus: string = 'pending';
     let wasBrowsing = false;
     let selectedOptionId: string | null = null;
     let selectedInstanceId: string | null = null;
 
-    console.log(`[preorder] Waiting up to 45s for Telegram user input on session ${session.id}...`);
+    console.log(`[preorder] Waiting up to ${PREORDER_WINDOW_SECS}s for Telegram user input on session ${session.id}...`);
 
     while (Date.now() < deadline && Date.now() < hardMaxDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -481,24 +485,47 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
       }
     }
 
-    if (finalStatus === 'skipped' || finalStatus === 'browsing' || wasBrowsing) {
-      if (finalStatus === 'browsing' || wasBrowsing) {
+    const isSelectionFinalized =
+      finalStatus === 'proceed' ||
+      finalStatus === 'benefit_selected' ||
+      finalStatus === 'option_selected';
+
+    if (!isSelectionFinalized) {
+      if (finalStatus === 'skipped') {
+        console.log(`[preorder] User skipped this card.`);
+        if (sentMessageId) {
+          await tg.editMessageText(
+            telegramChatId,
+            sentMessageId,
+            `🛑 *Order Skipped:* Card \`••${cardRecord?.lastDigits ?? '????'}\` was skipped by user request.`
+          ).catch(() => {});
+        }
+        await client.end();
+        return {
+          attempted: false,
+          accountLabel: account.label,
+          instanceId: candidate.instanceId,
+          reason: 'user_skipped',
+        };
+      }
+
+      if (finalStatus === 'browsing' || finalStatus === 'selecting' || wasBrowsing) {
         console.log(`[preorder] Selection window elapsed while browsing. Skipping this card to prevent ordering unwanted default.`);
         if (sentMessageId) {
           await tg.editMessageText(
             telegramChatId,
             sentMessageId,
-            `⏰ Selection window expired without a choice. Order was cancelled/skipped.`
+            `⏰ *Selection Window Expired:* No benefit was selected before the timer expired. Order was safely skipped.`
           ).catch(() => {});
         }
+        await client.end();
+        return {
+          attempted: false,
+          accountLabel: account.label,
+          instanceId: candidate.instanceId,
+          reason: 'selection_timeout',
+        };
       }
-      await client.end();
-      return {
-        attempted: false,
-        accountLabel: account.label,
-        instanceId: candidate.instanceId,
-        reason: (finalStatus === 'browsing' || wasBrowsing) ? 'selection_timeout' : 'user_skipped',
-      };
     }
 
     // 1. Swap instance if user switched benefit category
@@ -544,15 +571,34 @@ export async function runBrowserTest(options?: BrowserRunnerOptions): Promise<Br
         candidate.chosenOptionId = opt.id;
         console.log(`[preorder] ✓ Updated target benefit details to option: ${opt.offerName} (${opt.provider})`);
       }
-    } else if (finalStatus === 'pending') {
-      console.log(`[preorder] 45s countdown elapsed. Auto-proceeding with scheduled benefit.`);
-      if (sentMessageId) {
-        await tg.editMessageText(
-          telegramChatId,
-          sentMessageId,
-          `⏰ 45s confirmation window elapsed. Proceeding with order...`
-        ).catch(() => {});
-      }
+    }
+
+    if (finalStatus === 'pending') {
+      console.log(`[preorder] ${PREORDER_WINDOW_SECS}s countdown elapsed. Auto-proceeding with scheduled benefit.`);
+    }
+
+    // 3. Update Telegram message preserving all order details!
+    if (sentMessageId) {
+      const statusNote =
+        finalStatus === 'proceed'
+          ? `✅ *Proceeding with order (Confirmed by user)*`
+          : isSelectionFinalized
+          ? `✅ *Proceeding with order (Custom selection: ${benefitDetails.exactBenefit})*`
+          : `⏱️ *Proceeding with order (${PREORDER_WINDOW_SECS}s window elapsed)*`;
+
+      const summaryText =
+        `💳 *RuPay Benefit Order In Progress*\n\n` +
+        accountLine +
+        cardLine +
+        cardHolderLine +
+        (benefitDetails.benefitProvider ? `• *Brand / Merchant:* *${benefitDetails.benefitProvider}*\n` : '') +
+        (benefitDetails.benefitType ? `• *Category:* ${benefitDetails.benefitType}\n` : '') +
+        (benefitDetails.cashValue && benefitDetails.cashValue !== '0'
+          ? `• *Voucher Details:* ${benefitDetails.exactBenefit} (₹${benefitDetails.cashValue} value)\n`
+          : `• *Voucher Details:* ${benefitDetails.exactBenefit}\n`) +
+        `\n${statusNote}`;
+
+      await tg.editMessageText(telegramChatId, sentMessageId, summaryText).catch(() => {});
     }
   }
 

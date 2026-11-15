@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ status: 'session_not_found' });
         }
 
-        const resetExpiry = new Date(Date.now() + 45000);
+        const resetExpiry = new Date(Date.now() + 90000);
         await db
           .update(portalOrderPreorderSessions)
           .set({ status: 'pending', expiresAt: resetExpiry, updatedAt: new Date() })
@@ -341,7 +341,7 @@ export async function POST(req: NextRequest) {
         const otherBenefitsCount = Math.max(0, availableBenefits.length - 1);
 
         const inlineKeyboard: Array<Array<{ text: string; callbackData: string }>> = [
-          [{ text: '✅ Proceed Now (45s)', callbackData: `preorder:proceed:${sessionId}` }],
+          [{ text: '✅ Proceed Now (90s)', callbackData: `preorder:proceed:${sessionId}` }],
         ];
         if (otherBenefitsCount > 0) {
           inlineKeyboard.push([
@@ -359,7 +359,7 @@ export async function POST(req: NextRequest) {
           await telegram.editMessageText(
             chatId,
             messageId,
-            `⏳ *RuPay Benefit Order Confirmation (45s window)*\n\nThe automation will automatically proceed with this order in 45 seconds unless you change the benefit or skip below:`,
+            `⏳ *RuPay Benefit Order Confirmation (90s window)*\n\nThe automation will automatically proceed with this order in 90 seconds unless you change the benefit or skip below:`,
             inlineKeyboard
           );
         }
@@ -377,6 +377,13 @@ export async function POST(req: NextRequest) {
           await telegram.answerCallbackQuery(callbackQueryId, 'Session not found.');
           return NextResponse.json({ status: 'session_not_found' });
         }
+
+        // Extend countdown timer by 180s (3 mins) while user is browsing options
+        const extendedExpiry = new Date(Date.now() + 180000);
+        await db
+          .update(portalOrderPreorderSessions)
+          .set({ status: 'browsing', expiresAt: extendedExpiry, updatedAt: new Date() })
+          .where(eq(portalOrderPreorderSessions.id, sessionId));
 
         const [instance] = await db
           .select({
