@@ -402,12 +402,17 @@ function CardFormBody({
               <Label htmlFor="card-cvv" className="text-[11px]">CVV</Label>
               <Input
                 id="card-cvv"
+                name="card-cvv"
                 placeholder="•••"
                 type="password"
                 maxLength={4}
                 className="h-8 text-xs font-mono"
                 value={cvv}
                 onChange={(e) => setCvv(e.target.value.replace(/\D/g, ''))}
+                autoComplete="off"
+                data-bwignore="true"
+                data-1p-ignore="true"
+                data-lpignore="true"
               />
             </div>
           </div>

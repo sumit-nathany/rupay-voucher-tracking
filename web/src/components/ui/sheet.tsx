@@ -25,6 +25,40 @@ type SheetContentProps = React.ComponentPropsWithoutRef<typeof SheetPrimitive.Co
   side?: 'default' | 'left';
 };
 
+/** Helper to detect browser extension elements (Bitwarden, 1Password, LastPass, etc.) */
+export function isExtensionElement(target: EventTarget | null, event?: Event): boolean {
+  if (event && typeof (event as { composedPath?: () => EventTarget[] }).composedPath === 'function') {
+    const path = (event as { composedPath: () => EventTarget[] }).composedPath();
+    for (const node of path) {
+      if (node instanceof Element) {
+        const id = node.id || '';
+        const tag = node.tagName?.toLowerCase() || '';
+        if (
+          id.startsWith('bit-') ||
+          tag.startsWith('com-1password') ||
+          node.hasAttribute('data-lastpass-root') ||
+          node.closest?.(
+            '#bit-notification-bar-root, [id^="bit-"], [data-lastpass-root], #one-password-banner, com-1password-button, com-1password-menu, iframe[src*="-extension://"]',
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  if (!target || !(target instanceof Element)) return false;
+  const id = target.id || '';
+  const tag = target.tagName?.toLowerCase() || '';
+  if (id.startsWith('bit-') || tag.startsWith('com-1password') || target.hasAttribute('data-lastpass-root')) {
+    return true;
+  }
+  return Boolean(
+    target.closest?.(
+      '#bit-notification-bar-root, [id^="bit-"], [data-lastpass-root], #one-password-banner, com-1password-button, com-1password-menu, iframe[src*="-extension://"]',
+    ),
+  );
+}
+
 /** Right-side panel on >=640px, bottom sheet below. */
 export const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
@@ -37,6 +71,11 @@ export const SheetContent = React.forwardRef<
       onFocusOutside={(e) => {
         onFocusOutside?.(e);
         if (e.defaultPrevented) return;
+        const orig = (e as unknown as { detail?: { originalEvent?: Event } }).detail?.originalEvent;
+        const target = (orig?.target ?? e.target) as HTMLElement | null;
+        if (isExtensionElement(target, orig)) {
+          return;
+        }
         e.preventDefault();
       }}
       onPointerDownOutside={(e) => {
@@ -44,7 +83,7 @@ export const SheetContent = React.forwardRef<
         if (e.defaultPrevented) return;
         const orig = (e as unknown as { detail?: { originalEvent?: Event } }).detail?.originalEvent;
         const target = (orig?.target ?? e.target) as HTMLElement | null;
-        if (target && !document.body.contains(target)) {
+        if (isExtensionElement(target, orig) || (target && !document.body.contains(target))) {
           e.preventDefault();
         }
       }}
@@ -53,7 +92,7 @@ export const SheetContent = React.forwardRef<
         if (e.defaultPrevented) return;
         const orig = (e as unknown as { detail?: { originalEvent?: Event } }).detail?.originalEvent;
         const target = (orig?.target ?? e.target) as HTMLElement | null;
-        if (target && !document.body.contains(target)) {
+        if (isExtensionElement(target, orig) || (target && !document.body.contains(target))) {
           e.preventDefault();
         }
       }}

@@ -255,3 +255,35 @@
   animation: nav-progress 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
+/* ── browser extension overlay compatibility ──────────────────────────────── */
+/* Ensure browser extension popups and injected UI (Bitwarden, 1Password, LastPass, etc.)
+   remain clickable/interactive even when modal dialogs/sheets set pointer-events: none on body */
+#bit-notification-bar-root,
+#bit-notification-bar-root *,
+[id^="bit-notification-bar"],
+[id^="bit-notification-bar"] *,
+[id^="bit-"],
+iframe[src*="chrome-extension://"],
+iframe[src*="moz-extension://"],
+iframe[src*="safari-extension://"],
+div[data-lastpass-root],
+div[data-lastpass-root] *,
+#one-password-banner,
+#one-password-banner *,
+com-1password-button,
+com-1password-menu {
+  pointer-events: auto !important;
+}
+
+body[style*="pointer-events: none"] #bit-notification-bar-root,
+body[style*="pointer-events: none"] [id^="bit-notification-bar"],
+body[style*="pointer-events: none"] [id^="bit-"],
+body[style*="pointer-events: none"] div[data-lastpass-root],
+body[style*="pointer-events: none"] #one-password-banner,
+body[style*="pointer-events: none"] com-1password-button,
+body[style*="pointer-events: none"] com-1password-menu {
+  pointer-events: auto !important;
+  isolation: isolate;
+}
+
+

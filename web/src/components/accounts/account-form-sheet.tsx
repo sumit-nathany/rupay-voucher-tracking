@@ -68,7 +68,14 @@ function AccountFormBody({
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4">
+    <form
+      onSubmit={onSubmit}
+      className="flex flex-1 flex-col gap-4"
+      autoComplete="off"
+      data-bwignore="true"
+      data-1p-ignore="true"
+      data-lpignore="true"
+    >
       <Field id="account-label" label="Label">
         <Input id="account-label" required maxLength={100} value={label} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
       </Field>

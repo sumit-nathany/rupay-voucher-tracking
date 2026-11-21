@@ -809,7 +809,7 @@ function SetCodeForm({
   onCancel: () => void;
 }) {
   const [value, setValue] = React.useState('');
-  const [show, setShow] = React.useState(false);
+  const [show, setShow] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const id = React.useId();
@@ -826,7 +826,7 @@ function SetCodeForm({
     try {
       const view = await setCodeAction({ instanceId: inst.id, code: v.value });
       setValue('');
-      setShow(false);
+      setShow(true);
       onSaved(view);
     } catch (err) {
       setError(errorMessage(err, 'Could not save the code.'));
@@ -836,7 +836,16 @@ function SetCodeForm({
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="space-y-2.5" noValidate>
+    <form
+      onSubmit={(e) => void submit(e)}
+      className="space-y-2.5"
+      noValidate
+      autoComplete="off"
+      data-bwignore="true"
+      data-1p-ignore="true"
+      data-lpignore="true"
+      data-form-type="other"
+    >
       <div>
         <Label htmlFor={id} className="text-xs font-semibold text-foreground">
           {inst.hasCode ? 'Replace voucher code' : 'Add voucher code'}
@@ -848,6 +857,7 @@ function SetCodeForm({
       <div className="flex gap-2">
         <Input
           id={id}
+          name="voucher-code"
           type={show ? 'text' : 'password'}
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -860,6 +870,10 @@ function SetCodeForm({
           className="h-9 text-xs"
           aria-describedby={`${id}-hint`}
           aria-invalid={error ? true : undefined}
+          data-bwignore="true"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-form-type="other"
         />
         <Button
           type="button"

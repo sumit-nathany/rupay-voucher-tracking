@@ -871,13 +871,16 @@ export function AccountDetailSheet({
                       </Label>
                       <Input
                         id="sheet-password"
-                        name="password"
+                        name="portal-password"
                         type="password"
                         placeholder="Leave blank to keep existing"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="h-9 text-sm bg-background"
-                        autoComplete="new-password"
+                        autoComplete="off"
+                        data-bwignore="true"
+                        data-1p-ignore="true"
+                        data-lpignore="true"
                       />
                     </div>
 
