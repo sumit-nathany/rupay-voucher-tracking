@@ -315,6 +315,19 @@ describe('ordering-queue domain', () => {
     expect(portalAccountId).toBeDefined();
     const queueAccount = await listOrderingQueue(ctxA, { portalAccountId });
     expect(queueAccount.length).toBeGreaterThan(0);
+
+    // Filter by category (benefitType)
+    const cabQueue = await listOrderingQueue(ctxA, { category: 'Cab Services' });
+    expect(cabQueue).toHaveLength(1);
+    expect(cabQueue[0].benefitType).toBe('Cab Services');
+    expect(cabQueue[0].benefitProvider).toBe('Uber');
+
+    const foodQueue = await listOrderingQueue(ctxA, { category: 'Food Delivery' });
+    expect(foodQueue).toHaveLength(1);
+    expect(foodQueue[0].benefitType).toBe('Food Delivery');
+
+    const nonExistentQueue = await listOrderingQueue(ctxA, { category: 'Nonexistent Category' });
+    expect(nonExistentQueue).toHaveLength(0);
   });
 
   it('allows picking a chosenOptionId for a category benefit and persists it', async () => {

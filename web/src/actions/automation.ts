@@ -302,6 +302,7 @@ export async function triggerManualOrderAction() {
 const queueFilterSchema = z.object({
   cardId: z.string().uuid().optional(),
   portalAccountId: z.string().uuid().optional(),
+  category: z.string().trim().optional(),
 }).optional();
 
 export async function listOrderingQueueAction(filter?: z.infer<typeof queueFilterSchema>) {

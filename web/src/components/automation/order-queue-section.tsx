@@ -19,6 +19,7 @@ import {
   X,
   ArrowUpDown,
   Pause,
+  Layers,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +105,80 @@ export function OrderQueueSection({
     return Array.from(cardMap.values());
   }, [items, cards]);
 
+  // Compile unique categories from queue items
+  const categories = useMemo(() => {
+    const catMap = new Map<string, { name: string; count: number; cardCount: number }>();
+    for (const item of items) {
+      const cat = item.benefitType || 'Other';
+      const existing = catMap.get(cat);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        catMap.set(cat, { name: cat, count: 1, cardCount: 0 });
+      }
+    }
+
+    for (const [cat, data] of catMap.entries()) {
+      const cardIds = new Set(
+        items
+          .filter((i) => (i.benefitType || 'Other').toLowerCase() === cat.toLowerCase())
+          .map((i) => i.cardId),
+      );
+      data.cardCount = cardIds.size;
+    }
+
+    return Array.from(catMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [items]);
+
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Cards that have pending benefits in the selected category
+  const cardsForCategory = useMemo(() => {
+    if (selectedCategory === 'all') return [];
+
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        last4: string;
+        holderName: string;
+        count: number;
+        totalCashValue: number;
+      }
+    >();
+
+    const matchingItems = items.filter(
+      (i) => (i.benefitType || 'Other').toLowerCase() === selectedCategory.toLowerCase(),
+    );
+
+    for (const item of matchingItems) {
+      const existing = map.get(item.cardId);
+      if (existing) {
+        existing.count += 1;
+        existing.totalCashValue += item.cashValue;
+      } else {
+        map.set(item.cardId, {
+          id: item.cardId,
+          name: item.cardName,
+          last4: item.cardLast4,
+          holderName: item.holderName,
+          count: 1,
+          totalCashValue: item.cashValue,
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort(
+      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
+    );
+  }, [items, selectedCategory]);
+
+  const handleCategoryChange = (val: string) => {
+    setSelectedCategory(val);
+    setSelectedCardId('all');
+  };
+
   // Default view is on a card basis: select the first card with benefits, or 'all'
   const [selectedCardId, setSelectedCardId] = useState<string>(() => {
     const firstWithBenefits = cardSummaries.find((c) => c.count > 0);
@@ -120,19 +195,24 @@ export function OrderQueueSection({
 
   useEffect(() => {
     setVisibleCount(DEFAULT_PAGE_SIZE);
-  }, [selectedCardId, selectedAccountId]);
+  }, [selectedCategory, selectedCardId, selectedAccountId]);
 
-  // If selected card is no longer valid, fallback to first available card with benefits
+  // If selected card is no longer valid, fallback
   useEffect(() => {
-    if (selectedCardId !== 'all' && !cardSummaries.some((c) => c.id === selectedCardId)) {
-      const firstWithBenefits = cardSummaries.find((c) => c.count > 0);
-      setSelectedCardId(firstWithBenefits?.id ?? 'all');
+    const activeCardsList = selectedCategory !== 'all' ? cardsForCategory : cardSummaries;
+    if (selectedCardId !== 'all' && !activeCardsList.some((c) => c.id === selectedCardId)) {
+      setSelectedCardId('all');
     }
-  }, [cardSummaries, selectedCardId]);
+  }, [cardSummaries, cardsForCategory, selectedCardId, selectedCategory]);
 
-  // Filter items based on selected Card (primary) and RuPay account (secondary)
+  // Filter items based on selected Category, Card (primary), and RuPay account (secondary)
   const displayedItems = useMemo(() => {
     let result = items;
+    if (selectedCategory !== 'all') {
+      result = result.filter(
+        (i) => (i.benefitType || 'Other').toLowerCase() === selectedCategory.toLowerCase(),
+      );
+    }
     if (selectedCardId !== 'all') {
       result = result.filter((i) => i.cardId === selectedCardId);
     }
@@ -144,12 +224,13 @@ export function OrderQueueSection({
       );
     }
     return result;
-  }, [items, selectedCardId, selectedAccountId]);
+  }, [items, selectedCategory, selectedCardId, selectedAccountId]);
 
   const activeCardSummary = useMemo(() => {
     if (selectedCardId === 'all') return null;
-    return cardSummaries.find((c) => c.id === selectedCardId) ?? null;
-  }, [cardSummaries, selectedCardId]);
+    const activeCardsList = selectedCategory !== 'all' ? cardsForCategory : cardSummaries;
+    return activeCardsList.find((c) => c.id === selectedCardId) ?? null;
+  }, [cardSummaries, cardsForCategory, selectedCardId, selectedCategory]);
 
   const visibleItems = useMemo(() => {
     return displayedItems.slice(0, visibleCount);
@@ -330,6 +411,35 @@ export function OrderQueueSection({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2 sm:p-2.5 rounded-xl border border-border/70 bg-muted/30">
         {/* Left: Filters */}
         <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {/* Category Filter */}
+          <Select
+            value={selectedCategory}
+            onValueChange={handleCategoryChange}
+            disabled={isPending}
+          >
+            <SelectTrigger
+              className={cn(
+                'h-8 text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer',
+                selectedCategory !== 'all'
+                  ? 'border-primary/50 bg-primary/5 text-primary font-semibold'
+                  : 'text-foreground',
+              )}
+            >
+              <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="all" className="text-xs">
+                All Categories ({items.length})
+              </SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.name} value={cat.name} className="text-xs">
+                  {cat.name} ({cat.count} {cat.count === 1 ? 'voucher' : 'vouchers'} · {cat.cardCount} {cat.cardCount === 1 ? 'card' : 'cards'})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {/* Card Filter */}
           <Select
             value={selectedCardId}
@@ -341,7 +451,7 @@ export function OrderQueueSection({
                 'h-8 text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer',
                 selectedCardId !== 'all'
                   ? 'border-primary/50 bg-primary/5 text-primary font-semibold'
-                  : 'text-foreground'
+                  : 'text-foreground',
               )}
             >
               <CreditCard className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -349,9 +459,11 @@ export function OrderQueueSection({
             </SelectTrigger>
             <SelectContent className="rounded-xl">
               <SelectItem value="all" className="text-xs">
-                All Cards ({items.length})
+                {selectedCategory !== 'all'
+                  ? `All ${selectedCategory} Cards (${cardsForCategory.length})`
+                  : `All Cards (${items.length})`}
               </SelectItem>
-              {cardSummaries.map((c) => (
+              {(selectedCategory !== 'all' ? cardsForCategory : cardSummaries).map((c) => (
                 <SelectItem key={c.id} value={c.id} className="text-xs">
                   {c.name} ••{c.last4} · {c.holderName} ({c.count})
                 </SelectItem>
@@ -370,7 +482,7 @@ export function OrderQueueSection({
                 'h-8 text-xs font-medium rounded-lg gap-2 border-border/80 bg-background shadow-2xs hover:bg-accent/50 cursor-pointer',
                 selectedAccountId !== 'all'
                   ? 'border-primary/50 bg-primary/5 text-primary font-semibold'
-                  : 'text-foreground'
+                  : 'text-foreground',
               )}
             >
               <KeyRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -381,7 +493,10 @@ export function OrderQueueSection({
                 All Accounts
               </SelectItem>
               {accounts.map((acc) => {
-                const count = items.filter(
+                const count = (selectedCategory !== 'all'
+                  ? items.filter((i) => (i.benefitType || 'Other').toLowerCase() === selectedCategory.toLowerCase())
+                  : items
+                ).filter(
                   (i) =>
                     i.portalAccountId === acc.id ||
                     i.portalAccounts.some((a) => a.id === acc.id),
@@ -396,11 +511,12 @@ export function OrderQueueSection({
           </Select>
 
           {/* Reset Filters (when any filter is active) */}
-          {(selectedCardId !== 'all' || selectedAccountId !== 'all') && (
+          {(selectedCategory !== 'all' || selectedCardId !== 'all' || selectedAccountId !== 'all') && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
+                setSelectedCategory('all');
                 setSelectedCardId('all');
                 setSelectedAccountId('all');
               }}
@@ -436,25 +552,116 @@ export function OrderQueueSection({
         </div>
       </div>
 
+      {/* 2b. Cards with pending benefits in this category */}
+      {selectedCategory !== 'all' && (
+        <div className="p-3.5 sm:p-4 rounded-xl border border-primary/20 bg-primary/[0.03] space-y-2.5">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-primary shrink-0" />
+              <h3 className="text-xs sm:text-sm font-semibold text-foreground">
+                Cards with pending {selectedCategory} vouchers ({cardsForCategory.length} {cardsForCategory.length === 1 ? 'card' : 'cards'}):
+              </h3>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {selectedCardId === 'all'
+                ? `Showing vouchers across all ${cardsForCategory.length} cards. Click a card to filter.`
+                : `Filtered to ${activeCardSummary?.name ?? 'single card'}. Click 'All Cards' to see all.`}
+            </p>
+          </div>
+
+          {cardsForCategory.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">
+              No cards currently have pending vouchers in the {selectedCategory} category.
+            </p>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant={selectedCardId === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCardId('all')}
+                className={cn(
+                  'h-7 sm:h-8 text-xs font-medium rounded-lg px-2.5 sm:px-3 cursor-pointer',
+                  selectedCardId === 'all' ? 'shadow-2xs' : 'bg-background hover:bg-accent',
+                )}
+              >
+                <span>All {selectedCategory} Cards</span>
+                <Badge
+                  variant={selectedCardId === 'all' ? 'secondary' : 'outline'}
+                  className="ml-1.5 px-1.5 py-0 text-[10px] font-semibold h-4"
+                >
+                  {cardsForCategory.reduce((acc, c) => acc + c.count, 0)}
+                </Badge>
+              </Button>
+
+              {cardsForCategory.map((c) => {
+                const isSelected = selectedCardId === c.id;
+                return (
+                  <Button
+                    key={c.id}
+                    variant={isSelected ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedCardId(isSelected ? 'all' : c.id)}
+                    className={cn(
+                      'h-7 sm:h-8 text-xs font-medium rounded-lg px-2.5 sm:px-3 gap-1.5 cursor-pointer',
+                      isSelected ? 'shadow-2xs' : 'bg-background hover:bg-accent',
+                    )}
+                    title={`Filter queue to ${c.name} (••${c.last4})`}
+                  >
+                    <CreditCard className="h-3 w-3 shrink-0 opacity-70" />
+                    <span className="font-semibold">{c.name} ••{c.last4}</span>
+                    <span className="opacity-75 text-[11px]">· {c.holderName}</span>
+                    <Badge
+                      variant={isSelected ? 'secondary' : 'outline'}
+                      className="ml-0.5 px-1.5 py-0 text-[10px] font-bold h-4"
+                    >
+                      {c.count} {c.count === 1 ? 'voucher' : 'vouchers'}
+                      {c.totalCashValue > 0 ? ` · ₹${Math.round(c.totalCashValue)}` : ''}
+                    </Badge>
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Queue Items List */}
       {displayedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 p-12 text-center bg-muted/10">
           <ListOrdered className="h-10 w-10 text-muted-foreground/60 mb-3" />
           <p className="text-base font-semibold text-foreground">No Vouchers In This Queue</p>
           <p className="text-sm text-muted-foreground max-w-md mt-1.5">
-            {selectedCardId !== 'all'
+            {selectedCategory !== 'all' && selectedCardId !== 'all'
+              ? `No pending ${selectedCategory} vouchers found for ${activeCardSummary?.name ?? 'this card'}.`
+              : selectedCategory !== 'all'
+              ? `No pending ${selectedCategory} vouchers found in this workspace.`
+              : selectedCardId !== 'all'
               ? `No pending voucher benefits found for ${activeCardSummary?.name ?? 'this card'}.`
               : selectedAccountId === 'all'
               ? 'No pending voucher benefits found in this workspace.'
               : 'No voucher benefits found for cards linked to this RuPay account.'}
           </p>
           <div className="flex items-center gap-2 mt-4 flex-wrap justify-center">
+            {selectedCategory !== 'all' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setSelectedCardId('all');
+                }}
+                className="gap-2 text-xs sm:text-sm font-medium rounded-xl cursor-pointer"
+              >
+                <Layers className="h-4 w-4" />
+                Clear Category Filter
+              </Button>
+            )}
             {selectedCardId !== 'all' && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedCardId('all')}
-                className="gap-2 text-xs sm:text-sm font-medium rounded-xl"
+                className="gap-2 text-xs sm:text-sm font-medium rounded-xl cursor-pointer"
               >
                 <CreditCard className="h-4 w-4" />
                 View All Cards
@@ -463,7 +670,7 @@ export function OrderQueueSection({
             <Button
               onClick={() => handleAutoSort('nearest_expiring')}
               disabled={isPending}
-              className="gap-2 text-xs sm:text-sm font-medium rounded-xl"
+              className="gap-2 text-xs sm:text-sm font-medium rounded-xl cursor-pointer"
             >
               <RefreshCw className="h-4 w-4" />
               Check & Auto-Sort Queue

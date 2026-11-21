@@ -54,6 +54,7 @@ export interface QueueItemView {
 export interface QueueFilter {
   cardId?: string;
   portalAccountId?: string;
+  category?: string;
 }
 
 export type QueueSortStrategy = 'nearest_expiring' | 'highest_value';
@@ -667,7 +668,7 @@ export async function listOrderingQueue(
 ): Promise<QueueItemView[]> {
   const all = await syncGlobalOrderingQueue(ctx);
 
-  if (!filter || (!filter.cardId && !filter.portalAccountId)) {
+  if (!filter || (!filter.cardId && !filter.portalAccountId && !filter.category)) {
     return all;
   }
 
@@ -678,6 +679,11 @@ export async function listOrderingQueue(
         i.portalAccountId === filter.portalAccountId ||
         i.portalAccounts.some((a) => a.id === filter.portalAccountId);
       if (!matches) return false;
+    }
+    if (filter.category) {
+      if ((i.benefitType || '').toLowerCase() !== filter.category.toLowerCase()) {
+        return false;
+      }
     }
     return true;
   });
@@ -745,7 +751,7 @@ export async function populateAndSortQueue(
       });
   }
 
-  if (!filter || (!filter.cardId && !filter.portalAccountId)) {
+  if (!filter || (!filter.cardId && !filter.portalAccountId && !filter.category)) {
     return all;
   }
 
@@ -756,6 +762,11 @@ export async function populateAndSortQueue(
         i.portalAccountId === filter.portalAccountId ||
         i.portalAccounts.some((a) => a.id === filter.portalAccountId);
       if (!matches) return false;
+    }
+    if (filter.category) {
+      if ((i.benefitType || '').toLowerCase() !== filter.category.toLowerCase()) {
+        return false;
+      }
     }
     return true;
   });
